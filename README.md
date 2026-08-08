@@ -25,6 +25,8 @@ curl -fsSL https://get.nokku.sh/nk | sh
 The installer prefers your distro's package (deb/rpm/apk) via the Cloudsmith
 repository and falls back to the GitHub release binary.
 
+Prefer manual packages? See the [package repository](https://broadcasts.cloudsmith.com/nokku/nk) for apt/dnf/apk install instructions.
+
 Authenticate via your browser and connect:
 
 ```bash
@@ -105,3 +107,9 @@ nk logout # Removes credentials and config
 rm -f /usr/local/bin/nk   # or wherever nk was installed
 rm -rf ~/.config/nk
 ```
+
+## Hosting
+
+<img alt="Static Badge" src="https://img.shields.io/badge/OSS%20hosting%20by-cloudsmith-blue?logo=cloudsmith&style=flat-square&link=https%3A%2F%2Fcloudsmith.com"></img>
+
+Package repository hosting is graciously provided by [Cloudsmith](https://cloudsmith.com).
