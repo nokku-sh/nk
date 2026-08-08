@@ -8,6 +8,10 @@ All notable changes to this project will be documented in this file.
 
 - installer: Prefer distro packages with github fallback
 
+### Bug Fixes
+
+- release-tagger: Normalize v prefix before comparison
+
 ### Miscellaneous
 
 - Cleanup changelog
