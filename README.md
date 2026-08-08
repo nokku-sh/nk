@@ -22,6 +22,9 @@ Install the CLI:
 curl -fsSL https://get.nokku.sh/nk | sh
 ```
 
+The installer prefers your distro's package (deb/rpm/apk) via the Cloudsmith
+repository and falls back to the GitHub release binary.
+
 Authenticate via your browser and connect:
 
 ```bash
