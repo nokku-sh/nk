@@ -1,0 +1,104 @@
+<p align="center">
+  <img src="./.github/logo.svg" height="80" alt="nk logo">
+</p>
+
+<p align="center">
+  <a href="https://github.com/nokku-sh/nk/releases"><img src="https://img.shields.io/github/v/tag/nokku-sh/nk?label=Version" alt="Version"></a>
+  <a href="https://github.com/nokku-sh/nk/blob/main/LICENSE"><img src="https://img.shields.io/github/license/nokku-sh/nk?label=License" alt="License"></a>
+  <a href="https://github.com/nokku-sh/nk/actions"><img src="https://img.shields.io/github/actions/workflow/status/nokku-sh/nk/test.yaml?label=Build" alt="Build"></a>
+</p>
+
+# nk: The Nokku CLI
+
+`nk` is your access portal. It signs you in, keeps your short-lived SSH certificates fresh, and seamlessly wires up your local configuration.
+
+Our goal is top-tier Developer Experience (DX). You don't have to learn new custom SSH commands. Once authenticated, you connect to Nokku-managed servers using the plain OpenSSH you already know.
+
+## Quick Start
+
+Install the CLI:
+
+```bash
+curl -fsSL https://get.nokku.sh/nk | sh
+```
+
+Authenticate via your browser and connect:
+
+```bash
+nk login          # Authenticate and sync your SSH config
+nk ls             # List the targets you can access
+ssh user@target   # Connect using standard OpenSSH!
+```
+
+> [!NOTE]
+> When the backend is unavailable, `nk` works seamlessly from cached data and existing valid certificates.
+
+## Hardware Security (TPM 2.0)
+
+For enhanced security on Linux and Windows, use the `--key-type tpm` flag. Your SSH private key becomes a deterministic primary key that never leaves the TPM; signing happens via an embedded SSH agent (`agent.sock`).
+
+```bash
+nk login --key-type tpm
+```
+
+_(Check `nk doctor` to see if a TPM is available and in use.)_
+
+> [!NOTE]
+> On most Linux distributions `/dev/tpmrm0` is owned by `root:tss`, so regular users cannot use the TPM by default. Fix: `sudo usermod -aG tss $USER` and log in again (a udev rule granting your user access works too).
+
+### Headless / CI
+
+Use a service-account token in CI or other headless environments:
+
+```bash
+export NK_TOKEN=<TOKEN>
+nk login
+ssh user@target
+```
+
+## X.509 certificates (experimental)
+
+`nk` can also issue certificates for API clients, servers, and other workloads:
+
+```bash
+nk cert list
+nk cert issue api-client --usage client --san dns:api.example.com
+```
+
+The command generates a key pair, requests a signed certificate, and saves the certificate, private key, and CA certificate to the output directory.
+
+## Commands
+
+| Command              | Purpose                                    |
+| -------------------- | ------------------------------------------ |
+| `nk login`           | Authenticate and synchronize local state   |
+| `nk refresh`         | Re-authenticate and refresh state          |
+| `nk status`          | Show identity and workspace information    |
+| `nk ls` / `nk list`  | List targets and principals                |
+| `nk doctor`          | Check API reachability and local SSH setup |
+| `nk cert list`       | List active X.509 certificate authorities  |
+| `nk cert issue <cn>` | Issue an X.509 certificate                 |
+| `nk logout`          | Remove local credentials and cached state  |
+| `nk proxy`           | Internal OpenSSH `ProxyCommand` (internal) |
+
+## Configuration
+
+| Flag         | Environment   | Purpose                                                                 |
+| ------------ | ------------- | ----------------------------------------------------------------------- |
+| `--api`      | `NK_API_URL`  | Backend URL                                                             |
+| `--token`    | `NK_TOKEN`    | Authentication token                                                    |
+| `--key-type` | `NK_KEY_TYPE` | Local SSH key type; default `ed25519`, `tpm` keeps the key in a TPM 2.0 |
+| `--ttl`      | `NK_TTL`      | Requested SSH certificate lifetime                                      |
+| `--insecure` | `NK_INSECURE` | Disable TLS verification; testing only                                  |
+
+Local state lives under `~/.config/nk/`. Your private key and tokens are credentials — keep service-account tokens out of source control.
+
+## Uninstall
+
+```bash
+nk logout # Removes credentials and config
+
+# Manual uninstall
+rm -f /usr/local/bin/nk   # or wherever nk was installed
+rm -rf ~/.config/nk
+```
