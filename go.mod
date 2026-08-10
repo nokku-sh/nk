@@ -17,7 +17,7 @@ require (
 	golang.org/x/sync v0.22.0
 	golang.org/x/sys v0.47.0
 	golang.org/x/term v0.45.0
-	google.golang.org/genproto/googleapis/api v0.0.0-20260807164820-c8921c73eeea
+	google.golang.org/genproto/googleapis/api v0.0.0-20260810153831-ec0a7760b754
 	google.golang.org/protobuf v1.36.11
 )
 
