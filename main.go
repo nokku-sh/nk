@@ -99,7 +99,9 @@ func main() {
 					if err = tpm.Available(); err != nil {
 						fmt.Printf("TPM 2.0: unavailable (%v)\n", err)
 						if errors.Is(err, os.ErrPermission) {
-							fmt.Println("hint: add your user to the tss group: sudo usermod -aG tss $USER")
+							fmt.Println(
+								"hint: add your user to the tss group: sudo usermod -aG tss $USER",
+							)
 						}
 					} else {
 						fmt.Println("TPM 2.0: available")
@@ -432,19 +434,5 @@ func resolveX509CA(
 	if err != nil {
 		return nil, err
 	}
-	if len(cas) == 0 {
-		return nil, fmt.Errorf("no X.509 certificate authorities available")
-	}
-	if nameOrID == "" {
-		if len(cas) > 1 {
-			return nil, fmt.Errorf("multiple X.509 CAs available, specify one with --ca")
-		}
-		return cas[0], nil
-	}
-	for _, ca := range cas {
-		if ca.GetId() == nameOrID || strings.EqualFold(ca.GetName(), nameOrID) {
-			return ca, nil
-		}
-	}
-	return nil, fmt.Errorf("X.509 CA %q not found", nameOrID)
+	return cert.MatchX509CA(cas, nameOrID)
 }
