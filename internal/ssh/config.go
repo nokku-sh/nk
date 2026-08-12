@@ -17,6 +17,9 @@ func GenerateSSHConfig(st *state.State) error {
 		if t.ID == "" || t.Name == "" || t.CAID == "" || len(t.Principals) == 0 {
 			continue
 		}
+		if !safeConfigToken(t.Name) || !safeConfigToken(t.Principals[0].Username) {
+			continue
+		}
 
 		fmt.Fprintf(&buf, "Host %s\n", t.Name)
 		fmt.Fprintf(&buf, "    User %s\n", t.Principals[0].Username)
@@ -55,4 +58,16 @@ func GenerateKnownHosts(st *state.State) error {
 		fmt.Fprintf(&buf, "@cert-authority * %s\n", strings.TrimSpace(ca.PublicKey))
 	}
 	return util.WriteIfChanged(util.KnownHostsPath(), []byte(buf.String()), 0o600)
+}
+
+// safeConfigToken reports whether s is safe to embed in a generated SSH
+// config line: control characters are line-structure breaking and must
+// never reach the file.
+func safeConfigToken(s string) bool {
+	for _, r := range s {
+		if r < 0x20 || r == 0x7f {
+			return false
+		}
+	}
+	return true
 }
