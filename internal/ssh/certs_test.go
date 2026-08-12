@@ -116,12 +116,7 @@ func TestVerifyCertificate(t *testing.T) {
 }
 
 func TestCleanupCerts_NoMatches(t *testing.T) {
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-
-	certDir := util.CertPath()
-	if err := os.MkdirAll(certDir, 0o700); err != nil {
-		t.Fatal(err)
-	}
+	setupSSHDir(t)
 
 	if err := CleanupCerts(nil); err != nil {
 		t.Fatalf("CleanupCerts(nil) error = %v", err)

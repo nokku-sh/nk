@@ -5,14 +5,26 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/adrg/xdg"
+
 	"github.com/nokku-sh/nk/internal/util"
 )
 
+// setTestConfigDir redirects the app's config dir into a fresh temp dir.
+// xdg.ConfigHome is resolved at package init, so the env var cannot be used;
+// the exported var is swapped instead (nolint:reassign // test isolation).
+func setTestConfigDir(t *testing.T) {
+	t.Helper()
+	old := xdg.ConfigHome
+	xdg.ConfigHome = t.TempDir()               //nolint:reassign // test isolation
+	t.Cleanup(func() { xdg.ConfigHome = old }) //nolint:reassign // test isolation
+}
+
 func setupSSHDir(t *testing.T) {
 	t.Helper()
-	dir := filepath.Join(t.TempDir(), "nk")
-	for _, sub := range []string{"certificates", ".ssh"} {
-		if err := os.MkdirAll(filepath.Join(dir, sub), 0o700); err != nil {
+	setTestConfigDir(t)
+	for _, sub := range []string{"", "certs"} {
+		if err := os.MkdirAll(filepath.Join(util.ConfigPath(), sub), 0o700); err != nil {
 			t.Fatal(err)
 		}
 	}
