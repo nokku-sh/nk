@@ -143,8 +143,8 @@ func (c *Client) SignByTarget(ctx context.Context, targetName string) error {
 
 // Sign fetches a fresh certificate for ca and writes it to disk.
 func (c *Client) Sign(ctx context.Context, ca state.CA) error {
-	if err := ssh.VerifyCertificateByID(ca.ID); err == nil {
-		return nil // already signed and valid
+	if err := ssh.VerifyCertificateByID(ca.ID, ca.PublicKey); err == nil {
+		return nil // already signed, valid and under the current CA
 	}
 
 	pubKey, err := ssh.GetPubKey()
@@ -182,9 +182,9 @@ func (c *Client) Sign(ctx context.Context, ca state.CA) error {
 	return util.WriteFile(util.Certificate(res.GetCaId()), signedCert, 0o600)
 }
 
-// ListX509CAs returns all active X.509 certificate authorities across
-// the subject's workspaces. X.509 CAs are not linked to targets, so they
-// are discovered via ListCertificateAuthorities rather than the access sync.
+// ListX509CAs returns all active X.509 CAs across the subject's
+// workspaces. X.509 CAs are not linked to targets, so they are
+// fetched separately from the access sync.
 func (c *Client) ListX509CAs(ctx context.Context) ([]*nokkuv1.CertificateAuthority, error) {
 	var out []*nokkuv1.CertificateAuthority
 	for _, w := range c.State.Workspaces {

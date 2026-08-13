@@ -1,6 +1,7 @@
 package ssh
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"os"
@@ -13,12 +14,39 @@ import (
 	"github.com/nokku-sh/nk/internal/util"
 )
 
-func VerifyCertificateByID(caID string) error {
+// VerifyCertificateByID reports whether the cached cert for caID is
+// present, valid, and signed by the CA's current key. Certs from a
+// retired CA key must be re-signed even while valid.
+func VerifyCertificateByID(caID, caPublicKey string) error {
 	data, err := os.ReadFile(util.Certificate(caID))
 	if err != nil {
 		return err
 	}
-	return VerifyCertificate(data)
+	caPub, _, _, _, err := ssh.ParseAuthorizedKey([]byte(caPublicKey))
+	if err != nil {
+		return fmt.Errorf("parse CA public key: %w", err)
+	}
+	return VerifyCertificateForCA(data, caPub)
+}
+
+// VerifyCertificateForCA validates data's validity window and that it was
+// signed by caPub.
+func VerifyCertificateForCA(data []byte, caPub ssh.PublicKey) error {
+	if err := VerifyCertificate(data); err != nil {
+		return err
+	}
+	pub, _, _, _, err := ssh.ParseAuthorizedKey(data)
+	if err != nil {
+		return err
+	}
+	cert, ok := pub.(*ssh.Certificate)
+	if !ok {
+		return errors.New("invalid certificate format")
+	}
+	if cert.SignatureKey == nil || !bytes.Equal(cert.SignatureKey.Marshal(), caPub.Marshal()) {
+		return errors.New("certificate signed by a different CA")
+	}
+	return nil
 }
 
 // CertificateValidity parses a signed SSH certificate and returns its

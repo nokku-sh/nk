@@ -131,21 +131,71 @@ func TestVerifyCertificateByID(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	_, priv, genErr := ed25519.GenerateKey(rand.Reader)
+	if genErr != nil {
+		t.Fatal(genErr)
+	}
+	signer, genErr := ssh.NewSignerFromKey(priv)
+	if genErr != nil {
+		t.Fatal(genErr)
+	}
+	caPub := ssh.MarshalAuthorizedKey(signer.PublicKey())
+
+	signCert := func(s ssh.Signer) []byte {
+		t.Helper()
+		c := &ssh.Certificate{
+			Key:         signer.PublicKey(),
+			CertType:    ssh.UserCert,
+			ValidAfter:  uint64(time.Now().Add(-time.Hour).Unix()),
+			ValidBefore: uint64(time.Now().Add(time.Hour).Unix()),
+		}
+		if signErr := c.SignCert(rand.Reader, s); signErr != nil {
+			t.Fatal(signErr)
+		}
+		return ssh.MarshalAuthorizedKey(c)
+	}
+
 	t.Run("file not found", func(t *testing.T) {
-		err := VerifyCertificateByID("nonexistent-ca")
-		if err == nil {
+		if err := VerifyCertificateByID("nonexistent-ca", string(caPub)); err == nil {
 			t.Error("expected error for missing certificate file")
 		}
 	})
 
 	t.Run("invalid cert file", func(t *testing.T) {
 		path := util.Certificate("bad-ca")
-		if err := os.WriteFile(path, []byte("not-a-cert"), 0o600); err != nil {
+		if writeErr := os.WriteFile(path, []byte("not-a-cert"), 0o600); writeErr != nil {
+			t.Fatal(writeErr)
+		}
+		if err := VerifyCertificateByID("bad-ca", string(caPub)); err == nil {
+			t.Error("expected error for invalid certificate file")
+		}
+	})
+
+	t.Run("cert signed by current CA is accepted", func(t *testing.T) {
+		path := util.Certificate("good-ca")
+		if writeErr := os.WriteFile(path, signCert(signer), 0o600); writeErr != nil {
+			t.Fatal(writeErr)
+		}
+		if err := VerifyCertificateByID("good-ca", string(caPub)); err != nil {
+			t.Errorf("expected no error for cert signed by current CA, got %v", err)
+		}
+	})
+
+	t.Run("cert signed by a retired CA is rejected", func(t *testing.T) {
+		_, otherPriv, err := ed25519.GenerateKey(rand.Reader)
+		if err != nil {
 			t.Fatal(err)
 		}
-		err := VerifyCertificateByID("bad-ca")
-		if err == nil {
-			t.Error("expected error for invalid certificate file")
+		otherSigner, err := ssh.NewSignerFromKey(otherPriv)
+		if err != nil {
+			t.Fatal(err)
+		}
+		path := util.Certificate("rolled-ca")
+		if writeErr := os.WriteFile(path, signCert(otherSigner), 0o600); writeErr != nil {
+			t.Fatal(writeErr)
+		}
+		if verr := VerifyCertificateByID("rolled-ca", string(caPub)); verr == nil {
+			t.Error("expected error for cert signed by a different CA")
 		}
 	})
 }
