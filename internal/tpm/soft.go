@@ -12,6 +12,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"log/slog"
 
 	"golang.org/x/crypto/scrypt"
 
@@ -37,10 +38,10 @@ type softSigner struct {
 func openSoft(dir string, st *state) (Signer, error) {
 	if st != nil && len(st.Salt) > 0 && len(st.Nonce) > 0 && len(st.Data) > 0 {
 		key, err := unwrapSoftKey(st)
-		if err != nil {
-			return nil, err
+		if err == nil {
+			return &softSigner{key: key, pem: []byte(st.PubKey)}, nil
 		}
-		return &softSigner{key: key, pem: []byte(st.PubKey)}, nil
+		slog.Warn("software signing key cannot be unwrapped, creating a new key", "err", err)
 	}
 
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
@@ -103,10 +104,7 @@ func (s *softSigner) Close() error {
 func unwrapSoftKey(st *state) (*ecdsa.PrivateKey, error) {
 	plain, err := unwrapSoftData(st.Data, st.Salt, st.Nonce)
 	if err != nil {
-		return nil, fmt.Errorf(
-			"cannot unwrap signing key: %w; the machine identity changed (e.g. after a reinstall or VM clone); re-enroll to create a new key",
-			err,
-		)
+		return nil, fmt.Errorf("unwrap signing key: %w", err)
 	}
 	key, err := x509.ParsePKCS8PrivateKey(plain)
 	if err != nil {

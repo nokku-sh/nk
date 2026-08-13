@@ -10,6 +10,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"log/slog"
 	"math/big"
 	"sync"
 
@@ -175,13 +176,10 @@ func openTPM(dir string, st *state) (Signer, error) {
 	}
 
 	cur := string(pub)
-	if st != nil && st.PubKey != "" && st.PubKey != cur {
-		_ = s.Close()
-		return nil, errors.New(
-			"TPM identity changed since enrollment (TPM was cleared or replaced); re-enroll to register the new key",
-		)
-	}
 	if st == nil || st.PubKey != cur {
+		if st != nil && st.PubKey != "" {
+			slog.Warn("TPM identity changed since last login, a new key will be re-registered")
+		}
 		if err = saveState(dir, &state{Method: MethodTPM, PubKey: cur}); err != nil {
 			_ = s.Close()
 			return nil, err

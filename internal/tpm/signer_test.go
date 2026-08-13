@@ -174,7 +174,7 @@ func TestSoftSignerRoundTrip(t *testing.T) {
 	verifySignature(t, pub1, data, sig2)
 }
 
-func TestSoftSignerWrongMachine(t *testing.T) {
+func TestSoftSignerRecoversOnMachineChange(t *testing.T) {
 	dir := t.TempDir()
 
 	s, err := openSoft(dir, nil)
@@ -190,7 +190,30 @@ func TestSoftSignerWrongMachine(t *testing.T) {
 	if _, err = rand.Read(st.Salt); err != nil {
 		t.Fatalf("corrupt salt: %v", err)
 	}
-	if _, err = openSoft(dir, st); err == nil {
-		t.Fatal("expected unwrap to fail with a changed machine identity")
+
+	// A changed machine identity (corrupted salt) must not hard-fail: a new
+	// key is created and persisted instead.
+	s2, err := openSoft(dir, st)
+	if err != nil {
+		t.Fatalf("openSoft should recover by creating a new key, got: %v", err)
 	}
+	defer s2.Close()
+	pub2, err := s2.Public()
+	if err != nil {
+		t.Fatalf("public: %v", err)
+	}
+
+	st2, err := loadState(dir)
+	if err != nil {
+		t.Fatalf("reload state: %v", err)
+	}
+	if st2.PubKey != string(pub2) {
+		t.Fatal("recovered key was not persisted")
+	}
+
+	sig, err := s2.Sign(context.Background(), []byte("hello nokku"))
+	if err != nil {
+		t.Fatalf("sign: %v", err)
+	}
+	verifySignature(t, pub2, []byte("hello nokku"), sig)
 }
