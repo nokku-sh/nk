@@ -21,20 +21,25 @@ func VerifyCertificateByID(caID string) error {
 	return VerifyCertificate(data)
 }
 
-func VerifyCertificate(data []byte) error {
+// CertificateValidity parses a signed SSH certificate and returns its
+// validity window.
+func CertificateValidity(data []byte) (validAfter, validBefore time.Time, err error) {
 	pub, _, _, _, err := ssh.ParseAuthorizedKey(data)
+	if err != nil {
+		return validAfter, validBefore, err
+	}
+	cert, ok := pub.(*ssh.Certificate)
+	if !ok {
+		return validAfter, validBefore, errors.New("invalid certificate format")
+	}
+	return util.Uint64ToUnixTime(cert.ValidAfter), util.Uint64ToUnixTime(cert.ValidBefore), nil
+}
+
+func VerifyCertificate(data []byte) error {
+	validAfter, validBefore, err := CertificateValidity(data)
 	if err != nil {
 		return err
 	}
-
-	cert, ok := pub.(*ssh.Certificate)
-	if !ok {
-		return errors.New("invalid certificate format")
-	}
-
-	validAfter := util.Uint64ToUnixTime(cert.ValidAfter)
-	validBefore := util.Uint64ToUnixTime(cert.ValidBefore)
-
 	now := time.Now()
 	if now.Before(validAfter) || now.After(validBefore) {
 		return errors.New("certificate expired or not yet valid")

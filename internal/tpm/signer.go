@@ -20,6 +20,8 @@ import (
 	"github.com/nokku-sh/nk/internal/util"
 )
 
+var errNoState = errors.New("no signer state")
+
 const (
 	// MethodTPM identifies a TPM-backed signing key.
 	MethodTPM = "tpm"
@@ -44,8 +46,7 @@ type Signer interface {
 }
 
 // state is the on-disk representation of a signer. Only public material is
-// stored for TPM keys; software keys additionally carry their wrapped
-// private key.
+// stored for TPM keys. Software keys also carry their wrapped private key.
 type state struct {
 	Method string `json:"method"`
 	PubKey string `json:"pubkey"`
@@ -53,9 +54,6 @@ type state struct {
 	Nonce  []byte `json:"nonce,omitempty"`
 	Data   []byte `json:"data,omitempty"`
 }
-
-// errNoState signals that no signer state exists yet on this machine.
-var errNoState = errors.New("no signer state")
 
 // New loads or creates the machine's signing identity in dir.
 //
@@ -78,9 +76,7 @@ func New(dir string, requireTPM bool) (Signer, error) {
 			return s, nil
 		case MethodSoft:
 			if requireTPM {
-				return nil, errors.New(
-					"daemon is enrolled with a software key; re-enroll with --require-tpm to require a TPM",
-				)
+				return nil, errors.New("require-tpm set, but no TPM available")
 			}
 			s, softErr := openSoft(dir, st)
 			if softErr != nil {
@@ -108,6 +104,17 @@ func New(dir string, requireTPM bool) (Signer, error) {
 
 func statePath(dir string) string {
 	return filepath.Join(dir, stateFile)
+}
+
+// SignerMethod reports the signing method in use (MethodTPM or MethodSoft)
+// without loading or creating any key material. It returns "" when no signer
+// identity exists on this machine yet.
+func SignerMethod(dir string) string {
+	st, err := loadState(dir)
+	if err != nil || st == nil {
+		return ""
+	}
+	return st.Method
 }
 
 func loadState(dir string) (*state, error) {
