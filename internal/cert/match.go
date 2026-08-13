@@ -7,8 +7,8 @@ import (
 	nokkuv1 "github.com/nokku-sh/nk/internal/gen/nokku/v1"
 )
 
-// MatchX509CA picks the CA for nameOrID from cas: an empty nameOrID selects
-// the only CA, or errors when several exist; otherwise the first CA whose ID
+// MatchX509CA picks the CA for nameOrID from cas. An empty nameOrID selects
+// the only CA, or errors when several exist. Otherwise the first CA whose ID
 // matches exactly or whose name matches case-insensitively wins.
 func MatchX509CA(
 	cas []*nokkuv1.CertificateAuthority,

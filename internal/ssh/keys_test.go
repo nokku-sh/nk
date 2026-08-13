@@ -11,8 +11,8 @@ import (
 )
 
 // setTestConfigDir redirects the app's config dir into a fresh temp dir.
-// xdg.ConfigHome is resolved at package init, so the env var cannot be used;
-// the exported var is swapped instead (nolint:reassign // test isolation).
+// xdg.ConfigHome is resolved at package init, so the env var cannot be used.
+// The exported var is swapped instead (nolint:reassign // test isolation).
 func setTestConfigDir(t *testing.T) {
 	t.Helper()
 	old := xdg.ConfigHome

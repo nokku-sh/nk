@@ -15,7 +15,7 @@ import (
 
 // ServeAgent serves an SSH agent on util.AgentSocket holding the TPM-backed
 // identity key, so the system ssh client can sign with the TPM key through
-// the IdentityAgent directive. It is a no-op when the enrolled identity is a
+// the IdentityAgent directive. It is a no-op when the current identity is a
 // software key, or when another live agent already serves the socket (a
 // concurrent nk proxy serves the same deterministic key).
 //
@@ -67,8 +67,8 @@ func ServeAgent(ctx context.Context) (func() error, error) {
 	}, nil
 }
 
-// listenAgentSocket binds the agent socket. alreadyServing is true when a
-// live agent holds the socket; a stale socket file is removed and rebound.
+// listenAgentSocket binds the agent socket, alreadyServing is true when a
+// live agent holds the socket, a stale socket file is removed and rebound.
 func listenAgentSocket(ctx context.Context) (ln net.Listener, alreadyServing bool, err error) {
 	path := util.AgentSocket()
 	var lc net.ListenConfig

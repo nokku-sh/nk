@@ -31,8 +31,6 @@ func (c *Client) login(ctx context.Context) error {
 		}
 	}
 
-	// The signing identity is registered with the backend during login; no
-	// token is issued, the device authenticates with signed challenges.
 	pub, err := c.signer.Public()
 	if err != nil {
 		return fmt.Errorf("failed to read signing key: %w", err)

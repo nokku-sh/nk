@@ -1,4 +1,4 @@
-// Package ssh provides various ssh utility functions for the application.
+// Package ssh manages the SSH identity, certificates, and proxy plumbing for nk.
 package ssh
 
 import (

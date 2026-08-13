@@ -78,7 +78,7 @@ func TestGenerateSSHConfig(t *testing.T) {
 func TestGenerateSSHConfigTPMIdentity(t *testing.T) {
 	setupSSHDir(t)
 	// A TPM identity is detected by the absence of a private key file while
-	// the public key exists; ssh then uses the agent for the private key.
+	// the public key exists. ssh then uses the agent for the private key.
 	if err := os.WriteFile(util.PubKeyFile(), []byte("ssh-ed25519 AAAA\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}

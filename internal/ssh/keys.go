@@ -30,8 +30,8 @@ const (
 	KeyTypeECDSAP256 KeyType = "ecdsa-p256"
 	KeyTypeECDSAP384 KeyType = "ecdsa-p384"
 	KeyTypeECDSAP521 KeyType = "ecdsa-p521"
-	// KeyTypeTPM keeps the private key inside a TPM 2.0 (ECDSA P-256);
-	// only the public key touches disk.
+	// KeyTypeTPM keeps the private key inside a TPM 2.0 (ECDSA P-256).
+	// Only the public key touches disk.
 	KeyTypeTPM KeyType = "tpm"
 )
 

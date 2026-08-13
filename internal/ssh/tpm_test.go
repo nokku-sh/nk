@@ -10,7 +10,7 @@ import (
 )
 
 // TestSetupTPMKey exercises the TPM identity lifecycle end to end against a
-// real TPM: enrollment, determinism across runs and switching between
+// real TPM: login, determinism across runs and switching between
 // software and TPM identities. It is a manual test, run with:
 //
 //	NK_TPM_E2E=1 XDG_CONFIG_HOME=$(mktemp -d) go test -run TestSetupTPMKey ./internal/ssh/
@@ -35,7 +35,7 @@ func TestSetupTPMKey(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Enroll: only the public key may touch disk.
+	// Login: only the public key may touch disk.
 	if err = SetupKey("tpm"); err != nil {
 		t.Fatalf("SetupKey(tpm): %v", err)
 	}
