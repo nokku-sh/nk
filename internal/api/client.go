@@ -4,10 +4,10 @@ package api
 import (
 	"context"
 	"fmt"
-	"net/http"
-	"strings"
+	"log/slog"
 	"time"
 
+	"connectrpc.com/grpchealth"
 	"github.com/urfave/cli/v3"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/protobuf/types/known/durationpb"
@@ -23,12 +23,13 @@ import (
 type Client struct {
 	State  *state.State
 	signer tpm.Signer
-	ac     nokkuv1connect.AuthServiceClient
-	uc     nokkuv1connect.UserServiceClient
-	sa     nokkuv1connect.ServiceAccountServiceClient
-	wc     nokkuv1connect.WorkspaceServiceClient
-	cc     nokkuv1connect.CertificateServiceClient
-	tc     nokkuv1connect.TargetServiceClient
+
+	ac nokkuv1connect.AuthServiceClient
+	uc nokkuv1connect.UserServiceClient
+	sa nokkuv1connect.ServiceAccountServiceClient
+	wc nokkuv1connect.WorkspaceServiceClient
+	cc nokkuv1connect.CertificateServiceClient
+	tc nokkuv1connect.TargetServiceClient
 }
 
 // New creates a client, probes the backend, and either does a full online
@@ -41,9 +42,8 @@ func New(ctx context.Context, cmd *cli.Command) (*Client, error) {
 		s.Token = cmd.String("token")
 	}
 
-	// The signing identity is what user devices authenticate with; it is
-	// created before login so the login flow can register its public key.
-	// Service accounts skip this and authenticate with the injected token.
+	// Create the signing identity before login so login can register its
+	// public key. Service accounts skip this and use the injected token.
 	signer, err := tpm.New(util.ConfigPath(), cmd.Bool("require-tpm"))
 	if err != nil {
 		return nil, err
@@ -57,7 +57,7 @@ func New(ctx context.Context, cmd *cli.Command) (*Client, error) {
 		return nil, err
 	}
 
-	if isOnline(ctx, c) {
+	if Healthy(ctx, s) {
 		if err = c.verifyOnline(ctx); err != nil {
 			c.State.Clear()
 			return nil, err
@@ -72,23 +72,19 @@ func New(ctx context.Context, cmd *cli.Command) (*Client, error) {
 	return c, nil
 }
 
-// isOnline probes the backend's /healthz endpoint.
-// Bypasses gRPC/auth/retry to fail fast when offline.
-func isOnline(ctx context.Context, c *Client) bool {
-	base := strings.TrimRight(c.State.GetAPI(), "/")
+// Healthy returns true if the backend is reachable.
+func Healthy(ctx context.Context, st *state.State) bool {
+	httpc, err := newHTTPClient(st.Insecure)
+	if err != nil {
+		return false
+	}
+	hc := grpchealth.NewClient(httpc, st.GetAPI())
+
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, base+"/healthz", nil)
-	if err != nil {
-		return false
-	}
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return false
-	}
-	_ = resp.Body.Close()
-	return resp.StatusCode == http.StatusOK
+	res, err := hc.Check(ctx, &grpchealth.CheckRequest{})
+	return err == nil && res.Status == grpchealth.StatusServing
 }
 
 // verifyOnline does a full online refresh: login, sync, pre-sign, config.
@@ -117,7 +113,7 @@ func (c *Client) preSignCerts(ctx context.Context) {
 	for _, ca := range c.State.CAs {
 		g.Go(func() error {
 			if err := c.Sign(ctx, ca); err != nil {
-				fmt.Printf("Pre-sign cert failed for %s: %v\n", ca.Name, err)
+				slog.Warn("pre-sign cert failed", "ca", ca.Name, "err", err)
 			}
 			return nil
 		})
@@ -125,7 +121,7 @@ func (c *Client) preSignCerts(ctx context.Context) {
 	_ = g.Wait()
 }
 
-// SignByTarget handles obtaining a certificate for a target across any workspace.
+// SignByTarget resolves a target by name and signs its certificate.
 func (c *Client) SignByTarget(ctx context.Context, targetName string) error {
 	targets := c.State.GetTargetsByName(targetName)
 	if len(targets) == 0 {
@@ -146,7 +142,7 @@ func (c *Client) SignByTarget(ctx context.Context, targetName string) error {
 	return c.Sign(ctx, *ca)
 }
 
-// Sign handles obtaining a certificate for a target across any workspace.
+// Sign fetches a fresh certificate for ca and writes it to disk.
 func (c *Client) Sign(ctx context.Context, ca state.CA) error {
 	if err := ssh.VerifyCertificateByID(ca.ID); err == nil {
 		return nil // already signed and valid

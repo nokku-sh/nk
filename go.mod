@@ -5,6 +5,7 @@ go 1.26.5
 require (
 	buf.build/gen/go/bufbuild/protovalidate/protocolbuffers/go v1.36.12-20260709200747-435963d16310.1
 	connectrpc.com/connect v1.20.0
+	connectrpc.com/grpchealth v1.5.0
 	github.com/adrg/xdg v0.5.3
 	github.com/cenkalti/backoff/v7 v7.0.0
 	github.com/google/go-tpm v0.9.8
