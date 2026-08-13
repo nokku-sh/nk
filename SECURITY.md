@@ -21,8 +21,8 @@ Use GitHub's private vulnerability reporting instead:
    - Any supporting logs (redact secrets)
 
 Reports are handled confidentially. We will acknowledge receipt, and if you
-would like to be credited in the release advisory or changelog, let us know —
-this is optional but appreciated.
+would like to be credited in the release advisory or changelog, let us know.
+This is optional but appreciated.
 
 ### Response timeline
 
@@ -35,7 +35,7 @@ this is optional but appreciated.
 
 The following are in scope for security reports:
 
-- The `nk` CLI binary — the browser-based login flow, service-account token
+- The `nk` CLI binary. This covers the browser-based login flow, service-account token
   handling, SSH certificate request/signing, the OpenSSH `ProxyCommand`
   implementation, and X.509 certificate issuance.
 - Local state and configuration it writes under `~/.config/nk/`:
@@ -57,10 +57,10 @@ user's SSH key, and requests signed SSH and X.509 certificates from the
 backend.
 
 - Local credentials and cache live under `~/.config/nk/`. The private key
-  (`nokku`) and authentication tokens are credentials — protect this
+  (`nokku`) and authentication tokens are credentials. Protect this
   directory and keep service-account tokens out of source control.
 - When the backend is unavailable, `nk` can use cached target data and an
   existing certificate, but cannot refresh access or issue a new certificate
   while offline.
-- Releases are built via GoReleaser and signed/checksummed — verify downloads
+- Releases are built via GoReleaser and signed/checksummed. Verify downloads
   against the published checksums and signatures.

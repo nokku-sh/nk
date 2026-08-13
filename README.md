@@ -96,7 +96,7 @@ The command generates a key pair, requests a signed certificate, and saves the c
 | `--ttl`      | `NK_TTL`      | Requested SSH certificate lifetime                                      |
 | `--insecure` | `NK_INSECURE` | Disable TLS verification; testing only                                  |
 
-Local state lives under `~/.config/nk/`. Your private key and tokens are credentials — keep service-account tokens out of source control.
+Local state lives under `~/.config/nk/`. Your private key and tokens are credentials. Keep service-account tokens out of source control.
 
 ## Uninstall
 
