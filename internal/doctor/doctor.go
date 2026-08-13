@@ -1,7 +1,5 @@
-// Package doctor implements the `nk doctor` diagnostics command. It gathers
-// a set of grouped, pass/fail checks about the local machine and produces
-// both a human-readable report and a machine-readable JSON report, so it
-// works equally well on a workstation and in CI.
+// Package doctor implements the `nk doctor` diagnostics command,
+// producing pass/fail checks as text or JSON for CI.
 package doctor
 
 import (
@@ -134,10 +132,8 @@ func loadState(opts Options) *state.State {
 	return s
 }
 
-// openSigner loads the machine's signing identity without creating one: a
-// signer is only returned when one already exists, so doctor never writes a
-// new key during a read-only run. It returns errNotLoggedIn when no signer
-// exists yet.
+// openSigner loads the existing signing identity without creating one.
+// Returns errNotLoggedIn when none exists yet.
 func openSigner(opts Options) (tpm.Signer, error) {
 	if tpm.SignerMethod(util.ConfigPath()) == "" {
 		return nil, errNotLoggedIn
@@ -332,8 +328,7 @@ func checkCerts(add func(string, string, Status, string), s *state.State) {
 			name = ca.Name
 		}
 
-		// A local cert whose CA is not configured is stale clutter, not
-		// a certificate problem. Parse errors then mean nothing to the user.
+		// A local cert for a CA that is no longer configured is stale clutter.
 		if ca == nil {
 			add("Certificates", name, StatusWarn,
 				"stale file, no matching CA (run nk doctor --fix to remove)")

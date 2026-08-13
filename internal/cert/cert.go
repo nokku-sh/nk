@@ -60,13 +60,9 @@ func GenerateKey(keyType string) (crypto.PrivateKey, error) {
 	}
 }
 
-// NewCSR builds a PEM-encoded PKCS#10 certificate signing request with
-// the given common name and subject alternative names.
-//
-// SANs accept typed prefixes (dns:, ip:, email:, uri:) or bare values,
-// which are auto-detected: parseable IPs become IP SANs, values
-// containing "://" become URI SANs, values containing "@" become email
-// SANs, and everything else becomes a DNS SAN.
+// NewCSR builds a PEM-encoded PKCS#10 CSR with the given common name
+// and subject alternative names. SANs accept typed prefixes (dns:, ip:,
+// email:, uri:) or bare values, which are auto-detected by content.
 func NewCSR(priv crypto.PrivateKey, cn string, sans []string) (string, error) {
 	tmpl := &x509.CertificateRequest{
 		Subject: pkix.Name{CommonName: cn},

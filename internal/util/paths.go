@@ -103,7 +103,6 @@ func verifySSHConfig(sshPath string) error {
 		}
 	}
 
-	// Check if our directive is already there
 	if strings.Contains(string(content), include) {
 		return nil
 	}

@@ -12,20 +12,17 @@ import (
 	"github.com/nokku-sh/nk/internal/util"
 )
 
-// sshTPMSalt namespaces the TPM key derivation for the SSH identity key. It
-// must stay different from the request-signing salts ("nokku-cli",
-// "nokku-daemon") so each purpose derives a distinct key from the same TPM.
+// sshTPMSalt namespaces the SSH identity key derivation. It must stay
+// distinct from the request-signing salts so each purpose derives its
+// own key from the same TPM.
 var sshTPMSalt = []byte("nokku-ssh")
 
-// setupTPMKey maintains a TPM-resident SSH identity: only the public key is
-// written to PubKeyFile in authorized_keys format, the private key never
-// leaves the TPM. The key is a deterministic primary key, so re-running this
-// on the same TPM reproduces the same key.
+// setupTPMKey maintains a TPM-resident SSH identity: only the public
+// key is written to disk, the private key never leaves the TPM. The
+// key is deterministic, so re-running reproduces the same key.
 //
-// Without a TPM the behavior depends on the current state. If a TPM identity
-// is already active (public key without a private key file), silently
-// downgrading would break authentication, so an error is returned. Otherwise
-// (e.g. CI/CD) it falls back to a software key.
+// Without a TPM it falls back to a software key, or errors when a TPM
+// identity is already active (silently downgrading would break auth).
 func setupTPMKey() error {
 	key, err := tpm.OpenKey(sshTPMSalt)
 	if err != nil {
@@ -65,15 +62,14 @@ func setupTPMKey() error {
 		if err = util.WriteFile(util.PubKeyFile(), pubData, 0o600); err != nil {
 			return err
 		}
-		// The identity changed (first login, or the TPM was cleared or
-		// replaced): certificates were issued for the previous key and must
+		// The identity changed, so certs issued for the old key must
 		// be re-signed for the new one.
 		if err = removeCerts(); err != nil {
 			return err
 		}
 	}
 
-	// A software key replaced by the TPM identity must not linger on disk.
+	// Don't leave a stale software key behind.
 	if util.FileExists(util.KeyFile()) {
 		return os.Remove(util.KeyFile())
 	}

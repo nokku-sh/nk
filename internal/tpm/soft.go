@@ -19,11 +19,9 @@ import (
 	"github.com/nokku-sh/nk/internal/id"
 )
 
-// Software keys are wrapped at rest with a key derived from the machine's
-// identity. Copying the state directory to another machine yields nothing
-// usable: the wrap key only exists on the machine that created it. This
-// protects against stolen or cloned state, not against root on the machine
-// itself.
+// Software keys are wrapped at rest with a key derived from the
+// machine's identity, so a stolen state dir is useless elsewhere.
+// This protects against theft, not against root on the machine.
 const (
 	softScryptN = 1 << 15
 	softScryptR = 8

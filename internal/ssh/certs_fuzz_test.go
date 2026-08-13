@@ -11,9 +11,9 @@ import (
 	"github.com/nokku-sh/nk/internal/util"
 )
 
-// FuzzVerifyCertificate feeds arbitrary bytes into the certificate validity
-// checker that guards local SSH access. It must never panic, and anything it
-// accepts must parse as a certificate with a validity window covering now.
+// FuzzVerifyCertificate feeds arbitrary bytes into the certificate
+// validity checker. It must never panic, and anything it accepts must
+// be a certificate valid at the current time.
 func FuzzVerifyCertificate(f *testing.F) {
 	_, priv, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {

@@ -68,8 +68,7 @@ func (a *auth) setHeader(ctx context.Context, header http.Header, procedure stri
 			header.Set("Authorization", "Nokku "+challenge)
 		}
 	}
-	// The device ID is used to register the device's signing key,
-	// and challenge requests tie it to the signed payload.
+	// The device ID ties the registered signing key to challenge requests.
 	if a.state.GetDeviceID() != "" {
 		header.Set("Nokku-Client-Device-Id", a.state.GetDeviceID())
 	}
@@ -91,9 +90,8 @@ func (a *auth) setHeader(ctx context.Context, header http.Header, procedure stri
 //
 //	<deviceID>:<unixSeconds>:<nonce>:<procedure>:<base64url(signature)>
 //
-// The signature covers everything up to and including the procedure, so a
-// captured challenge cannot be replayed against a different RPC, and the
-// backend rejects challenges older than its freshness window.
+// The signature covers everything before the final colon, so a captured
+// challenge cannot be replayed against a different RPC.
 func (a *auth) challenge(ctx context.Context, deviceID, procedure string) (string, error) {
 	nonce := make([]byte, 12)
 	if _, err := rand.Read(nonce); err != nil {

@@ -12,10 +12,8 @@ import (
 )
 
 // Key is a TPM-resident ECDSA P-256 key implementing [crypto.Signer].
-//
-// The key is a deterministic primary key: reopening it with the same salt
-// yields the same key pair until the TPM's owner seed changes (TPM clear or
-// replacement). The private key never leaves the TPM.
+// Deterministic: the same salt yields the same key until the TPM is
+// cleared. The private key never leaves the TPM.
 type Key struct {
 	tpm    transport.TPM
 	closer transport.TPMCloser // nil when the caller owns the transport

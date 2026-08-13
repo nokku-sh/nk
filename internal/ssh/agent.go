@@ -13,13 +13,9 @@ import (
 	"github.com/nokku-sh/nk/internal/util"
 )
 
-// ServeAgent serves an SSH agent on util.AgentSocket holding the TPM-backed
-// identity key, so the system ssh client can sign with the TPM key through
-// the IdentityAgent directive. It is a no-op when the current identity is a
-// software key, or when another live agent already serves the socket (a
-// concurrent nk proxy serves the same deterministic key).
-//
-// The returned function stops the agent and releases the TPM key.
+// ServeAgent serves the TPM identity key over an SSH agent socket so
+// ssh can sign with it. No-op for software keys or when another live
+// agent already holds the socket. The returned func stops the agent.
 func ServeAgent(ctx context.Context) (func() error, error) {
 	noop := func() error { return nil }
 	if !TPMKeyActive() {

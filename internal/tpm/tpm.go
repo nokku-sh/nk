@@ -18,20 +18,13 @@ import (
 	"github.com/google/go-tpm/tpm2/transport"
 )
 
-// signerSalt namespaces the TPM key derivation per application.
-//
-// The salt is mixed into the primary key derivation, so it keeps the daemon
-// and the CLI on the same machine from deriving the same key pair while both
-// use the same SHA-256 template. The salts in use are "nokku-daemon"
-// (nokkud), "nokku-cli" (request signing, this value) and "nokku-ssh" (the
-// SSH identity key, see internal/ssh). They MUST stay distinct: sharing a
-// salt means sharing a key.
+// signerSalt namespaces the TPM key derivation per application, so the
+// daemon and CLI derive distinct keys from the same TPM. The salts in use
+// are "nokku-daemon", "nokku-cli" (this value) and "nokku-ssh".
 var signerSalt = []byte("nokku-cli")
 
-// eccSignTemplate returns the deterministic ECC P-256 signing template. The
-// key is derived from the owner hierarchy seed, the template and signerSalt,
-// so the same public key is returned on every boot without storing anything:
-// the private key exists only inside the TPM.
+// eccSignTemplate returns the deterministic ECC P-256 signing template.
+// The private key exists only inside the TPM.
 func eccSignTemplate() tpm2.TPMTPublic {
 	return tpm2.TPMTPublic{
 		Type:    tpm2.TPMAlgECC,
@@ -90,10 +83,7 @@ type primaryKey struct {
 	pub  *ecdsa.PublicKey
 }
 
-// createPrimary creates the deterministic ECC P-256 primary key for salt. The
-// key is derived from the owner hierarchy seed, the template and salt, so the
-// same key is returned on every call until the TPM's seed changes (TPM clear
-// or replacement).
+// createPrimary creates the deterministic ECC P-256 primary key for salt.
 func createPrimary(r transport.TPM, salt []byte) (*primaryKey, error) {
 	rsp, err := tpm2.CreatePrimary{
 		PrimaryHandle: tpm2.TPMRHOwner,
@@ -126,9 +116,9 @@ func signECDSA(r transport.TPM, key *primaryKey, digest []byte) ([]byte, error) 
 			Auth:   tpm2.PasswordAuth(nil),
 		},
 		Digest: tpm2.TPM2BDigest{Buffer: digest},
-		// InScheme is left NULL: the key template already pins the ECDSA
-		// scheme. The validation ticket must be explicit: a zero ticket
-		// has Tag=0, which the TPM rejects as an invalid structure tag.
+		// InScheme is left NULL since the template pins ECDSA. The
+		// validation ticket must be explicit, as a zero ticket has
+		// Tag=0, which the TPM rejects.
 		Validation: tpm2.TPMTTKHashCheck{
 			Tag:       tpm2.TPMSTHashCheck,
 			Hierarchy: tpm2.TPMRHNull,

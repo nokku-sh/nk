@@ -50,8 +50,7 @@ func TestKeyDeterministicAndSalted(t *testing.T) {
 	}
 	defer func() { _ = sim.Close() }()
 
-	// Recreating the key with the same salt must reproduce it, without
-	// anything persisted: it is derived from the TPM seed, template and salt.
+	// The same salt must reproduce the key, nothing persisted.
 	pubFor := func(salt []byte) *ecdsa.PublicKey {
 		t.Helper()
 		k, kerr := NewKey(sim, salt)

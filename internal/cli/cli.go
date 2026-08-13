@@ -1,5 +1,4 @@
-// Package cli assembles the nk command tree. main only wires up signals and
-// delegates to Run, the command actions live here.
+// Package cli assembles the nk command tree.
 package cli
 
 import (

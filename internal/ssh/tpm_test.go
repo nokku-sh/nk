@@ -9,14 +9,11 @@ import (
 	"github.com/nokku-sh/nk/internal/util"
 )
 
-// TestSetupTPMKey exercises the TPM identity lifecycle end to end against a
-// real TPM: login, determinism across runs and switching between
-// software and TPM identities. It is a manual test, run with:
+// TestSetupTPMKey exercises the TPM identity lifecycle against a real
+// TPM: login, determinism across runs, and switching between software
+// and TPM identities. Manual test, run with:
 //
 //	NK_TPM_E2E=1 XDG_CONFIG_HOME=$(mktemp -d) go test -run TestSetupTPMKey ./internal/ssh/
-//
-// XDG_CONFIG_HOME must be set before the test binary starts because the xdg
-// package resolves paths at init time.
 func TestSetupTPMKey(t *testing.T) {
 	if os.Getenv("NK_TPM_E2E") == "" {
 		t.Skip("manual test: NK_TPM_E2E=1 XDG_CONFIG_HOME=$(mktemp -d)")

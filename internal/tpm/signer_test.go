@@ -77,11 +77,8 @@ func TestTPMSigner(t *testing.T) {
 	}
 }
 
-// TestTPMSignerAppIsolation verifies that the CLI key is namespaced away
-// from the daemon's: the daemon and the CLI share a TPM on a machine, and a
-// shared template would give them the same identity. The salt is part of the
-// derivation, so the CLI salt ("nokku-cli") must never match the daemon's
-// ("nokku-daemon").
+// TestTPMSignerAppIsolation verifies the CLI salt differs from the
+// daemon's, so both derive distinct keys from the same TPM.
 func TestTPMSignerAppIsolation(t *testing.T) {
 	if string(signerSalt) == "nokku-daemon" {
 		t.Fatal("CLI signer must not share the daemon's salt; see the signerSalt comment")

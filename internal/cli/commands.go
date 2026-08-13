@@ -62,9 +62,8 @@ func proxyCommand() *cli.Command {
 				return err
 			}
 
-			// With a TPM identity the private key never touches disk:
-			// serve it over the agent socket before ssh starts the
-			// authentication phase through the proxy pipes.
+			// Serve the TPM key over the agent socket before ssh
+			// starts the authentication phase.
 			stopAgent, err := ssh.ServeAgent(ctx)
 			if err != nil {
 				return err

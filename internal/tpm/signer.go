@@ -1,12 +1,5 @@
-// Package tpm provides TPM-backed signing identities.
-//
-// A Signer produces ECDSA P-256 signatures over request challenges. The
-// backend stores only the public key, so nothing secret needs to live on the
-// machine: TPM-backed keys never leave the TPM, and software fallback keys
-// are encrypted at rest with a key derived from the machine's identity.
-//
-// Key is a lower-level TPM-resident key implementing [crypto.Signer], used
-// for the SSH identity.
+// Package tpm provides machine-bound signing identities backed by a
+// TPM 2.0, with a software fallback for machines without one.
 package tpm
 
 import (
@@ -55,11 +48,9 @@ type state struct {
 	Data   []byte `json:"data,omitempty"`
 }
 
-// New loads or creates the machine's signing identity in dir.
-//
-// A TPM 2.0 is used when available. Machines without a TPM fall back to a
-// software key that is wrapped to the machine identity unless requireTPM is
-// set, in which case a missing TPM is an error.
+// New loads or creates the machine's signing identity in dir, using a
+// TPM when available and a software key otherwise. requireTPM makes a
+// missing TPM an error.
 func New(dir string, requireTPM bool) (Signer, error) {
 	st, err := loadState(dir)
 	if err != nil && !errors.Is(err, errNoState) {

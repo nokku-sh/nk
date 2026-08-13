@@ -35,7 +35,6 @@ func GenerateSSHConfig(st *state.State) error {
 		}
 		fmt.Fprintf(&buf, "    UserKnownHostsFile %s\n", util.KnownHostsPath())
 		fmt.Fprintf(&buf, "    HostKeyAlias %s\n", t.ID)
-		// Various sane defaults
 		buf.WriteString("    IdentitiesOnly yes\n")
 		buf.WriteString("    PubkeyAuthentication yes\n")
 		buf.WriteString("    PasswordAuthentication no\n")
