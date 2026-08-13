@@ -38,6 +38,8 @@ func New(ctx context.Context, cmd *cli.Command) (*Client, error) {
 	s := state.New()
 	s.APIURL = cmd.String("api")
 	s.KeyType = cmd.String("key-type")
+	s.TTL = cmd.Duration("ttl")
+	s.Insecure = cmd.Bool("insecure")
 	if cmd.IsSet("token") {
 		s.Token = cmd.String("token")
 	}
@@ -78,7 +80,7 @@ func Healthy(ctx context.Context, st *state.State) bool {
 	if err != nil {
 		return false
 	}
-	hc := grpchealth.NewClient(httpc, st.GetAPI())
+	hc := grpchealth.NewClient(httpc, st.APIURL)
 
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
@@ -128,11 +130,8 @@ func (c *Client) SignByTarget(ctx context.Context, targetName string) error {
 		return fmt.Errorf("target %q not found", targetName)
 	}
 	if len(targets) > 1 {
-		fmt.Printf(
-			"Target name %q is ambiguous, using first match (%d matches)",
-			targetName,
-			len(targets),
-		)
+		slog.Warn("target name is ambiguous, using first match",
+			"target", targetName, "matches", len(targets))
 	}
 	ca := c.State.GetCAByID(targets[0].CAID)
 	if ca == nil {
@@ -160,12 +159,9 @@ func (c *Client) Sign(ctx context.Context, ca state.CA) error {
 		CaId:        &ca.ID,
 	}
 
-	if c.State.TTL != 0 {
-		cached := c.State.GetCAByID(ca.ID)
-		if cached != nil && c.State.TTL >= cached.UserDefaultTTL &&
-			c.State.TTL <= cached.UserMaxTTL {
-			req.Ttl = durationpb.New(c.State.TTL)
-		}
+	if c.State.TTL != 0 && c.State.TTL >= ca.UserDefaultTTL &&
+		c.State.TTL <= ca.UserMaxTTL {
+		req.Ttl = durationpb.New(c.State.TTL)
 	}
 
 	res, err := c.cc.SignSSHCertificate(ctx, req)

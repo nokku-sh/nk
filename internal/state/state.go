@@ -109,10 +109,6 @@ func (s *State) IsLoggedIn() bool {
 	return s.Token != "" || s.DeviceID != ""
 }
 
-func (s *State) GetAPI() string {
-	return s.APIURL
-}
-
 func (s *State) HasCachedData() bool {
 	return len(s.Targets) > 0 && (s.User != nil || s.ServiceAccount != nil)
 }

@@ -46,11 +46,11 @@ func (c *Client) SetupClients() error {
 	}
 
 	opts := connect.WithInterceptors(withRetry(), WithAuth(c.State, c.signer))
-	c.ac = nokkuv1connect.NewAuthServiceClient(httpc, c.State.GetAPI(), opts)
-	c.uc = nokkuv1connect.NewUserServiceClient(httpc, c.State.GetAPI(), opts)
-	c.sa = nokkuv1connect.NewServiceAccountServiceClient(httpc, c.State.GetAPI(), opts)
-	c.wc = nokkuv1connect.NewWorkspaceServiceClient(httpc, c.State.GetAPI(), opts)
-	c.cc = nokkuv1connect.NewCertificateServiceClient(httpc, c.State.GetAPI(), opts)
-	c.tc = nokkuv1connect.NewTargetServiceClient(httpc, c.State.GetAPI(), opts)
+	c.ac = nokkuv1connect.NewAuthServiceClient(httpc, c.State.APIURL, opts)
+	c.uc = nokkuv1connect.NewUserServiceClient(httpc, c.State.APIURL, opts)
+	c.sa = nokkuv1connect.NewServiceAccountServiceClient(httpc, c.State.APIURL, opts)
+	c.wc = nokkuv1connect.NewWorkspaceServiceClient(httpc, c.State.APIURL, opts)
+	c.cc = nokkuv1connect.NewCertificateServiceClient(httpc, c.State.APIURL, opts)
+	c.tc = nokkuv1connect.NewTargetServiceClient(httpc, c.State.APIURL, opts)
 	return nil
 }
