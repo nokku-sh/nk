@@ -11,22 +11,13 @@ import (
 	"github.com/nokku-sh/nk/internal/state"
 )
 
-func (c *Client) whoami(ctx context.Context) error {
-	res, err := c.uc.Whoami(ctx, &nokkuv1.WhoamiRequest{})
-	if err != nil {
-		return err
-	}
-	c.State.User = state.MapUser(res.GetUser())
-	return nil
-}
-
 // login prompts the user to log in via browser and syncs state.
 func (c *Client) login(ctx context.Context) error {
 	if c.State.IsServiceAccount() {
 		return nil // Skip login
 	}
 	if c.State.User != nil {
-		if err := c.whoami(ctx); err == nil {
+		if err := c.syncUser(ctx); err == nil {
 			return nil // Skip login
 		}
 	}
