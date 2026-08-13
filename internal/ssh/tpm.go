@@ -3,6 +3,7 @@ package ssh
 import (
 	"bytes"
 	"fmt"
+	"log/slog"
 	"os"
 
 	cryptossh "golang.org/x/crypto/ssh"
@@ -19,26 +20,27 @@ var sshTPMSalt = []byte("nokku-ssh")
 // setupTPMKey maintains a TPM-resident SSH identity: only the public key is
 // written to PubKeyFile in authorized_keys format, the private key never
 // leaves the TPM. The key is a deterministic primary key, so re-running this
-// on the same TPM reproduces the enrolled key.
+// on the same TPM reproduces the same key.
 //
-// Without a TPM the behavior depends on the current state: if a TPM identity
-// is already enrolled (public key without a private key file), silently
-// downgrading would break authentication, so an error is returned; otherwise
-// (e.g. CI/CD) it falls back to a default software key.
+// Without a TPM the behavior depends on the current state. If a TPM identity
+// is already active (public key without a private key file), silently
+// downgrading would break authentication, so an error is returned. Otherwise
+// (e.g. CI/CD) it falls back to a software key.
 func setupTPMKey() error {
 	key, err := tpm.OpenKey(sshTPMSalt)
 	if err != nil {
 		if TPMKeyActive() {
 			return fmt.Errorf(
-				"TPM identity is enrolled but the TPM is unavailable: %w; remove %s to start over",
+				"TPM identity exists but the TPM is unavailable: %w; remove %s to start over",
 				err,
 				util.PubKeyFile(),
 			)
 		}
-		fmt.Fprintf(
-			os.Stderr,
-			"warning: TPM unavailable (%v), using a %s key instead\n",
+		slog.Warn(
+			"TPM unavailable, falling back to a software key",
+			"err",
 			err,
+			"key_type",
 			DefaultKeyType(),
 		)
 		return setupFileKey(DefaultKeyType())
@@ -63,7 +65,7 @@ func setupTPMKey() error {
 		if err = util.WriteFile(util.PubKeyFile(), pubData, 0o600); err != nil {
 			return err
 		}
-		// The identity changed (first enrollment, or the TPM was cleared or
+		// The identity changed (first login, or the TPM was cleared or
 		// replaced): certificates were issued for the previous key and must
 		// be re-signed for the new one.
 		if err = removeCerts(); err != nil {
@@ -78,13 +80,13 @@ func setupTPMKey() error {
 	return nil
 }
 
-// TPMKeyActive reports whether the enrolled SSH identity is TPM-backed: a
+// TPMKeyActive reports whether the active SSH identity is TPM-backed: a
 // public key exists on disk, but no private key file does.
 func TPMKeyActive() bool {
 	return util.FileExists(util.PubKeyFile()) && !util.FileExists(util.KeyFile())
 }
 
-// IdentityStatus describes the enrolled SSH identity for diagnostics.
+// IdentityStatus describes the active SSH identity for diagnostics.
 func IdentityStatus() string {
 	if TPMKeyActive() {
 		return "TPM 2.0 (ecdsa-p256), private key never touches disk"
@@ -92,9 +94,9 @@ func IdentityStatus() string {
 	if util.FileExists(util.KeyFile()) {
 		kt, err := detectKeyType(util.KeyFile())
 		if err == nil {
-			return fmt.Sprintf("software key (%s), stored in %s", kt, util.KeyFile())
+			return fmt.Sprintf("software key (%s)", kt)
 		}
-		return fmt.Sprintf("software key (unknown type), stored in %s", util.KeyFile())
+		return "software key (unknown type)"
 	}
-	return "none enrolled yet"
+	return "not logged in yet"
 }

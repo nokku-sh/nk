@@ -60,18 +60,6 @@ func TestSSHPath(t *testing.T) {
 	}
 }
 
-func TestUserKnownHostsPath(t *testing.T) {
-	got := UserKnownHostsPath()
-	sshPath, err := SSHPath()
-	if err != nil {
-		t.Fatal(err)
-	}
-	want := filepath.Join(sshPath, "known_hosts")
-	if got != want {
-		t.Errorf("UserKnownHostsPath() = %q, want %q", got, want)
-	}
-}
-
 func TestCertificateFilenames(t *testing.T) {
 	if got := filepath.Base(Certificate("ca-test")); got != "ca-test-cert.pub" {
 		t.Errorf("Certificate() base = %q, want %q", got, "ca-test-cert.pub")

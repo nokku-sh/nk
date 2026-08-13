@@ -6,7 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"fmt"
-
+	"log/slog"
 	"net/http"
 	"os"
 	"strconv"
@@ -63,14 +63,13 @@ func (a *auth) setHeader(ctx context.Context, header http.Header, procedure stri
 	} else if a.signer != nil && a.state.GetDeviceID() != "" {
 		challenge, err := a.challenge(ctx, a.state.GetDeviceID(), procedure)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "warning: failed to sign request: %v\n", err)
+			slog.Warn("failed to sign request", "err", err)
 		} else {
 			header.Set("Authorization", "Nokku "+challenge)
 		}
 	}
-	// The device ID is always sent: the login stream uses it to register
-	// the device's signing key, and challenge requests tie it to the
-	// signed payload.
+	// The device ID is used to register the device's signing key,
+	// and challenge requests tie it to the signed payload.
 	if a.state.GetDeviceID() != "" {
 		header.Set("Nokku-Client-Device-Id", a.state.GetDeviceID())
 	}

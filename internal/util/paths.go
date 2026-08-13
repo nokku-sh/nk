@@ -3,6 +3,7 @@ package util
 import (
 	"bytes"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -52,14 +53,6 @@ func SSHPath() (string, error) {
 	return filepath.Join(home, ".ssh"), nil
 }
 
-func UserKnownHostsPath() string {
-	path, err := SSHPath()
-	if err != nil {
-		return filepath.Join(".ssh", "known_hosts")
-	}
-	return filepath.Join(path, "known_hosts")
-}
-
 // File Paths -----------------------------------------------------------------
 
 func ConfigFile() string {
@@ -78,8 +71,6 @@ func PubKeyFile() string {
 	return filepath.Join(ConfigPath(), KeyName+".pub")
 }
 
-// AgentSocket is the unix socket of the embedded SSH agent that serves the
-// TPM-backed identity key.
 func AgentSocket() string {
 	return filepath.Join(ConfigPath(), "agent.sock")
 }
@@ -126,6 +117,6 @@ func verifySSHConfig(sshPath string) error {
 // CleanupPaths removes safe application data, not ssh dir!
 func CleanupPaths() {
 	if err := os.RemoveAll(ConfigPath()); err != nil {
-		fmt.Printf("Failed to remove config dir %s: %v", ConfigPath(), err)
+		slog.Warn("failed to remove config dir", "path", ConfigPath(), "err", err)
 	}
 }

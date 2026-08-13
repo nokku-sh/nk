@@ -3,6 +3,7 @@ package state
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
 	"time"
 
@@ -71,16 +72,16 @@ func New() *State {
 	s := &State{}
 
 	if err := s.Config.Load(); err != nil {
-		fmt.Printf("Failed to load config: %v\n", err)
+		slog.Warn("failed to load config", "err", err)
 	}
 	if err := s.Cache.Load(); err != nil {
-		fmt.Printf("Failed to load cache: %v\n", err)
+		slog.Warn("failed to load cache", "err", err)
 	}
 
 	if s.DeviceID == "" {
 		s.DeviceID = uuid.New().String()
 		if err := s.Config.Save(); err != nil {
-			fmt.Printf("Failed to persist device id: %v\n", err)
+			slog.Warn("failed to persist device id", "err", err)
 		}
 	}
 
