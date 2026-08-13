@@ -53,6 +53,7 @@ func (c *Client) syncServiceAccount(ctx context.Context) error {
 
 	res, err := c.sa.GetServiceAccount(ctx, &nokkuv1.GetServiceAccountRequest{
 		WorkspaceId: &c.State.ServiceAccount.WorkspaceID,
+		Id:          new(c.State.ServiceAccountID()),
 	})
 	if err != nil {
 		return err
