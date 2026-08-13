@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-# nk — Nokku CLI installer
+# nk: Nokku CLI installer
 #
 # Preferred: sets up the Cloudsmith repository for your distro's package
 # manager and installs the nk package (deb/rpm/apk).
