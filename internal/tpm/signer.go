@@ -4,6 +4,7 @@ package tpm
 
 import (
 	"context"
+	"crypto"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -24,7 +25,8 @@ const (
 	stateFile = "signer.json"
 )
 
-// Signer signs request challenges with a machine-bound key.
+// Signer signs with a machine-bound key, used to bind DPoP proofs and the
+// device session to the CLI's identity.
 type Signer interface {
 	// Method returns the signing method: MethodTPM or MethodSoft.
 	Method() string
@@ -34,6 +36,10 @@ type Signer interface {
 	// Sign signs data with SHA-256 and returns a DER-encoded ECDSA
 	// signature.
 	Sign(ctx context.Context, data []byte) ([]byte, error)
+	// CryptoSigner exposes the underlying key as a [crypto.Signer] for
+	// DPoP proofs (go-jose signs the SHA-256 digest and calls Sign with the
+	// digest directly).
+	CryptoSigner() crypto.Signer
 	// Close releases the underlying key material.
 	Close() error
 }

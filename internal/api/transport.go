@@ -39,16 +39,24 @@ func newHTTPClient(insecure bool) (*http.Client, error) {
 	return &http.Client{Transport: t}, nil
 }
 
+// SetupClients constructs the connectrpc clients. Authentication is layered:
+// the DPoP interceptor signs interactive device sessions, the identity
+// interceptor adds the service-account API key and client headers.
 func (c *Client) SetupClients() error {
 	httpc, err := newHTTPClient(c.State.Insecure)
 	if err != nil {
 		return err
 	}
+	c.httpc = httpc
 
-	opts := connect.WithInterceptors(withRetry(), WithAuth(c.State, c.signer))
+	interceptors := []connect.Interceptor{withRetry(), withIdentityHeaders(c.State)}
+	if c.proofer != nil {
+		interceptors = append(interceptors, WithDPoP(c.State, c.proofer, c.State.APIURL))
+	}
+	opts := connect.WithInterceptors(interceptors...)
+
 	c.ac = nokkuv1connect.NewAuthServiceClient(httpc, c.State.APIURL, opts)
 	c.uc = nokkuv1connect.NewUserServiceClient(httpc, c.State.APIURL, opts)
-	c.sa = nokkuv1connect.NewServiceAccountServiceClient(httpc, c.State.APIURL, opts)
 	c.wc = nokkuv1connect.NewWorkspaceServiceClient(httpc, c.State.APIURL, opts)
 	c.cc = nokkuv1connect.NewCertificateServiceClient(httpc, c.State.APIURL, opts)
 	c.tc = nokkuv1connect.NewTargetServiceClient(httpc, c.State.APIURL, opts)

@@ -106,7 +106,7 @@ func (s *State) Clear() {
 }
 
 func (s *State) IsLoggedIn() bool {
-	return s.Token != "" || s.DeviceID != ""
+	return s.Token != "" || s.SessionToken != ""
 }
 
 func (s *State) HasCachedData() bool {

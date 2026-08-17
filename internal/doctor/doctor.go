@@ -88,7 +88,6 @@ func Run(ctx context.Context, opts Options) Report {
 	if signer != nil {
 		defer func() { _ = signer.Close() }()
 	}
-
 	checkIdentity(add, s, signerErr)
 	checkConnectivity(ctx, add, s)
 	checkSSH(add)
@@ -133,8 +132,13 @@ func loadState(opts Options) *state.State {
 }
 
 // openSigner loads the existing signing identity without creating one.
-// Returns errNotLoggedIn when none exists yet.
+// Returns errNotLoggedIn when none exists yet. Headless (service-account)
+// mode has no signing identity; it returns errNotLoggedIn too, which
+// checkIdentity reports as "not logged in" for headless runs.
 func openSigner(opts Options) (tpm.Signer, error) {
+	if opts.Token != "" {
+		return nil, errNotLoggedIn
+	}
 	if tpm.SignerMethod(util.ConfigPath()) == "" {
 		return nil, errNotLoggedIn
 	}

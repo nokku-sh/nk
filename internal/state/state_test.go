@@ -81,8 +81,8 @@ func TestStateIsLoggedIn(t *testing.T) {
 		s    *State
 		want bool
 	}{
-		{name: "service account token", s: &State{Token: "nks_abc"}, want: true},
-		{name: "device id only", s: &State{Config: Config{DeviceID: "dev-1"}}, want: true},
+		{name: "service account token", s: &State{Token: "key.secret"}, want: true},
+		{name: "session token", s: &State{Config: Config{SessionToken: "sess-1"}}, want: true},
 		{name: "nothing", s: &State{}, want: false},
 	}
 	for _, tt := range tests {

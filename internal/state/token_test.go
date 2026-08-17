@@ -10,12 +10,12 @@ func TestIsServiceAccount(t *testing.T) {
 		token string
 		want  bool
 	}{
-		{"service account token", "nks_abc", true},
-		{"user token", "nkc_abc", false},
+		{"service account API key", "key-123.secret-value", true},
+		{"bare token without dot", "nks_abc", false},
 		{"empty token", "", false},
-		{"unknown token", "abc", false},
-		{"prefix only no underscore", "nks", false},
-		{"mixed case not matched", "NKS_abc", false},
+		{"dot at start", ".secret", true},
+		{"dot at end", "key.", true},
+		{"no dot", "abc", false},
 	}
 
 	for _, tt := range tests {
@@ -23,6 +23,31 @@ func TestIsServiceAccount(t *testing.T) {
 			s := &State{Token: tt.token}
 			if got := s.IsServiceAccount(); got != tt.want {
 				t.Errorf("IsServiceAccount() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestServiceAccountID(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		s    *State
+		want string
+	}{
+		{
+			name: "service account set",
+			s:    &State{Cache: Cache{ServiceAccount: &ServiceAccount{ID: "sa-1"}}},
+			want: "sa-1",
+		},
+		{name: "no service account", s: &State{}, want: ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.s.ServiceAccountID(); got != tt.want {
+				t.Errorf("ServiceAccountID() = %q, want %q", got, tt.want)
 			}
 		})
 	}

@@ -2,14 +2,8 @@ package api
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/base64"
-	"encoding/hex"
-	"fmt"
-	"log/slog"
 	"net/http"
 	"os"
-	"strconv"
 	"time"
 
 	"connectrpc.com/connect"
@@ -17,60 +11,47 @@ import (
 	"github.com/mizuchilabs/kata/buildinfo"
 
 	"github.com/nokku-sh/nk/internal/state"
-	"github.com/nokku-sh/nk/internal/tpm"
 )
 
-type auth struct {
-	state    *state.State
-	signer   tpm.Signer
+// withIdentityHeaders adds the client identity headers (version, hostname) to
+// every request. Authentication headers (bearer token + DPoP proof, or the
+// service-account API key) are added by the auth interceptors.
+func withIdentityHeaders(st *state.State) connect.Interceptor {
+	hostname, _ := os.Hostname()
+	return &identityInterceptor{st: st, hostname: hostname}
+}
+
+type identityInterceptor struct {
+	st       *state.State
 	hostname string
 }
 
-func WithAuth(state *state.State, signer tpm.Signer) connect.Interceptor {
-	a := &auth{state: state, signer: signer}
-	if name, err := os.Hostname(); err == nil {
-		a.hostname = name
-	}
-	return a
-}
-
-func (a *auth) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
+func (a *identityInterceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
 	return func(ctx context.Context, req connect.AnyRequest) (connect.AnyResponse, error) {
-		a.setHeader(ctx, req.Header(), req.Spec().Procedure)
+		a.setHeader(req.Header())
 		return next(ctx, req)
 	}
 }
 
-func (a *auth) WrapStreamingClient(
+func (a *identityInterceptor) WrapStreamingClient(
 	next connect.StreamingClientFunc,
 ) connect.StreamingClientFunc {
 	return func(ctx context.Context, spec connect.Spec) connect.StreamingClientConn {
 		conn := next(ctx, spec)
-		a.setHeader(ctx, conn.RequestHeader(), spec.Procedure)
+		a.setHeader(conn.RequestHeader())
 		return conn
 	}
 }
 
-func (a *auth) WrapStreamingHandler(
+func (a *identityInterceptor) WrapStreamingHandler(
 	next connect.StreamingHandlerFunc,
 ) connect.StreamingHandlerFunc {
 	return next
 }
 
-func (a *auth) setHeader(ctx context.Context, header http.Header, procedure string) {
-	if a.state.IsServiceAccount() {
-		header.Set("Authorization", "Bearer "+a.state.Token)
-	} else if a.signer != nil && a.state.GetDeviceID() != "" {
-		challenge, err := a.challenge(ctx, a.state.GetDeviceID(), procedure)
-		if err != nil {
-			slog.Warn("failed to sign request", "err", err)
-		} else {
-			header.Set("Authorization", "Nokku "+challenge)
-		}
-	}
-	// The device ID ties the registered signing key to challenge requests.
-	if a.state.GetDeviceID() != "" {
-		header.Set("Nokku-Client-Device-Id", a.state.GetDeviceID())
+func (a *identityInterceptor) setHeader(header http.Header) {
+	if a.st.IsServiceAccount() {
+		header.Set("Authorization", "Bearer "+a.st.Token)
 	}
 	if buildinfo.Version != "" {
 		header.Set("Nokku-Client-Version", buildinfo.Version)
@@ -84,26 +65,6 @@ func (a *auth) setHeader(ctx context.Context, header http.Header, procedure stri
 	if a.hostname != "" {
 		header.Set("Nokku-Client-Hostname", a.hostname)
 	}
-}
-
-// challenge builds a signed request challenge of the form
-//
-//	<deviceID>:<unixSeconds>:<nonce>:<procedure>:<base64url(signature)>
-//
-// The signature covers everything before the final colon, so a captured
-// challenge cannot be replayed against a different RPC.
-func (a *auth) challenge(ctx context.Context, deviceID, procedure string) (string, error) {
-	nonce := make([]byte, 12)
-	if _, err := rand.Read(nonce); err != nil {
-		return "", err
-	}
-	ts := strconv.FormatInt(time.Now().Unix(), 10)
-	payload := fmt.Sprintf("%s:%s:%s:%s", deviceID, ts, hex.EncodeToString(nonce), procedure)
-	sig, err := a.signer.Sign(ctx, []byte(payload))
-	if err != nil {
-		return "", err
-	}
-	return payload + ":" + base64.RawURLEncoding.EncodeToString(sig), nil
 }
 
 func withRetry() connect.UnaryInterceptorFunc {

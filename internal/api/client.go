@@ -5,9 +5,11 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"time"
 
 	"connectrpc.com/grpchealth"
+	"github.com/mizuchilabs/kagi/dpop"
 	"github.com/urfave/cli/v3"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/protobuf/types/known/durationpb"
@@ -21,12 +23,13 @@ import (
 )
 
 type Client struct {
-	State  *state.State
-	signer tpm.Signer
+	State   *state.State
+	signer  tpm.Signer
+	proofer *dpop.Proofer
+	httpc   *http.Client
 
 	ac nokkuv1connect.AuthServiceClient
 	uc nokkuv1connect.UserServiceClient
-	sa nokkuv1connect.ServiceAccountServiceClient
 	wc nokkuv1connect.WorkspaceServiceClient
 	cc nokkuv1connect.CertificateServiceClient
 	tc nokkuv1connect.TargetServiceClient
@@ -44,27 +47,36 @@ func New(ctx context.Context, cmd *cli.Command) (*Client, error) {
 		s.Token = cmd.String("token")
 	}
 
-	// Create the signing identity before login so login can register its
-	// public key. Service accounts skip this and use the injected token.
-	signer, err := tpm.New(util.ConfigPath(), cmd.Bool("require-tpm"))
-	if err != nil {
-		return nil, err
+	c := &Client{State: s}
+
+	// Headless (service-account) mode has no signing identity: the API key
+	// is a plain bearer token with no DPoP binding. Interactive mode creates
+	// the machine key that binds the device session.
+	if !s.IsServiceAccount() {
+		signer, signerErr := tpm.New(util.ConfigPath(), cmd.Bool("require-tpm"))
+		if signerErr != nil {
+			return nil, signerErr
+		}
+		c.signer = signer
+		c.proofer, signerErr = dpop.NewProofer(signer.CryptoSigner(), dpop.ProoferOptions{})
+		if signerErr != nil {
+			return nil, signerErr
+		}
 	}
 
-	c := &Client{State: s, signer: signer}
-	if err = ssh.SetupKey(s.KeyType); err != nil {
+	if err := ssh.SetupKey(s.KeyType); err != nil {
 		return nil, err
 	}
-	if err = c.SetupClients(); err != nil {
+	if err := c.SetupClients(); err != nil {
 		return nil, err
 	}
 
 	if Healthy(ctx, s) {
-		if err = c.verifyOnline(ctx); err != nil {
+		if err := c.verifyOnline(ctx); err != nil {
 			c.State.Clear()
 			return nil, err
 		}
-		if err = c.State.Save(); err != nil {
+		if err := c.State.Save(); err != nil {
 			return nil, err
 		}
 	} else if !s.HasCachedData() {

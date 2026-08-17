@@ -18,6 +18,14 @@ type Config struct {
 	DeviceID string        `json:"device_id,omitempty"`
 	TTL      time.Duration `json:"ttl,omitempty"`
 	Insecure bool          `json:"insecure,omitempty"`
+	// SessionToken is the DPoP-bound session token obtained from the device
+	// flow. It is persisted (0600) so the CLI works across invocations;
+	// stealing it is useless without the bound signing key.
+	SessionToken string `json:"session_token,omitempty"`
+	// SessionExpiresAt is when the persisted session token stops being
+	// valid. Zero means unknown (re-login via device flow).
+	// #nosec G117 -- session_token is a credential persisted to a 0600 file.
+	SessionExpiresAt time.Time `json:"session_expires_at,omitempty"` //nolint:modernize // omitempty is no-op for time.Time but documents intent
 }
 
 func (c *Config) Load() error {
@@ -35,6 +43,8 @@ func (c *Config) Load() error {
 }
 
 func (c *Config) Save() error {
+	// #nosec G117 -- the session token is a bearer credential persisted to a
+	// 0600 file, never logged; it is useless without the bound signing key.
 	data, err := json.MarshalIndent(c, "", "  ")
 	if err != nil {
 		return fmt.Errorf("serializing config: %w", err)

@@ -17,9 +17,6 @@ func (c *Client) syncAll(ctx context.Context) error {
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
 
-	if err := c.syncServiceAccount(ctx); err != nil {
-		return err
-	}
 	if err := c.syncUser(ctx); err != nil {
 		return err
 	}
@@ -32,34 +29,23 @@ func (c *Client) syncAll(ctx context.Context) error {
 	return nil
 }
 
+// syncUser resolves the authenticated principal via Whoami. For interactive
+// sessions the principal is a user; for service accounts it is the
+// service-account identity (including its pinned workspace).
 func (c *Client) syncUser(ctx context.Context) error {
-	if c.State.IsServiceAccount() {
-		return nil
-	}
-
 	res, err := c.uc.Whoami(ctx, &nokkuv1.WhoamiRequest{})
 	if err != nil {
 		return err
 	}
 
-	c.State.User = state.MapUser(res.GetUser())
-	return nil
-}
-
-func (c *Client) syncServiceAccount(ctx context.Context) error {
-	if !c.State.IsServiceAccount() {
-		return nil
+	switch {
+	case res.GetUser() != nil:
+		c.State.User = state.MapUser(res.GetUser())
+		c.State.ServiceAccount = nil
+	case res.GetServiceAccount() != nil:
+		c.State.ServiceAccount = state.MapServiceAccount(res.GetServiceAccount())
+		c.State.User = nil
 	}
-
-	res, err := c.sa.GetServiceAccount(ctx, &nokkuv1.GetServiceAccountRequest{
-		WorkspaceId: &c.State.ServiceAccount.WorkspaceID,
-		Id:          new(c.State.ServiceAccountID()),
-	})
-	if err != nil {
-		return err
-	}
-
-	c.State.ServiceAccount = state.MapServiceAccount(res.GetServiceAccount())
 	return nil
 }
 
