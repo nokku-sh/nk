@@ -11,7 +11,6 @@ import (
 	_ "google.golang.org/genproto/googleapis/api/annotations"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
-	durationpb "google.golang.org/protobuf/types/known/durationpb"
 	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
 	reflect "reflect"
 	sync "sync"
@@ -26,16 +25,20 @@ const (
 )
 
 type Workspace struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Id            *string                `protobuf:"bytes,1,opt,name=id" json:"id,omitempty"`
-	Name          *string                `protobuf:"bytes,2,opt,name=name" json:"name,omitempty"`
-	Description   *string                `protobuf:"bytes,3,opt,name=description" json:"description,omitempty"`
-	CreatedBy     *string                `protobuf:"bytes,4,opt,name=created_by,json=createdBy" json:"created_by,omitempty"`
-	Settings      *WorkspaceSettings     `protobuf:"bytes,5,opt,name=settings" json:"settings,omitempty"`
-	CreatedAt     *timestamppb.Timestamp `protobuf:"bytes,6,opt,name=created_at,json=createdAt" json:"created_at,omitempty"`
-	UpdatedAt     *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=updated_at,json=updatedAt" json:"updated_at,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	Id              *string                `protobuf:"bytes,1,opt,name=id" json:"id,omitempty"`
+	Name            *string                `protobuf:"bytes,2,opt,name=name" json:"name,omitempty"`
+	Description     *string                `protobuf:"bytes,3,opt,name=description" json:"description,omitempty"`
+	CreatedBy       *string                `protobuf:"bytes,4,opt,name=created_by,json=createdBy" json:"created_by,omitempty"`
+	EnrollTokenHash *string                `protobuf:"bytes,5,opt,name=enroll_token_hash,json=enrollTokenHash" json:"enroll_token_hash,omitempty"`
+	EnrollExpiresAt *timestamppb.Timestamp `protobuf:"bytes,6,opt,name=enroll_expires_at,json=enrollExpiresAt" json:"enroll_expires_at,omitempty"`
+	InviteTokenHash *string                `protobuf:"bytes,7,opt,name=invite_token_hash,json=inviteTokenHash" json:"invite_token_hash,omitempty"`
+	InviteExpiresAt *timestamppb.Timestamp `protobuf:"bytes,8,opt,name=invite_expires_at,json=inviteExpiresAt" json:"invite_expires_at,omitempty"`
+	Settings        *WorkspaceSettings     `protobuf:"bytes,9,opt,name=settings" json:"settings,omitempty"`
+	CreatedAt       *timestamppb.Timestamp `protobuf:"bytes,10,opt,name=created_at,json=createdAt" json:"created_at,omitempty"`
+	UpdatedAt       *timestamppb.Timestamp `protobuf:"bytes,11,opt,name=updated_at,json=updatedAt" json:"updated_at,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
 }
 
 func (x *Workspace) Reset() {
@@ -94,6 +97,34 @@ func (x *Workspace) GetCreatedBy() string {
 		return *x.CreatedBy
 	}
 	return ""
+}
+
+func (x *Workspace) GetEnrollTokenHash() string {
+	if x != nil && x.EnrollTokenHash != nil {
+		return *x.EnrollTokenHash
+	}
+	return ""
+}
+
+func (x *Workspace) GetEnrollExpiresAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.EnrollExpiresAt
+	}
+	return nil
+}
+
+func (x *Workspace) GetInviteTokenHash() string {
+	if x != nil && x.InviteTokenHash != nil {
+		return *x.InviteTokenHash
+	}
+	return ""
+}
+
+func (x *Workspace) GetInviteExpiresAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.InviteExpiresAt
+	}
+	return nil
 }
 
 func (x *Workspace) GetSettings() *WorkspaceSettings {
@@ -242,12 +273,14 @@ func (x *WorkspaceMember) GetUpdatedAt() *timestamppb.Timestamp {
 }
 
 type WorkspaceSettings struct {
-	state             protoimpl.MessageState `protogen:"open.v1"`
-	EnrollAutoApprove *bool                  `protobuf:"varint,1,opt,name=enroll_auto_approve,json=enrollAutoApprove" json:"enroll_auto_approve,omitempty"`
-	EnrollExpiresAt   *timestamppb.Timestamp `protobuf:"bytes,2,opt,name=enroll_expires_at,json=enrollExpiresAt" json:"enroll_expires_at,omitempty"`
-	InviteExpiresAt   *timestamppb.Timestamp `protobuf:"bytes,3,opt,name=invite_expires_at,json=inviteExpiresAt" json:"invite_expires_at,omitempty"`
-	unknownFields     protoimpl.UnknownFields
-	sizeCache         protoimpl.SizeCache
+	state                   protoimpl.MessageState `protogen:"open.v1"`
+	EnrollAutoApprove       *bool                  `protobuf:"varint,1,opt,name=enroll_auto_approve,json=enrollAutoApprove" json:"enroll_auto_approve,omitempty"`
+	RecordingPublicKey      *string                `protobuf:"bytes,2,opt,name=recording_public_key,json=recordingPublicKey" json:"recording_public_key,omitempty"`
+	RecordingKeyFingerprint *string                `protobuf:"bytes,3,opt,name=recording_key_fingerprint,json=recordingKeyFingerprint" json:"recording_key_fingerprint,omitempty"`
+	RecordingKeyCreatedAt   *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=recording_key_created_at,json=recordingKeyCreatedAt" json:"recording_key_created_at,omitempty"`
+	DefaultDaemonConfig     *DaemonConfig          `protobuf:"bytes,5,opt,name=default_daemon_config,json=defaultDaemonConfig" json:"default_daemon_config,omitempty"`
+	unknownFields           protoimpl.UnknownFields
+	sizeCache               protoimpl.SizeCache
 }
 
 func (x *WorkspaceSettings) Reset() {
@@ -287,16 +320,30 @@ func (x *WorkspaceSettings) GetEnrollAutoApprove() bool {
 	return false
 }
 
-func (x *WorkspaceSettings) GetEnrollExpiresAt() *timestamppb.Timestamp {
+func (x *WorkspaceSettings) GetRecordingPublicKey() string {
+	if x != nil && x.RecordingPublicKey != nil {
+		return *x.RecordingPublicKey
+	}
+	return ""
+}
+
+func (x *WorkspaceSettings) GetRecordingKeyFingerprint() string {
+	if x != nil && x.RecordingKeyFingerprint != nil {
+		return *x.RecordingKeyFingerprint
+	}
+	return ""
+}
+
+func (x *WorkspaceSettings) GetRecordingKeyCreatedAt() *timestamppb.Timestamp {
 	if x != nil {
-		return x.EnrollExpiresAt
+		return x.RecordingKeyCreatedAt
 	}
 	return nil
 }
 
-func (x *WorkspaceSettings) GetInviteExpiresAt() *timestamppb.Timestamp {
+func (x *WorkspaceSettings) GetDefaultDaemonConfig() *DaemonConfig {
 	if x != nil {
-		return x.InviteExpiresAt
+		return x.DefaultDaemonConfig
 	}
 	return nil
 }
@@ -490,6 +537,7 @@ type UpdateWorkspaceRequest struct {
 	WorkspaceId   *string                `protobuf:"bytes,1,opt,name=workspace_id,json=workspaceId" json:"workspace_id,omitempty"`
 	Name          *string                `protobuf:"bytes,2,opt,name=name" json:"name,omitempty"`
 	Description   *string                `protobuf:"bytes,3,opt,name=description" json:"description,omitempty"`
+	Settings      *WorkspaceSettings     `protobuf:"bytes,4,opt,name=settings" json:"settings,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -543,6 +591,13 @@ func (x *UpdateWorkspaceRequest) GetDescription() string {
 		return *x.Description
 	}
 	return ""
+}
+
+func (x *UpdateWorkspaceRequest) GetSettings() *WorkspaceSettings {
+	if x != nil {
+		return x.Settings
+	}
+	return nil
 }
 
 type UpdateWorkspaceResponse struct {
@@ -1166,119 +1221,6 @@ func (*UpdateWorkspaceMemberResponse) Descriptor() ([]byte, []int) {
 	return file_nokku_v1_workspace_proto_rawDescGZIP(), []int{20}
 }
 
-// Settings -------------------------------------------------------------------
-type UpdateWorkspaceSettingsRequest struct {
-	state             protoimpl.MessageState `protogen:"open.v1"`
-	WorkspaceId       *string                `protobuf:"bytes,1,opt,name=workspace_id,json=workspaceId" json:"workspace_id,omitempty"`
-	EnrollAutoApprove *bool                  `protobuf:"varint,2,opt,name=enroll_auto_approve,json=enrollAutoApprove" json:"enroll_auto_approve,omitempty"`
-	EnrollExpiry      *durationpb.Duration   `protobuf:"bytes,3,opt,name=enroll_expiry,json=enrollExpiry" json:"enroll_expiry,omitempty"`
-	InviteExpiry      *durationpb.Duration   `protobuf:"bytes,4,opt,name=invite_expiry,json=inviteExpiry" json:"invite_expiry,omitempty"`
-	unknownFields     protoimpl.UnknownFields
-	sizeCache         protoimpl.SizeCache
-}
-
-func (x *UpdateWorkspaceSettingsRequest) Reset() {
-	*x = UpdateWorkspaceSettingsRequest{}
-	mi := &file_nokku_v1_workspace_proto_msgTypes[21]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *UpdateWorkspaceSettingsRequest) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*UpdateWorkspaceSettingsRequest) ProtoMessage() {}
-
-func (x *UpdateWorkspaceSettingsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_nokku_v1_workspace_proto_msgTypes[21]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use UpdateWorkspaceSettingsRequest.ProtoReflect.Descriptor instead.
-func (*UpdateWorkspaceSettingsRequest) Descriptor() ([]byte, []int) {
-	return file_nokku_v1_workspace_proto_rawDescGZIP(), []int{21}
-}
-
-func (x *UpdateWorkspaceSettingsRequest) GetWorkspaceId() string {
-	if x != nil && x.WorkspaceId != nil {
-		return *x.WorkspaceId
-	}
-	return ""
-}
-
-func (x *UpdateWorkspaceSettingsRequest) GetEnrollAutoApprove() bool {
-	if x != nil && x.EnrollAutoApprove != nil {
-		return *x.EnrollAutoApprove
-	}
-	return false
-}
-
-func (x *UpdateWorkspaceSettingsRequest) GetEnrollExpiry() *durationpb.Duration {
-	if x != nil {
-		return x.EnrollExpiry
-	}
-	return nil
-}
-
-func (x *UpdateWorkspaceSettingsRequest) GetInviteExpiry() *durationpb.Duration {
-	if x != nil {
-		return x.InviteExpiry
-	}
-	return nil
-}
-
-type UpdateWorkspaceSettingsResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Settings      *WorkspaceSettings     `protobuf:"bytes,1,opt,name=settings" json:"settings,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *UpdateWorkspaceSettingsResponse) Reset() {
-	*x = UpdateWorkspaceSettingsResponse{}
-	mi := &file_nokku_v1_workspace_proto_msgTypes[22]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *UpdateWorkspaceSettingsResponse) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*UpdateWorkspaceSettingsResponse) ProtoMessage() {}
-
-func (x *UpdateWorkspaceSettingsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_nokku_v1_workspace_proto_msgTypes[22]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use UpdateWorkspaceSettingsResponse.ProtoReflect.Descriptor instead.
-func (*UpdateWorkspaceSettingsResponse) Descriptor() ([]byte, []int) {
-	return file_nokku_v1_workspace_proto_rawDescGZIP(), []int{22}
-}
-
-func (x *UpdateWorkspaceSettingsResponse) GetSettings() *WorkspaceSettings {
-	if x != nil {
-		return x.Settings
-	}
-	return nil
-}
-
 // Various --------------------------------------------------------------------
 type UpdateWorkspaceOwnerRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -1290,7 +1232,7 @@ type UpdateWorkspaceOwnerRequest struct {
 
 func (x *UpdateWorkspaceOwnerRequest) Reset() {
 	*x = UpdateWorkspaceOwnerRequest{}
-	mi := &file_nokku_v1_workspace_proto_msgTypes[23]
+	mi := &file_nokku_v1_workspace_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1302,7 +1244,7 @@ func (x *UpdateWorkspaceOwnerRequest) String() string {
 func (*UpdateWorkspaceOwnerRequest) ProtoMessage() {}
 
 func (x *UpdateWorkspaceOwnerRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_nokku_v1_workspace_proto_msgTypes[23]
+	mi := &file_nokku_v1_workspace_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1315,7 +1257,7 @@ func (x *UpdateWorkspaceOwnerRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateWorkspaceOwnerRequest.ProtoReflect.Descriptor instead.
 func (*UpdateWorkspaceOwnerRequest) Descriptor() ([]byte, []int) {
-	return file_nokku_v1_workspace_proto_rawDescGZIP(), []int{23}
+	return file_nokku_v1_workspace_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *UpdateWorkspaceOwnerRequest) GetWorkspaceId() string {
@@ -1340,7 +1282,7 @@ type UpdateWorkspaceOwnerResponse struct {
 
 func (x *UpdateWorkspaceOwnerResponse) Reset() {
 	*x = UpdateWorkspaceOwnerResponse{}
-	mi := &file_nokku_v1_workspace_proto_msgTypes[24]
+	mi := &file_nokku_v1_workspace_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1352,7 +1294,7 @@ func (x *UpdateWorkspaceOwnerResponse) String() string {
 func (*UpdateWorkspaceOwnerResponse) ProtoMessage() {}
 
 func (x *UpdateWorkspaceOwnerResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_nokku_v1_workspace_proto_msgTypes[24]
+	mi := &file_nokku_v1_workspace_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1365,7 +1307,7 @@ func (x *UpdateWorkspaceOwnerResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateWorkspaceOwnerResponse.ProtoReflect.Descriptor instead.
 func (*UpdateWorkspaceOwnerResponse) Descriptor() ([]byte, []int) {
-	return file_nokku_v1_workspace_proto_rawDescGZIP(), []int{24}
+	return file_nokku_v1_workspace_proto_rawDescGZIP(), []int{22}
 }
 
 type SubscribeWorkspaceEventsRequest struct {
@@ -1378,7 +1320,7 @@ type SubscribeWorkspaceEventsRequest struct {
 
 func (x *SubscribeWorkspaceEventsRequest) Reset() {
 	*x = SubscribeWorkspaceEventsRequest{}
-	mi := &file_nokku_v1_workspace_proto_msgTypes[25]
+	mi := &file_nokku_v1_workspace_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1390,7 +1332,7 @@ func (x *SubscribeWorkspaceEventsRequest) String() string {
 func (*SubscribeWorkspaceEventsRequest) ProtoMessage() {}
 
 func (x *SubscribeWorkspaceEventsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_nokku_v1_workspace_proto_msgTypes[25]
+	mi := &file_nokku_v1_workspace_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1403,7 +1345,7 @@ func (x *SubscribeWorkspaceEventsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SubscribeWorkspaceEventsRequest.ProtoReflect.Descriptor instead.
 func (*SubscribeWorkspaceEventsRequest) Descriptor() ([]byte, []int) {
-	return file_nokku_v1_workspace_proto_rawDescGZIP(), []int{25}
+	return file_nokku_v1_workspace_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *SubscribeWorkspaceEventsRequest) GetWorkspaceId() string {
@@ -1433,7 +1375,7 @@ type SubscribeWorkspaceEventsResponse struct {
 
 func (x *SubscribeWorkspaceEventsResponse) Reset() {
 	*x = SubscribeWorkspaceEventsResponse{}
-	mi := &file_nokku_v1_workspace_proto_msgTypes[26]
+	mi := &file_nokku_v1_workspace_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1445,7 +1387,7 @@ func (x *SubscribeWorkspaceEventsResponse) String() string {
 func (*SubscribeWorkspaceEventsResponse) ProtoMessage() {}
 
 func (x *SubscribeWorkspaceEventsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_nokku_v1_workspace_proto_msgTypes[26]
+	mi := &file_nokku_v1_workspace_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1458,7 +1400,7 @@ func (x *SubscribeWorkspaceEventsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SubscribeWorkspaceEventsResponse.ProtoReflect.Descriptor instead.
 func (*SubscribeWorkspaceEventsResponse) Descriptor() ([]byte, []int) {
-	return file_nokku_v1_workspace_proto_rawDescGZIP(), []int{26}
+	return file_nokku_v1_workspace_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *SubscribeWorkspaceEventsResponse) GetId() string {
@@ -1500,18 +1442,23 @@ var File_nokku_v1_workspace_proto protoreflect.FileDescriptor
 
 const file_nokku_v1_workspace_proto_rawDesc = "" +
 	"\n" +
-	"\x18nokku/v1/workspace.proto\x12\bnokku.v1\x1a\x1bbuf/validate/validate.proto\x1a\x1cgoogle/api/annotations.proto\x1a\x1egoogle/protobuf/duration.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\x9f\x02\n" +
+	"\x18nokku/v1/workspace.proto\x12\bnokku.v1\x1a\x1bbuf/validate/validate.proto\x1a\x1cgoogle/api/annotations.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x15nokku/v1/daemon.proto\"\x87\x04\n" +
 	"\tWorkspace\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12 \n" +
 	"\vdescription\x18\x03 \x01(\tR\vdescription\x12\x1d\n" +
 	"\n" +
-	"created_by\x18\x04 \x01(\tR\tcreatedBy\x127\n" +
-	"\bsettings\x18\x05 \x01(\v2\x1b.nokku.v1.WorkspaceSettingsR\bsettings\x129\n" +
+	"created_by\x18\x04 \x01(\tR\tcreatedBy\x12*\n" +
+	"\x11enroll_token_hash\x18\x05 \x01(\tR\x0fenrollTokenHash\x12F\n" +
+	"\x11enroll_expires_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\x0fenrollExpiresAt\x12*\n" +
+	"\x11invite_token_hash\x18\a \x01(\tR\x0finviteTokenHash\x12F\n" +
+	"\x11invite_expires_at\x18\b \x01(\v2\x1a.google.protobuf.TimestampR\x0finviteExpiresAt\x127\n" +
+	"\bsettings\x18\t \x01(\v2\x1b.nokku.v1.WorkspaceSettingsR\bsettings\x129\n" +
 	"\n" +
-	"created_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x129\n" +
+	"created_at\x18\n" +
+	" \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x129\n" +
 	"\n" +
-	"updated_at\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\"\x89\x03\n" +
+	"updated_at\x18\v \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\"\x89\x03\n" +
 	"\x0fWorkspaceMember\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12!\n" +
 	"\fworkspace_id\x18\x02 \x01(\tR\vworkspaceId\x12\x12\n" +
@@ -1526,11 +1473,13 @@ const file_nokku_v1_workspace_proto_rawDesc = "" +
 	"created_at\x18\n" +
 	" \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x129\n" +
 	"\n" +
-	"updated_at\x18\v \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\"\xd3\x01\n" +
+	"updated_at\x18\v \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\"\xd2\x02\n" +
 	"\x11WorkspaceSettings\x12.\n" +
-	"\x13enroll_auto_approve\x18\x01 \x01(\bR\x11enrollAutoApprove\x12F\n" +
-	"\x11enroll_expires_at\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\x0fenrollExpiresAt\x12F\n" +
-	"\x11invite_expires_at\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\x0finviteExpiresAt\"B\n" +
+	"\x13enroll_auto_approve\x18\x01 \x01(\bR\x11enrollAutoApprove\x120\n" +
+	"\x14recording_public_key\x18\x02 \x01(\tR\x12recordingPublicKey\x12:\n" +
+	"\x19recording_key_fingerprint\x18\x03 \x01(\tR\x17recordingKeyFingerprint\x12S\n" +
+	"\x18recording_key_created_at\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\x15recordingKeyCreatedAt\x12J\n" +
+	"\x15default_daemon_config\x18\x05 \x01(\v2\x16.nokku.v1.DaemonConfigR\x13defaultDaemonConfig\"B\n" +
 	"\x13GetWorkspaceRequest\x12+\n" +
 	"\fworkspace_id\x18\x01 \x01(\tB\b\xbaH\x05r\x03\xb0\x01\x01R\vworkspaceId\"I\n" +
 	"\x14GetWorkspaceResponse\x121\n" +
@@ -1540,12 +1489,13 @@ const file_nokku_v1_workspace_proto_rawDesc = "" +
 	"\xbaH\ar\x05\x10\x03\x18\x80\x02R\x04name\x12*\n" +
 	"\vdescription\x18\x02 \x01(\tB\b\xbaH\x05r\x03\x18\xe8\aR\vdescription\"L\n" +
 	"\x17CreateWorkspaceResponse\x121\n" +
-	"\tworkspace\x18\x01 \x01(\v2\x13.nokku.v1.WorkspaceR\tworkspace\"\x91\x01\n" +
+	"\tworkspace\x18\x01 \x01(\v2\x13.nokku.v1.WorkspaceR\tworkspace\"\xca\x01\n" +
 	"\x16UpdateWorkspaceRequest\x12+\n" +
 	"\fworkspace_id\x18\x01 \x01(\tB\b\xbaH\x05r\x03\xb0\x01\x01R\vworkspaceId\x12\x1e\n" +
 	"\x04name\x18\x02 \x01(\tB\n" +
 	"\xbaH\ar\x05\x10\x03\x18\x80\x02R\x04name\x12*\n" +
-	"\vdescription\x18\x03 \x01(\tB\b\xbaH\x05r\x03\x18\xe8\aR\vdescription\"L\n" +
+	"\vdescription\x18\x03 \x01(\tB\b\xbaH\x05r\x03\x18\xe8\aR\vdescription\x127\n" +
+	"\bsettings\x18\x04 \x01(\v2\x1b.nokku.v1.WorkspaceSettingsR\bsettings\"L\n" +
 	"\x17UpdateWorkspaceResponse\x121\n" +
 	"\tworkspace\x18\x01 \x01(\v2\x13.nokku.v1.WorkspaceR\tworkspace\"E\n" +
 	"\x16DeleteWorkspaceRequest\x12+\n" +
@@ -1580,14 +1530,7 @@ const file_nokku_v1_workspace_proto_rawDesc = "" +
 	"\fworkspace_id\x18\x01 \x01(\tB\b\xbaH\x05r\x03\xb0\x01\x01R\vworkspaceId\x12!\n" +
 	"\auser_id\x18\x02 \x01(\tB\b\xbaH\x05r\x03\xb0\x01\x01R\x06userId\x12\x1b\n" +
 	"\trole_name\x18\x03 \x01(\tR\broleName\"\x1f\n" +
-	"\x1dUpdateWorkspaceMemberResponse\"\xa5\x02\n" +
-	"\x1eUpdateWorkspaceSettingsRequest\x12+\n" +
-	"\fworkspace_id\x18\x01 \x01(\tB\b\xbaH\x05r\x03\xb0\x01\x01R\vworkspaceId\x12.\n" +
-	"\x13enroll_auto_approve\x18\x02 \x01(\bR\x11enrollAutoApprove\x12R\n" +
-	"\renroll_expiry\x18\x03 \x01(\v2\x19.google.protobuf.DurationB\x12\xbaH\x0f\xaa\x01\f\"\x05\b\x80\x9a\x9e\x012\x03\b\xac\x02R\fenrollExpiry\x12R\n" +
-	"\rinvite_expiry\x18\x04 \x01(\v2\x19.google.protobuf.DurationB\x12\xbaH\x0f\xaa\x01\f\"\x05\b\x80\x9a\x9e\x012\x03\b\xac\x02R\finviteExpiry\"Z\n" +
-	"\x1fUpdateWorkspaceSettingsResponse\x127\n" +
-	"\bsettings\x18\x01 \x01(\v2\x1b.nokku.v1.WorkspaceSettingsR\bsettings\"q\n" +
+	"\x1dUpdateWorkspaceMemberResponse\"q\n" +
 	"\x1bUpdateWorkspaceOwnerRequest\x12+\n" +
 	"\fworkspace_id\x18\x01 \x01(\tB\b\xbaH\x05r\x03\xb0\x01\x01R\vworkspaceId\x12%\n" +
 	"\tnew_owner\x18\x02 \x01(\tB\b\xbaH\x05r\x03\xb0\x01\x01R\bnewOwner\"\x1e\n" +
@@ -1602,13 +1545,12 @@ const file_nokku_v1_workspace_proto_rawDesc = "" +
 	"\fworkspace_id\x18\x03 \x01(\tR\vworkspaceId\x12\x1d\n" +
 	"\fpayload_json\x18\x04 \x01(\tR\apayload\x129\n" +
 	"\n" +
-	"created_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt2\xe3\r\n" +
+	"created_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt2\xbf\f\n" +
 	"\x10WorkspaceService\x12w\n" +
 	"\fGetWorkspace\x12\x1d.nokku.v1.GetWorkspaceRequest\x1a\x1e.nokku.v1.GetWorkspaceResponse\"(\x82\xd3\xe4\x93\x02\x1f\x12\x1d/v1/workspaces/{workspace_id}\x90\x02\x01\x12n\n" +
 	"\x0eListWorkspaces\x12\x1f.nokku.v1.ListWorkspacesRequest\x1a .nokku.v1.ListWorkspacesResponse\"\x19\x82\xd3\xe4\x93\x02\x10\x12\x0e/v1/workspaces\x90\x02\x01\x12q\n" +
 	"\x0fCreateWorkspace\x12 .nokku.v1.CreateWorkspaceRequest\x1a!.nokku.v1.CreateWorkspaceResponse\"\x19\x82\xd3\xe4\x93\x02\x13:\x01*\"\x0e/v1/workspaces\x12\x80\x01\n" +
-	"\x0fUpdateWorkspace\x12 .nokku.v1.UpdateWorkspaceRequest\x1a!.nokku.v1.UpdateWorkspaceResponse\"(\x82\xd3\xe4\x93\x02\":\x01*2\x1d/v1/workspaces/{workspace_id}\x12\xa1\x01\n" +
-	"\x17UpdateWorkspaceSettings\x12(.nokku.v1.UpdateWorkspaceSettingsRequest\x1a).nokku.v1.UpdateWorkspaceSettingsResponse\"1\x82\xd3\xe4\x93\x02+:\x01*2&/v1/workspaces/{workspace_id}/settings\x12}\n" +
+	"\x0fUpdateWorkspace\x12 .nokku.v1.UpdateWorkspaceRequest\x1a!.nokku.v1.UpdateWorkspaceResponse\"(\x82\xd3\xe4\x93\x02\":\x01*2\x1d/v1/workspaces/{workspace_id}\x12}\n" +
 	"\x0fDeleteWorkspace\x12 .nokku.v1.DeleteWorkspaceRequest\x1a!.nokku.v1.DeleteWorkspaceResponse\"%\x82\xd3\xe4\x93\x02\x1f*\x1d/v1/workspaces/{workspace_id}\x12\x9b\x01\n" +
 	"\x12GetWorkspaceMember\x12#.nokku.v1.GetWorkspaceMemberRequest\x1a$.nokku.v1.GetWorkspaceMemberResponse\":\x82\xd3\xe4\x93\x021\x12//v1/workspaces/{workspace_id}/members/{user_id}\x90\x02\x01\x12\x97\x01\n" +
 	"\x14ListWorkspaceMembers\x12%.nokku.v1.ListWorkspaceMembersRequest\x1a&.nokku.v1.ListWorkspaceMembersResponse\"0\x82\xd3\xe4\x93\x02'\x12%/v1/workspaces/{workspace_id}/members\x90\x02\x01\x12\xa1\x01\n" +
@@ -1630,7 +1572,7 @@ func file_nokku_v1_workspace_proto_rawDescGZIP() []byte {
 	return file_nokku_v1_workspace_proto_rawDescData
 }
 
-var file_nokku_v1_workspace_proto_msgTypes = make([]protoimpl.MessageInfo, 27)
+var file_nokku_v1_workspace_proto_msgTypes = make([]protoimpl.MessageInfo, 25)
 var file_nokku_v1_workspace_proto_goTypes = []any{
 	(*Workspace)(nil),                        // 0: nokku.v1.Workspace
 	(*WorkspaceMember)(nil),                  // 1: nokku.v1.WorkspaceMember
@@ -1653,59 +1595,55 @@ var file_nokku_v1_workspace_proto_goTypes = []any{
 	(*RemoveWorkspaceMemberResponse)(nil),    // 18: nokku.v1.RemoveWorkspaceMemberResponse
 	(*UpdateWorkspaceMemberRequest)(nil),     // 19: nokku.v1.UpdateWorkspaceMemberRequest
 	(*UpdateWorkspaceMemberResponse)(nil),    // 20: nokku.v1.UpdateWorkspaceMemberResponse
-	(*UpdateWorkspaceSettingsRequest)(nil),   // 21: nokku.v1.UpdateWorkspaceSettingsRequest
-	(*UpdateWorkspaceSettingsResponse)(nil),  // 22: nokku.v1.UpdateWorkspaceSettingsResponse
-	(*UpdateWorkspaceOwnerRequest)(nil),      // 23: nokku.v1.UpdateWorkspaceOwnerRequest
-	(*UpdateWorkspaceOwnerResponse)(nil),     // 24: nokku.v1.UpdateWorkspaceOwnerResponse
-	(*SubscribeWorkspaceEventsRequest)(nil),  // 25: nokku.v1.SubscribeWorkspaceEventsRequest
-	(*SubscribeWorkspaceEventsResponse)(nil), // 26: nokku.v1.SubscribeWorkspaceEventsResponse
-	(*timestamppb.Timestamp)(nil),            // 27: google.protobuf.Timestamp
-	(*durationpb.Duration)(nil),              // 28: google.protobuf.Duration
+	(*UpdateWorkspaceOwnerRequest)(nil),      // 21: nokku.v1.UpdateWorkspaceOwnerRequest
+	(*UpdateWorkspaceOwnerResponse)(nil),     // 22: nokku.v1.UpdateWorkspaceOwnerResponse
+	(*SubscribeWorkspaceEventsRequest)(nil),  // 23: nokku.v1.SubscribeWorkspaceEventsRequest
+	(*SubscribeWorkspaceEventsResponse)(nil), // 24: nokku.v1.SubscribeWorkspaceEventsResponse
+	(*timestamppb.Timestamp)(nil),            // 25: google.protobuf.Timestamp
+	(*DaemonConfig)(nil),                     // 26: nokku.v1.DaemonConfig
 }
 var file_nokku_v1_workspace_proto_depIdxs = []int32{
-	2,  // 0: nokku.v1.Workspace.settings:type_name -> nokku.v1.WorkspaceSettings
-	27, // 1: nokku.v1.Workspace.created_at:type_name -> google.protobuf.Timestamp
-	27, // 2: nokku.v1.Workspace.updated_at:type_name -> google.protobuf.Timestamp
-	27, // 3: nokku.v1.WorkspaceMember.created_at:type_name -> google.protobuf.Timestamp
-	27, // 4: nokku.v1.WorkspaceMember.updated_at:type_name -> google.protobuf.Timestamp
-	27, // 5: nokku.v1.WorkspaceSettings.enroll_expires_at:type_name -> google.protobuf.Timestamp
-	27, // 6: nokku.v1.WorkspaceSettings.invite_expires_at:type_name -> google.protobuf.Timestamp
-	0,  // 7: nokku.v1.GetWorkspaceResponse.workspace:type_name -> nokku.v1.Workspace
-	0,  // 8: nokku.v1.CreateWorkspaceResponse.workspace:type_name -> nokku.v1.Workspace
-	0,  // 9: nokku.v1.UpdateWorkspaceResponse.workspace:type_name -> nokku.v1.Workspace
-	0,  // 10: nokku.v1.ListWorkspacesResponse.workspaces:type_name -> nokku.v1.Workspace
-	1,  // 11: nokku.v1.GetWorkspaceMemberResponse.member:type_name -> nokku.v1.WorkspaceMember
-	1,  // 12: nokku.v1.ListWorkspaceMembersResponse.members:type_name -> nokku.v1.WorkspaceMember
-	28, // 13: nokku.v1.UpdateWorkspaceSettingsRequest.enroll_expiry:type_name -> google.protobuf.Duration
-	28, // 14: nokku.v1.UpdateWorkspaceSettingsRequest.invite_expiry:type_name -> google.protobuf.Duration
-	2,  // 15: nokku.v1.UpdateWorkspaceSettingsResponse.settings:type_name -> nokku.v1.WorkspaceSettings
-	27, // 16: nokku.v1.SubscribeWorkspaceEventsResponse.created_at:type_name -> google.protobuf.Timestamp
+	25, // 0: nokku.v1.Workspace.enroll_expires_at:type_name -> google.protobuf.Timestamp
+	25, // 1: nokku.v1.Workspace.invite_expires_at:type_name -> google.protobuf.Timestamp
+	2,  // 2: nokku.v1.Workspace.settings:type_name -> nokku.v1.WorkspaceSettings
+	25, // 3: nokku.v1.Workspace.created_at:type_name -> google.protobuf.Timestamp
+	25, // 4: nokku.v1.Workspace.updated_at:type_name -> google.protobuf.Timestamp
+	25, // 5: nokku.v1.WorkspaceMember.created_at:type_name -> google.protobuf.Timestamp
+	25, // 6: nokku.v1.WorkspaceMember.updated_at:type_name -> google.protobuf.Timestamp
+	25, // 7: nokku.v1.WorkspaceSettings.recording_key_created_at:type_name -> google.protobuf.Timestamp
+	26, // 8: nokku.v1.WorkspaceSettings.default_daemon_config:type_name -> nokku.v1.DaemonConfig
+	0,  // 9: nokku.v1.GetWorkspaceResponse.workspace:type_name -> nokku.v1.Workspace
+	0,  // 10: nokku.v1.CreateWorkspaceResponse.workspace:type_name -> nokku.v1.Workspace
+	2,  // 11: nokku.v1.UpdateWorkspaceRequest.settings:type_name -> nokku.v1.WorkspaceSettings
+	0,  // 12: nokku.v1.UpdateWorkspaceResponse.workspace:type_name -> nokku.v1.Workspace
+	0,  // 13: nokku.v1.ListWorkspacesResponse.workspaces:type_name -> nokku.v1.Workspace
+	1,  // 14: nokku.v1.GetWorkspaceMemberResponse.member:type_name -> nokku.v1.WorkspaceMember
+	1,  // 15: nokku.v1.ListWorkspaceMembersResponse.members:type_name -> nokku.v1.WorkspaceMember
+	25, // 16: nokku.v1.SubscribeWorkspaceEventsResponse.created_at:type_name -> google.protobuf.Timestamp
 	3,  // 17: nokku.v1.WorkspaceService.GetWorkspace:input_type -> nokku.v1.GetWorkspaceRequest
 	11, // 18: nokku.v1.WorkspaceService.ListWorkspaces:input_type -> nokku.v1.ListWorkspacesRequest
 	5,  // 19: nokku.v1.WorkspaceService.CreateWorkspace:input_type -> nokku.v1.CreateWorkspaceRequest
 	7,  // 20: nokku.v1.WorkspaceService.UpdateWorkspace:input_type -> nokku.v1.UpdateWorkspaceRequest
-	21, // 21: nokku.v1.WorkspaceService.UpdateWorkspaceSettings:input_type -> nokku.v1.UpdateWorkspaceSettingsRequest
-	9,  // 22: nokku.v1.WorkspaceService.DeleteWorkspace:input_type -> nokku.v1.DeleteWorkspaceRequest
-	13, // 23: nokku.v1.WorkspaceService.GetWorkspaceMember:input_type -> nokku.v1.GetWorkspaceMemberRequest
-	15, // 24: nokku.v1.WorkspaceService.ListWorkspaceMembers:input_type -> nokku.v1.ListWorkspaceMembersRequest
-	17, // 25: nokku.v1.WorkspaceService.RemoveWorkspaceMember:input_type -> nokku.v1.RemoveWorkspaceMemberRequest
-	19, // 26: nokku.v1.WorkspaceService.UpdateWorkspaceMember:input_type -> nokku.v1.UpdateWorkspaceMemberRequest
-	23, // 27: nokku.v1.WorkspaceService.UpdateWorkspaceOwner:input_type -> nokku.v1.UpdateWorkspaceOwnerRequest
-	25, // 28: nokku.v1.WorkspaceService.SubscribeWorkspaceEvents:input_type -> nokku.v1.SubscribeWorkspaceEventsRequest
-	4,  // 29: nokku.v1.WorkspaceService.GetWorkspace:output_type -> nokku.v1.GetWorkspaceResponse
-	12, // 30: nokku.v1.WorkspaceService.ListWorkspaces:output_type -> nokku.v1.ListWorkspacesResponse
-	6,  // 31: nokku.v1.WorkspaceService.CreateWorkspace:output_type -> nokku.v1.CreateWorkspaceResponse
-	8,  // 32: nokku.v1.WorkspaceService.UpdateWorkspace:output_type -> nokku.v1.UpdateWorkspaceResponse
-	22, // 33: nokku.v1.WorkspaceService.UpdateWorkspaceSettings:output_type -> nokku.v1.UpdateWorkspaceSettingsResponse
-	10, // 34: nokku.v1.WorkspaceService.DeleteWorkspace:output_type -> nokku.v1.DeleteWorkspaceResponse
-	14, // 35: nokku.v1.WorkspaceService.GetWorkspaceMember:output_type -> nokku.v1.GetWorkspaceMemberResponse
-	16, // 36: nokku.v1.WorkspaceService.ListWorkspaceMembers:output_type -> nokku.v1.ListWorkspaceMembersResponse
-	18, // 37: nokku.v1.WorkspaceService.RemoveWorkspaceMember:output_type -> nokku.v1.RemoveWorkspaceMemberResponse
-	20, // 38: nokku.v1.WorkspaceService.UpdateWorkspaceMember:output_type -> nokku.v1.UpdateWorkspaceMemberResponse
-	24, // 39: nokku.v1.WorkspaceService.UpdateWorkspaceOwner:output_type -> nokku.v1.UpdateWorkspaceOwnerResponse
-	26, // 40: nokku.v1.WorkspaceService.SubscribeWorkspaceEvents:output_type -> nokku.v1.SubscribeWorkspaceEventsResponse
-	29, // [29:41] is the sub-list for method output_type
-	17, // [17:29] is the sub-list for method input_type
+	9,  // 21: nokku.v1.WorkspaceService.DeleteWorkspace:input_type -> nokku.v1.DeleteWorkspaceRequest
+	13, // 22: nokku.v1.WorkspaceService.GetWorkspaceMember:input_type -> nokku.v1.GetWorkspaceMemberRequest
+	15, // 23: nokku.v1.WorkspaceService.ListWorkspaceMembers:input_type -> nokku.v1.ListWorkspaceMembersRequest
+	17, // 24: nokku.v1.WorkspaceService.RemoveWorkspaceMember:input_type -> nokku.v1.RemoveWorkspaceMemberRequest
+	19, // 25: nokku.v1.WorkspaceService.UpdateWorkspaceMember:input_type -> nokku.v1.UpdateWorkspaceMemberRequest
+	21, // 26: nokku.v1.WorkspaceService.UpdateWorkspaceOwner:input_type -> nokku.v1.UpdateWorkspaceOwnerRequest
+	23, // 27: nokku.v1.WorkspaceService.SubscribeWorkspaceEvents:input_type -> nokku.v1.SubscribeWorkspaceEventsRequest
+	4,  // 28: nokku.v1.WorkspaceService.GetWorkspace:output_type -> nokku.v1.GetWorkspaceResponse
+	12, // 29: nokku.v1.WorkspaceService.ListWorkspaces:output_type -> nokku.v1.ListWorkspacesResponse
+	6,  // 30: nokku.v1.WorkspaceService.CreateWorkspace:output_type -> nokku.v1.CreateWorkspaceResponse
+	8,  // 31: nokku.v1.WorkspaceService.UpdateWorkspace:output_type -> nokku.v1.UpdateWorkspaceResponse
+	10, // 32: nokku.v1.WorkspaceService.DeleteWorkspace:output_type -> nokku.v1.DeleteWorkspaceResponse
+	14, // 33: nokku.v1.WorkspaceService.GetWorkspaceMember:output_type -> nokku.v1.GetWorkspaceMemberResponse
+	16, // 34: nokku.v1.WorkspaceService.ListWorkspaceMembers:output_type -> nokku.v1.ListWorkspaceMembersResponse
+	18, // 35: nokku.v1.WorkspaceService.RemoveWorkspaceMember:output_type -> nokku.v1.RemoveWorkspaceMemberResponse
+	20, // 36: nokku.v1.WorkspaceService.UpdateWorkspaceMember:output_type -> nokku.v1.UpdateWorkspaceMemberResponse
+	22, // 37: nokku.v1.WorkspaceService.UpdateWorkspaceOwner:output_type -> nokku.v1.UpdateWorkspaceOwnerResponse
+	24, // 38: nokku.v1.WorkspaceService.SubscribeWorkspaceEvents:output_type -> nokku.v1.SubscribeWorkspaceEventsResponse
+	28, // [28:39] is the sub-list for method output_type
+	17, // [17:28] is the sub-list for method input_type
 	17, // [17:17] is the sub-list for extension type_name
 	17, // [17:17] is the sub-list for extension extendee
 	0,  // [0:17] is the sub-list for field type_name
@@ -1716,13 +1654,14 @@ func file_nokku_v1_workspace_proto_init() {
 	if File_nokku_v1_workspace_proto != nil {
 		return
 	}
+	file_nokku_v1_daemon_proto_init()
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_nokku_v1_workspace_proto_rawDesc), len(file_nokku_v1_workspace_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   27,
+			NumMessages:   25,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

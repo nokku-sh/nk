@@ -45,9 +45,6 @@ const (
 	// WorkspaceServiceUpdateWorkspaceProcedure is the fully-qualified name of the WorkspaceService's
 	// UpdateWorkspace RPC.
 	WorkspaceServiceUpdateWorkspaceProcedure = "/nokku.v1.WorkspaceService/UpdateWorkspace"
-	// WorkspaceServiceUpdateWorkspaceSettingsProcedure is the fully-qualified name of the
-	// WorkspaceService's UpdateWorkspaceSettings RPC.
-	WorkspaceServiceUpdateWorkspaceSettingsProcedure = "/nokku.v1.WorkspaceService/UpdateWorkspaceSettings"
 	// WorkspaceServiceDeleteWorkspaceProcedure is the fully-qualified name of the WorkspaceService's
 	// DeleteWorkspace RPC.
 	WorkspaceServiceDeleteWorkspaceProcedure = "/nokku.v1.WorkspaceService/DeleteWorkspace"
@@ -77,7 +74,6 @@ type WorkspaceServiceClient interface {
 	ListWorkspaces(context.Context, *v1.ListWorkspacesRequest) (*v1.ListWorkspacesResponse, error)
 	CreateWorkspace(context.Context, *v1.CreateWorkspaceRequest) (*v1.CreateWorkspaceResponse, error)
 	UpdateWorkspace(context.Context, *v1.UpdateWorkspaceRequest) (*v1.UpdateWorkspaceResponse, error)
-	UpdateWorkspaceSettings(context.Context, *v1.UpdateWorkspaceSettingsRequest) (*v1.UpdateWorkspaceSettingsResponse, error)
 	DeleteWorkspace(context.Context, *v1.DeleteWorkspaceRequest) (*v1.DeleteWorkspaceResponse, error)
 	GetWorkspaceMember(context.Context, *v1.GetWorkspaceMemberRequest) (*v1.GetWorkspaceMemberResponse, error)
 	ListWorkspaceMembers(context.Context, *v1.ListWorkspaceMembersRequest) (*v1.ListWorkspaceMembersResponse, error)
@@ -122,12 +118,6 @@ func NewWorkspaceServiceClient(httpClient connect.HTTPClient, baseURL string, op
 			httpClient,
 			baseURL+WorkspaceServiceUpdateWorkspaceProcedure,
 			connect.WithSchema(workspaceServiceMethods.ByName("UpdateWorkspace")),
-			connect.WithClientOptions(opts...),
-		),
-		updateWorkspaceSettings: connect.NewClient[v1.UpdateWorkspaceSettingsRequest, v1.UpdateWorkspaceSettingsResponse](
-			httpClient,
-			baseURL+WorkspaceServiceUpdateWorkspaceSettingsProcedure,
-			connect.WithSchema(workspaceServiceMethods.ByName("UpdateWorkspaceSettings")),
 			connect.WithClientOptions(opts...),
 		),
 		deleteWorkspace: connect.NewClient[v1.DeleteWorkspaceRequest, v1.DeleteWorkspaceResponse](
@@ -183,7 +173,6 @@ type workspaceServiceClient struct {
 	listWorkspaces           *connect.Client[v1.ListWorkspacesRequest, v1.ListWorkspacesResponse]
 	createWorkspace          *connect.Client[v1.CreateWorkspaceRequest, v1.CreateWorkspaceResponse]
 	updateWorkspace          *connect.Client[v1.UpdateWorkspaceRequest, v1.UpdateWorkspaceResponse]
-	updateWorkspaceSettings  *connect.Client[v1.UpdateWorkspaceSettingsRequest, v1.UpdateWorkspaceSettingsResponse]
 	deleteWorkspace          *connect.Client[v1.DeleteWorkspaceRequest, v1.DeleteWorkspaceResponse]
 	getWorkspaceMember       *connect.Client[v1.GetWorkspaceMemberRequest, v1.GetWorkspaceMemberResponse]
 	listWorkspaceMembers     *connect.Client[v1.ListWorkspaceMembersRequest, v1.ListWorkspaceMembersResponse]
@@ -223,15 +212,6 @@ func (c *workspaceServiceClient) CreateWorkspace(ctx context.Context, req *v1.Cr
 // UpdateWorkspace calls nokku.v1.WorkspaceService.UpdateWorkspace.
 func (c *workspaceServiceClient) UpdateWorkspace(ctx context.Context, req *v1.UpdateWorkspaceRequest) (*v1.UpdateWorkspaceResponse, error) {
 	response, err := c.updateWorkspace.CallUnary(ctx, connect.NewRequest(req))
-	if response != nil {
-		return response.Msg, err
-	}
-	return nil, err
-}
-
-// UpdateWorkspaceSettings calls nokku.v1.WorkspaceService.UpdateWorkspaceSettings.
-func (c *workspaceServiceClient) UpdateWorkspaceSettings(ctx context.Context, req *v1.UpdateWorkspaceSettingsRequest) (*v1.UpdateWorkspaceSettingsResponse, error) {
-	response, err := c.updateWorkspaceSettings.CallUnary(ctx, connect.NewRequest(req))
 	if response != nil {
 		return response.Msg, err
 	}
@@ -303,7 +283,6 @@ type WorkspaceServiceHandler interface {
 	ListWorkspaces(context.Context, *v1.ListWorkspacesRequest) (*v1.ListWorkspacesResponse, error)
 	CreateWorkspace(context.Context, *v1.CreateWorkspaceRequest) (*v1.CreateWorkspaceResponse, error)
 	UpdateWorkspace(context.Context, *v1.UpdateWorkspaceRequest) (*v1.UpdateWorkspaceResponse, error)
-	UpdateWorkspaceSettings(context.Context, *v1.UpdateWorkspaceSettingsRequest) (*v1.UpdateWorkspaceSettingsResponse, error)
 	DeleteWorkspace(context.Context, *v1.DeleteWorkspaceRequest) (*v1.DeleteWorkspaceResponse, error)
 	GetWorkspaceMember(context.Context, *v1.GetWorkspaceMemberRequest) (*v1.GetWorkspaceMemberResponse, error)
 	ListWorkspaceMembers(context.Context, *v1.ListWorkspaceMembersRequest) (*v1.ListWorkspaceMembersResponse, error)
@@ -344,12 +323,6 @@ func NewWorkspaceServiceHandler(svc WorkspaceServiceHandler, opts ...connect.Han
 		WorkspaceServiceUpdateWorkspaceProcedure,
 		svc.UpdateWorkspace,
 		connect.WithSchema(workspaceServiceMethods.ByName("UpdateWorkspace")),
-		connect.WithHandlerOptions(opts...),
-	)
-	workspaceServiceUpdateWorkspaceSettingsHandler := connect.NewUnaryHandlerSimple(
-		WorkspaceServiceUpdateWorkspaceSettingsProcedure,
-		svc.UpdateWorkspaceSettings,
-		connect.WithSchema(workspaceServiceMethods.ByName("UpdateWorkspaceSettings")),
 		connect.WithHandlerOptions(opts...),
 	)
 	workspaceServiceDeleteWorkspaceHandler := connect.NewUnaryHandlerSimple(
@@ -406,8 +379,6 @@ func NewWorkspaceServiceHandler(svc WorkspaceServiceHandler, opts ...connect.Han
 			workspaceServiceCreateWorkspaceHandler.ServeHTTP(w, r)
 		case WorkspaceServiceUpdateWorkspaceProcedure:
 			workspaceServiceUpdateWorkspaceHandler.ServeHTTP(w, r)
-		case WorkspaceServiceUpdateWorkspaceSettingsProcedure:
-			workspaceServiceUpdateWorkspaceSettingsHandler.ServeHTTP(w, r)
 		case WorkspaceServiceDeleteWorkspaceProcedure:
 			workspaceServiceDeleteWorkspaceHandler.ServeHTTP(w, r)
 		case WorkspaceServiceGetWorkspaceMemberProcedure:
@@ -445,10 +416,6 @@ func (UnimplementedWorkspaceServiceHandler) CreateWorkspace(context.Context, *v1
 
 func (UnimplementedWorkspaceServiceHandler) UpdateWorkspace(context.Context, *v1.UpdateWorkspaceRequest) (*v1.UpdateWorkspaceResponse, error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("nokku.v1.WorkspaceService.UpdateWorkspace is not implemented"))
-}
-
-func (UnimplementedWorkspaceServiceHandler) UpdateWorkspaceSettings(context.Context, *v1.UpdateWorkspaceSettingsRequest) (*v1.UpdateWorkspaceSettingsResponse, error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("nokku.v1.WorkspaceService.UpdateWorkspaceSettings is not implemented"))
 }
 
 func (UnimplementedWorkspaceServiceHandler) DeleteWorkspace(context.Context, *v1.DeleteWorkspaceRequest) (*v1.DeleteWorkspaceResponse, error) {
