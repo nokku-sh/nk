@@ -53,10 +53,10 @@ _(Check `nk doctor` to see if a TPM is available and in use.)_
 
 ### Headless / CI
 
-Use a service-account token in CI or other headless environments:
+Use a service-account API key in CI or other headless environments:
 
 ```bash
-export NK_TOKEN=<TOKEN>
+export NK_TOKEN=<KEY_ID>.<SECRET>
 nk login
 ssh user@target
 ```
@@ -91,7 +91,7 @@ The command generates a key pair, requests a signed certificate, and saves the c
 | Flag         | Environment   | Purpose                                                                 |
 | ------------ | ------------- | ----------------------------------------------------------------------- |
 | `--api`      | `NK_API_URL`  | Backend URL                                                             |
-| `--token`    | `NK_TOKEN`    | Authentication token                                                    |
+| `--token`    | `NK_TOKEN`    | Service-account API key (`keyID.secret`); skips browser login for CI/CD |
 | `--key-type` | `NK_KEY_TYPE` | Local SSH key type; default `ed25519`, `tpm` keeps the key in a TPM 2.0 |
 | `--ttl`      | `NK_TTL`      | Requested SSH certificate lifetime                                      |
 | `--insecure` | `NK_INSECURE` | Disable TLS verification; testing only                                  |
