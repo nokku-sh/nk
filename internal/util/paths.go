@@ -23,7 +23,7 @@ func VerifyPaths() error {
 	if err != nil {
 		return err
 	}
-	for _, dir := range []string{ConfigPath(), sshPath, CertPath()} {
+	for _, dir := range []string{ConfigPath(), sshPath, SSHCertPath()} {
 		if err = os.MkdirAll(dir, 0o700); err != nil {
 			return fmt.Errorf("cannot create directory %s: %w", dir, err)
 		}
@@ -37,7 +37,8 @@ func ConfigPath() string {
 	return filepath.Join(xdg.ConfigHome, ConfigDirname)
 }
 
-func CertPath() string {
+// SSHCertPath returns the directory holding the signed SSH certificates.
+func SSHCertPath() string {
 	return filepath.Join(ConfigPath(), "certs")
 }
 
@@ -79,12 +80,14 @@ func SSHConfigFile() string {
 	return filepath.Join(ConfigPath(), "ssh_config")
 }
 
-func Certificate(caID string) string {
-	return filepath.Join(CertPath(), caID+"-cert.pub")
+// SSHCertificate returns the path of the signed SSH certificate for caID.
+func SSHCertificate(caID string) string {
+	return filepath.Join(SSHCertPath(), caID+"-cert.pub")
 }
 
-func Certificates() ([]string, error) {
-	return filepath.Glob(filepath.Join(CertPath(), "*-cert.pub"))
+// SSHCertificates returns all locally cached SSH certificate paths.
+func SSHCertificates() ([]string, error) {
+	return filepath.Glob(filepath.Join(SSHCertPath(), "*-cert.pub"))
 }
 
 // Helpers --------------------------------------------------------------------

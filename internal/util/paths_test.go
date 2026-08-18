@@ -29,9 +29,9 @@ func TestPathDerivation(t *testing.T) {
 		})
 	}
 
-	t.Run("CertPath", func(t *testing.T) {
-		if got := CertPath(); filepath.Dir(got) != configDir {
-			t.Errorf("CertPath() = %q, expected subdir of %q", got, configDir)
+	t.Run("SSHCertPath", func(t *testing.T) {
+		if got := SSHCertPath(); filepath.Dir(got) != configDir {
+			t.Errorf("SSHCertPath() = %q, expected subdir of %q", got, configDir)
 		}
 		if got := KnownHostsPath(); filepath.Dir(got) != configDir {
 			t.Errorf("KnownHostsPath() = %q, expected in %q", got, configDir)
@@ -61,11 +61,11 @@ func TestSSHPath(t *testing.T) {
 }
 
 func TestCertificateFilenames(t *testing.T) {
-	if got := filepath.Base(Certificate("ca-test")); got != "ca-test-cert.pub" {
-		t.Errorf("Certificate() base = %q, want %q", got, "ca-test-cert.pub")
+	if got := filepath.Base(SSHCertificate("ca-test")); got != "ca-test-cert.pub" {
+		t.Errorf("SSHCertificate() base = %q, want %q", got, "ca-test-cert.pub")
 	}
-	if got := filepath.Base(Certificate("ca-123")); got != "ca-123-cert.pub" {
-		t.Errorf("Certificate() base = %q, want %q", got, "ca-123-cert.pub")
+	if got := filepath.Base(SSHCertificate("ca-123")); got != "ca-123-cert.pub" {
+		t.Errorf("SSHCertificate() base = %q, want %q", got, "ca-123-cert.pub")
 	}
 }
 
