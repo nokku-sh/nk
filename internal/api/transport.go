@@ -49,13 +49,12 @@ func (c *Client) SetupClients() error {
 	}
 	c.httpc = httpc
 
-	interceptors := []connect.Interceptor{withRetry(), withIdentityHeaders(c.State)}
+	interceptors := []connect.Interceptor{withRetry(), withClientHeaders(c.State)}
 	if c.proofer != nil {
 		interceptors = append(interceptors, WithDPoP(c.State, c.proofer, c.State.APIURL))
 	}
 	opts := connect.WithInterceptors(interceptors...)
 
-	c.ac = nokkuv1connect.NewAuthServiceClient(httpc, c.State.APIURL, opts)
 	c.uc = nokkuv1connect.NewUserServiceClient(httpc, c.State.APIURL, opts)
 	c.wc = nokkuv1connect.NewWorkspaceServiceClient(httpc, c.State.APIURL, opts)
 	c.cc = nokkuv1connect.NewCertificateServiceClient(httpc, c.State.APIURL, opts)

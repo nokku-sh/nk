@@ -3,7 +3,6 @@ package api
 import (
 	"context"
 	"net/http"
-	"os"
 	"time"
 
 	"connectrpc.com/connect"
@@ -13,57 +12,45 @@ import (
 	"github.com/nokku-sh/nk/internal/state"
 )
 
-// withIdentityHeaders adds the client identity headers (version, hostname) to
-// every request. Authentication headers (bearer token + DPoP proof, or the
-// service-account API key) are added by the auth interceptors.
-func withIdentityHeaders(st *state.State) connect.Interceptor {
-	hostname, _ := os.Hostname()
-	return &identityInterceptor{st: st, hostname: hostname}
+// withClientHeaders sets a standard User-Agent and, for service accounts,
+// the bearer token on every request. Interactive sessions carry their bearer
+// token and DPoP proof via the dpopAuth interceptor instead.
+func withClientHeaders(st *state.State) connect.Interceptor {
+	return &clientHeadersInterceptor{st: st, userAgent: buildinfo.UserAgent("nk")}
 }
 
-type identityInterceptor struct {
-	st       *state.State
-	hostname string
+type clientHeadersInterceptor struct {
+	st        *state.State
+	userAgent string
 }
 
-func (a *identityInterceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
+func (a *clientHeadersInterceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
 	return func(ctx context.Context, req connect.AnyRequest) (connect.AnyResponse, error) {
-		a.setHeader(req.Header())
+		a.setHeaders(req.Header())
 		return next(ctx, req)
 	}
 }
 
-func (a *identityInterceptor) WrapStreamingClient(
+func (a *clientHeadersInterceptor) WrapStreamingClient(
 	next connect.StreamingClientFunc,
 ) connect.StreamingClientFunc {
 	return func(ctx context.Context, spec connect.Spec) connect.StreamingClientConn {
 		conn := next(ctx, spec)
-		a.setHeader(conn.RequestHeader())
+		a.setHeaders(conn.RequestHeader())
 		return conn
 	}
 }
 
-func (a *identityInterceptor) WrapStreamingHandler(
+func (a *clientHeadersInterceptor) WrapStreamingHandler(
 	next connect.StreamingHandlerFunc,
 ) connect.StreamingHandlerFunc {
 	return next
 }
 
-func (a *identityInterceptor) setHeader(header http.Header) {
+func (a *clientHeadersInterceptor) setHeaders(header http.Header) {
+	header.Set("User-Agent", a.userAgent)
 	if a.st.IsServiceAccount() {
 		header.Set("Authorization", "Bearer "+a.st.Token)
-	}
-	if buildinfo.Version != "" {
-		header.Set("Nokku-Client-Version", buildinfo.Version)
-	}
-	if buildinfo.Commit != "" {
-		header.Set("Nokku-Client-Commit", buildinfo.Commit)
-	}
-	if buildinfo.Date != "" {
-		header.Set("Nokku-Client-Builddate", buildinfo.Date)
-	}
-	if a.hostname != "" {
-		header.Set("Nokku-Client-Hostname", a.hostname)
 	}
 }
 

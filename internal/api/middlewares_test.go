@@ -7,6 +7,7 @@ import (
 	"crypto/rand"
 	"encoding/json"
 	"net/http"
+	"strings"
 	"testing"
 
 	"connectrpc.com/connect"
@@ -30,23 +31,51 @@ func newTestProofer(t *testing.T) *dpop.Proofer {
 	return p
 }
 
-func TestWithIdentityHeadersServiceAccount(t *testing.T) {
+func TestClientHeadersServiceAccount(t *testing.T) {
 	t.Parallel()
 	st := &state.State{Token: "key-123.secret"}
 
-	var got string
+	var authz, userAgent string
 	next := func(_ context.Context, req connect.AnyRequest) (connect.AnyResponse, error) {
-		got = req.Header().Get("Authorization")
+		authz = req.Header().Get("Authorization")
+		userAgent = req.Header().Get("User-Agent")
 		return connect.NewResponse(&nokkuv1.User{}), nil
 	}
 
-	wrapped := withIdentityHeaders(st).WrapUnary(next)
+	wrapped := withClientHeaders(st).WrapUnary(next)
 	req := connect.NewRequest(&nokkuv1.User{})
 	if _, err := wrapped(context.Background(), req); err != nil {
 		t.Fatalf("wrap: %v", err)
 	}
-	if got != "Bearer key-123.secret" {
-		t.Errorf("Authorization = %q, want Bearer key-123.secret", got)
+	if authz != "Bearer key-123.secret" {
+		t.Errorf("Authorization = %q, want Bearer key-123.secret", authz)
+	}
+	if userAgent == "" || !strings.HasPrefix(userAgent, "nk/") {
+		t.Errorf("User-Agent = %q, want a nk/<version> value", userAgent)
+	}
+}
+
+func TestClientHeadersInteractiveNoAuthorization(t *testing.T) {
+	t.Parallel()
+	st := &state.State{Config: state.Config{SessionToken: "sess-token"}}
+
+	var authz, userAgent string
+	next := func(_ context.Context, req connect.AnyRequest) (connect.AnyResponse, error) {
+		authz = req.Header().Get("Authorization")
+		userAgent = req.Header().Get("User-Agent")
+		return connect.NewResponse(&nokkuv1.User{}), nil
+	}
+
+	wrapped := withClientHeaders(st).WrapUnary(next)
+	req := connect.NewRequest(&nokkuv1.User{})
+	if _, err := wrapped(context.Background(), req); err != nil {
+		t.Fatalf("wrap: %v", err)
+	}
+	if authz != "" {
+		t.Errorf("Authorization = %q, want empty for interactive sessions", authz)
+	}
+	if userAgent == "" || !strings.HasPrefix(userAgent, "nk/") {
+		t.Errorf("User-Agent = %q, want a nk/<version> value", userAgent)
 	}
 }
 

@@ -43,20 +43,20 @@ func (c *Client) deviceLogin(ctx context.Context) error {
 		return fmt.Errorf("failed to fetch DPoP nonce: %w", err)
 	}
 
-	// 1. Request a device code.
+	// Request a device code.
 	deviceCode, userCode, verificationURI, err := c.beginDeviceAuth(ctx, nonce)
 	if err != nil {
 		return err
 	}
 
-	// 2. Open the browser (the code is embedded in the complete URI).
+	// Open the browser (the code is embedded in the complete URI).
 	if err = browser.OpenURL(verificationURI); err != nil {
 		fmt.Printf("\nOpen this URL to authenticate:\n%s\n", verificationURI)
 	} else {
 		fmt.Printf("\nWaiting for approval... (code: %s)\n", userCode)
 	}
 
-	// 3. Poll for the session token.
+	// Poll for the session token.
 	token, expiresIn, err := c.pollDeviceToken(ctx, deviceCode, nonce)
 	if err != nil {
 		return err

@@ -11,7 +11,6 @@ import (
 	"connectrpc.com/grpchealth"
 	"github.com/mizuchilabs/kagi/dpop"
 	"github.com/urfave/cli/v3"
-	"golang.org/x/sync/errgroup"
 	"google.golang.org/protobuf/types/known/durationpb"
 
 	nokkuv1 "github.com/nokku-sh/nk/internal/gen/nokku/v1"
@@ -22,76 +21,90 @@ import (
 	"github.com/nokku-sh/nk/internal/util"
 )
 
+// certRenewWindow is how close to expiry a cached certificate may get before
+// it is re-signed. Signing while the backend is still reachable keeps the
+// cert fresh for offline use later.
+const certRenewWindow = 15 * time.Minute
+
 type Client struct {
 	State   *state.State
-	signer  tpm.Signer
 	proofer *dpop.Proofer
 	httpc   *http.Client
 
-	ac nokkuv1connect.AuthServiceClient
 	uc nokkuv1connect.UserServiceClient
 	wc nokkuv1connect.WorkspaceServiceClient
 	cc nokkuv1connect.CertificateServiceClient
 	tc nokkuv1connect.TargetServiceClient
 }
 
-// New creates a client, probes the backend, and either does a full online
-// refresh or falls back to cached data when offline.
-func New(ctx context.Context, cmd *cli.Command) (*Client, error) {
-	s := state.New()
-	s.APIURL = cmd.String("api")
-	s.KeyType = cmd.String("key-type")
-	s.TTL = cmd.Duration("ttl")
-	s.Insecure = cmd.Bool("insecure")
-	if cmd.IsSet("token") {
-		s.Token = cmd.String("token")
+// Connect builds a client from the command's resolved state and refreshes
+// it, falling back to cached data when the backend is unreachable.
+func Connect(ctx context.Context, cmd *cli.Command) (*Client, error) {
+	c, err := New(state.FromCommand(cmd), cmd.Bool("require-tpm"))
+	if err != nil {
+		return nil, err
 	}
+	if err = c.Refresh(ctx); err != nil {
+		return nil, err
+	}
+	return c, nil
+}
 
+// New builds a client for s: it loads the machine signing identity, ensures
+// the SSH key exists, and constructs the connectrpc clients. It performs no
+// network I/O; call Refresh to authenticate and sync.
+func New(s *state.State, requireTPM bool) (*Client, error) {
 	c := &Client{State: s}
 
 	// Headless (service-account) mode has no signing identity: the API key
 	// is a plain bearer token with no DPoP binding. Interactive mode creates
 	// the machine key that binds the device session.
 	if !s.IsServiceAccount() {
-		signer, signerErr := tpm.New(util.ConfigPath(), cmd.Bool("require-tpm"))
-		if signerErr != nil {
-			return nil, signerErr
+		signer, err := tpm.New(util.ConfigPath(), requireTPM)
+		if err != nil {
+			return nil, err
 		}
-		c.signer = signer
-		c.proofer, signerErr = dpop.NewProofer(signer, dpop.ProoferOptions{})
-		if signerErr != nil {
-			return nil, signerErr
+		c.proofer, err = dpop.NewProofer(signer, dpop.ProoferOptions{})
+		if err != nil {
+			return nil, err
 		}
 	}
 
-	if err := ssh.SetupKey(s.KeyType); err != nil {
+	if err := ssh.SetupKey(requireTPM); err != nil {
 		return nil, err
 	}
 	if err := c.SetupClients(); err != nil {
 		return nil, err
 	}
-
-	if Healthy(ctx, s) {
-		if err := c.verifyOnline(ctx); err != nil {
-			if !s.HasCachedData() {
-				return nil, err
-			}
-			// A refresh may have partially mutated the in-memory state, but
-			// nothing is persisted until it succeeds. Reload the last-good
-			// snapshot from disk so the fallback serves a consistent view.
-			if loadErr := s.Cache.Load(); loadErr != nil {
-				slog.Warn("failed to reload cache", "err", loadErr)
-			}
-			slog.Warn("online refresh failed, continuing with cached data", "err", err)
-		}
-	} else if !s.HasCachedData() {
-		return nil, fmt.Errorf("backend unreachable and no cached data available")
-	}
-
 	return c, nil
 }
 
-// Healthy returns true if the backend is reachable.
+// Refresh performs a full online refresh, or falls back to cached data when
+// the backend is unreachable or the refresh fails.
+func (c *Client) Refresh(ctx context.Context) error {
+	if !Healthy(ctx, c.State) {
+		if !c.State.HasCachedData() {
+			return fmt.Errorf("backend unreachable and no cached data available")
+		}
+		return nil
+	}
+
+	if err := c.refresh(ctx); err != nil {
+		if !c.State.HasCachedData() {
+			return err
+		}
+		// A refresh may have partially mutated in-memory state, but nothing
+		// is persisted until it succeeds. Reload the last-good snapshot from
+		// disk so the fallback serves a consistent view.
+		if loadErr := c.State.Cache.Load(); loadErr != nil {
+			slog.Warn("failed to reload cache", "err", loadErr)
+		}
+		slog.Warn("online refresh failed, continuing with cached data", "err", err)
+	}
+	return nil
+}
+
+// Healthy reports whether the backend is reachable.
 func Healthy(ctx context.Context, st *state.State) bool {
 	httpc, err := newHTTPClient(st.Insecure)
 	if err != nil {
@@ -106,8 +119,9 @@ func Healthy(ctx context.Context, st *state.State) bool {
 	return err == nil && res.Status == grpchealth.StatusServing
 }
 
-// verifyOnline does a full online refresh: login, sync, pre-sign, config.
-func (c *Client) verifyOnline(ctx context.Context) error {
+// refresh performs the full online refresh: authenticate, sync, commit the
+// snapshot, and regenerate the SSH configuration.
+func (c *Client) refresh(ctx context.Context) error {
 	if err := c.login(ctx); err != nil {
 		return err
 	}
@@ -121,54 +135,31 @@ func (c *Client) verifyOnline(ctx context.Context) error {
 		return err
 	}
 
-	c.preSignCerts(ctx)
-
 	if err := ssh.GenerateSSHConfig(c.State); err != nil {
 		return err
 	}
-	if err := ssh.GenerateKnownHosts(c.State); err != nil {
-		return err
-	}
-	return nil
+	return ssh.GenerateKnownHosts(c.State)
 }
 
-// preSignCerts signs certificates for all known CAs before SSH needs them.
-func (c *Client) preSignCerts(ctx context.Context) {
-	g, ctx := errgroup.WithContext(ctx)
-	g.SetLimit(5)
-	for _, ca := range c.State.CAs {
-		g.Go(func() error {
-			if err := c.Sign(ctx, ca); err != nil {
-				slog.Warn("pre-sign cert failed", "ca", ca.Name, "err", err)
-			}
-			return nil
-		})
-	}
-	_ = g.Wait()
-}
-
-// SignByTarget resolves a target by name and signs its certificate.
-func (c *Client) SignByTarget(ctx context.Context, targetName string) error {
-	targets := c.State.GetTargetsByName(targetName)
-	if len(targets) == 0 {
-		return fmt.Errorf("target %q not found", targetName)
-	}
-	if len(targets) > 1 {
-		slog.Warn("target name is ambiguous, using first match",
-			"target", targetName, "matches", len(targets))
-	}
-	ca := c.State.GetCAByID(targets[0].CAID)
+// SignTarget signs the SSH certificate for a target's CA.
+func (c *Client) SignTarget(ctx context.Context, target *state.Target) error {
+	ca := c.State.GetCAByID(target.CAID)
 	if ca == nil {
-		return fmt.Errorf("CA %q not found", targets[0].CAID)
+		return fmt.Errorf("CA %q not found", target.CAID)
 	}
-
-	return c.Sign(ctx, *ca)
+	return c.SignSSHCertificate(ctx, *ca)
 }
 
-// Sign fetches a fresh certificate for ca and writes it to disk.
-func (c *Client) Sign(ctx context.Context, ca state.CA) error {
-	if err := ssh.VerifyCertificateByID(ca.ID, ca.PublicKey); err == nil {
+// SignSSHCertificate fetches a fresh SSH certificate for ca and writes it
+// to disk. A valid (still-fresh) certificate is a no-op, so the proxy path
+// stays offline-friendly. Only when re-signing is necessary does it ensure a
+// session (device login if needed) and contact the backend.
+func (c *Client) SignSSHCertificate(ctx context.Context, ca state.CA) error {
+	if ssh.CertificateFresh(ca.ID, ca.PublicKey, certRenewWindow) {
 		return nil // already signed, valid and under the current CA
+	}
+	if err := c.login(ctx); err != nil {
+		return err
 	}
 
 	pubKey, err := ssh.GetPubKey()
@@ -198,7 +189,7 @@ func (c *Client) Sign(ctx context.Context, ca state.CA) error {
 		return err
 	}
 
-	return util.WriteFile(util.Certificate(res.GetCaId()), signedCert, 0o600)
+	return util.WriteFile(util.SSHCertificate(res.GetCaId()), signedCert, 0o600)
 }
 
 // ListX509CAs returns all active X.509 CAs across the subject's

@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"net/http"
 	"strings"
 	"sync"
@@ -92,6 +93,7 @@ func (a *dpopAuth) sign(header http.Header, procedure string) {
 		a.currentNonce(),
 	)
 	if err != nil {
+		slog.Warn("failed to sign DPoP proof", "err", err)
 		return
 	}
 	header.Set("DPoP", proof)
