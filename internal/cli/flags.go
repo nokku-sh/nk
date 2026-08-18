@@ -1,4 +1,5 @@
-// Package cli assembles the nk command tree.
+// Package cli defines the nk command tree and its flags. The root command
+// (name, version, global Before/Action hooks) is assembled in package main.
 package cli
 
 import (
@@ -6,53 +7,16 @@ import (
 	"fmt"
 	"slices"
 
-	"github.com/mizuchilabs/kata/buildinfo"
-	"github.com/mizuchilabs/kata/logx"
 	altsrc "github.com/urfave/cli-altsrc/v3"
 	altsrcjson "github.com/urfave/cli-altsrc/v3/json"
 	"github.com/urfave/cli/v3"
 
 	"github.com/nokku-sh/nk/internal/ssh"
-	"github.com/nokku-sh/nk/internal/state"
 	"github.com/nokku-sh/nk/internal/util"
 )
 
-// Run executes the nk command tree with the given context and arguments.
-func Run(ctx context.Context, args []string) error {
-	return app().Run(ctx, args)
-}
-
-// app builds the root command with all flags and subcommands.
-func app() *cli.Command {
-	return &cli.Command{
-		EnableShellCompletion: true,
-		Suggest:               true,
-		Name:                  "nk",
-		Usage:                 "secure access, simplified",
-		Version:               buildinfo.String(),
-		Before: func(ctx context.Context, cmd *cli.Command) (context.Context, error) {
-			logx.Init(cmd.Bool("debug"))
-			if err := util.VerifyPaths(); err != nil {
-				return nil, err
-			}
-			return ctx, nil
-		},
-		Action: func(_ context.Context, cmd *cli.Command) error {
-			s := state.New()
-			s.APIURL = cmd.String("api")
-			s.KeyType = cmd.String("key-type")
-			if cmd.IsSet("token") {
-				s.Token = cmd.String("token")
-			}
-			return s.Save()
-		},
-		Commands: commands(),
-		Flags:    flags(),
-	}
-}
-
-// flags returns the global flags shared by every command.
-func flags() []cli.Flag {
+// Flags returns the global flags shared by every command.
+func Flags() []cli.Flag {
 	return []cli.Flag{
 		&cli.StringFlag{
 			Name:  "api",

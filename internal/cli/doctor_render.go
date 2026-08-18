@@ -1,4 +1,4 @@
-package doctor
+package cli
 
 import (
 	"encoding/json"
@@ -32,9 +32,9 @@ func color(status Status) func(string) string {
 	}
 }
 
-// Print writes the report to w as human-readable text (or JSON when jsonOut
-// is set).
-func Print(w io.Writer, r Report, jsonOut bool) error {
+// printReport writes the report to w as human-readable text (or JSON when
+// jsonOut is set).
+func printReport(w io.Writer, r Report, jsonOut bool) error {
 	if jsonOut {
 		return printJSON(w, r)
 	}

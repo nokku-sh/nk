@@ -13,7 +13,6 @@ import (
 
 	"github.com/nokku-sh/nk/internal/api"
 	"github.com/nokku-sh/nk/internal/cert"
-	"github.com/nokku-sh/nk/internal/doctor"
 	nokkuv1 "github.com/nokku-sh/nk/internal/gen/nokku/v1"
 	"github.com/nokku-sh/nk/internal/ssh"
 	"github.com/nokku-sh/nk/internal/state"
@@ -25,8 +24,8 @@ const (
 	jsonFlagUse = "Output machine-readable JSON"
 )
 
-// commands returns every subcommand of the nk CLI.
-func commands() []*cli.Command {
+// Commands returns every subcommand of the nk CLI.
+func Commands() []*cli.Command {
 	return []*cli.Command{
 		proxyCommand(),
 		doctorCommand(),
@@ -90,7 +89,7 @@ func doctorCommand() *cli.Command {
 			},
 		},
 		Action: func(ctx context.Context, cmd *cli.Command) error {
-			opts := doctor.Options{
+			opts := doctorOptions{
 				APIURL:     cmd.String("api"),
 				KeyType:    cmd.String("key-type"),
 				RequireTPM: cmd.Bool("require-tpm"),
@@ -102,8 +101,8 @@ func doctorCommand() *cli.Command {
 				opts.Token = cmd.String("token")
 			}
 
-			report := doctor.Run(ctx, opts)
-			_ = doctor.Print(os.Stdout, report, cmd.Bool(jsonFlag))
+			report := runDoctor(ctx, opts)
+			_ = printReport(os.Stdout, report, cmd.Bool(jsonFlag))
 			if code := report.ExitCode(); code != 0 {
 				return cli.Exit("", code)
 			}

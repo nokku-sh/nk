@@ -1,6 +1,7 @@
-// Package doctor implements the `nk doctor` diagnostics command,
-// producing pass/fail checks as text or JSON for CI.
-package doctor
+package cli
+
+// The `nk doctor` diagnostics command produces pass/fail checks as text
+// or JSON for CI.
 
 import (
 	"context"
@@ -45,9 +46,9 @@ type Check struct {
 	Detail  string `json:"detail,omitempty"`
 }
 
-// Options carries the resolved configuration for a doctor run, as read from
-// the CLI flags (which already fold in env vars and the config file).
-type Options struct {
+// doctorOptions carries the resolved configuration for a doctor run, as read
+// from the CLI flags (which already fold in env vars and the config file).
+type doctorOptions struct {
 	APIURL     string
 	KeyType    string
 	Token      string
@@ -63,9 +64,9 @@ type Report struct {
 	Checks []Check  `json:"checks"`
 }
 
-// Run collects all checks without triggering a login or mutating state
-// (except when Options.Fix is set, which explicitly asks for repairs).
-func Run(ctx context.Context, opts Options) Report {
+// runDoctor collects all checks without triggering a login or mutating state
+// (except when opts.Fix is set, which explicitly asks for repairs).
+func runDoctor(ctx context.Context, opts doctorOptions) Report {
 	var rep Report
 	add := func(section, name string, status Status, detail string) {
 		rep.Checks = append(rep.Checks, Check{
@@ -118,7 +119,7 @@ func hostname() string {
 	return "unknown"
 }
 
-func loadState(opts Options) *state.State {
+func loadState(opts doctorOptions) *state.State {
 	var cfg state.Config
 	_ = cfg.Load()
 	var cache state.Cache
@@ -135,7 +136,7 @@ func loadState(opts Options) *state.State {
 // Returns errNotLoggedIn when none exists yet. Headless (service-account)
 // mode has no signing identity; it returns errNotLoggedIn too, which
 // checkIdentity reports as "not logged in" for headless runs.
-func openSigner(opts Options) (tpm.Signer, error) {
+func openSigner(opts doctorOptions) (tpm.Signer, error) {
 	if opts.Token != "" {
 		return nil, errNotLoggedIn
 	}
@@ -177,7 +178,7 @@ func checkSystem(ctx context.Context, add func(string, string, Status, string)) 
 	}
 }
 
-func checkConfig(add func(string, string, Status, string), opts Options) {
+func checkConfig(add func(string, string, Status, string), opts doctorOptions) {
 	if !util.FileExists(util.ConfigFile()) {
 		add("Configuration", "config.json", StatusInfo, "no config yet (run nk login)")
 	} else {
@@ -202,7 +203,7 @@ func checkConfig(add func(string, string, Status, string), opts Options) {
 	checkFilePerms(add, "private key", util.KeyFile(), 0o600)
 }
 
-func effectiveConfig(opts Options) string {
+func effectiveConfig(opts doctorOptions) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "key-type=%s", opts.KeyType)
 	if opts.TTL > 0 {
