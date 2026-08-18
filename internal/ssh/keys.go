@@ -9,14 +9,12 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"encoding/pem"
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 
 	"golang.org/x/crypto/ssh"
-	"golang.org/x/term"
 
 	"github.com/nokku-sh/nk/internal/util"
 )
@@ -172,24 +170,7 @@ func detectKeyType(path string) (KeyType, error) {
 
 	key, err := ssh.ParseRawPrivateKey(data)
 	if err != nil {
-		// Check if the error is because the key is encrypted
-		if errors.As(err, new(*ssh.PassphraseMissingError)) {
-			fmt.Printf("Enter passphrase for %s: ", path)
-
-			bytePassword, readErr := term.ReadPassword(int(os.Stdin.Fd()))
-			fmt.Println() // print a newline after pressing Enter
-			if readErr != nil {
-				return "", fmt.Errorf("failed to read passphrase: %w", readErr)
-			}
-
-			// Try parsing again with the provided passphrase
-			key, err = ssh.ParseRawPrivateKeyWithPassphrase(data, bytePassword)
-			if err != nil {
-				return "", fmt.Errorf("incorrect passphrase or invalid key: %w", err)
-			}
-		} else {
-			return "", err // It was a different error (e.g., malformed key)
-		}
+		return "", err
 	}
 
 	switch k := key.(type) {
