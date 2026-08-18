@@ -14,19 +14,27 @@ import (
 	"github.com/nokku-sh/nk/internal/util"
 )
 
-// VerifyCertificateByID reports whether the cached cert for caID is
-// present, valid, and signed by the CA's current key. Certs from a
-// retired CA key must be re-signed even while valid.
-func VerifyCertificateByID(caID, caPublicKey string) error {
-	data, err := os.ReadFile(util.Certificate(caID))
+// CertificateFresh reports whether the cached cert for caID is present,
+// valid, signed by the CA's current key, and remains valid for at least
+// margin longer. A cert close to expiry is treated as stale so it is
+// re-signed while the backend is still reachable.
+func CertificateFresh(caID, caPublicKey string, margin time.Duration) bool {
+	data, err := os.ReadFile(util.SSHCertificate(caID))
 	if err != nil {
-		return err
+		return false
 	}
 	caPub, _, _, _, err := ssh.ParseAuthorizedKey([]byte(caPublicKey))
 	if err != nil {
-		return fmt.Errorf("parse CA public key: %w", err)
+		return false
 	}
-	return VerifyCertificateForCA(data, caPub)
+	if err = VerifyCertificateForCA(data, caPub); err != nil {
+		return false
+	}
+	_, validBefore, err := CertificateValidity(data)
+	if err != nil {
+		return false
+	}
+	return time.Until(validBefore) > margin
 }
 
 // VerifyCertificateForCA validates data's validity window and that it was
@@ -77,7 +85,7 @@ func VerifyCertificate(data []byte) error {
 
 // CleanupCerts removes certificate files for CA IDs no longer in the provided set.
 func CleanupCerts(cas []state.CA) error {
-	existingFiles, err := util.Certificates()
+	existingFiles, err := util.SSHCertificates()
 	if err != nil {
 		return fmt.Errorf("failed to get local certificates: %w", err)
 	}
@@ -104,7 +112,7 @@ func CleanupCerts(cas []state.CA) error {
 // removeCerts deletes all locally cached SSH certificates, forcing the CA to
 // re-sign them for the current key.
 func removeCerts() error {
-	certs, err := util.Certificates()
+	certs, err := util.SSHCertificates()
 	if err != nil {
 		return fmt.Errorf("failed to get local certificates: %w", err)
 	}

@@ -123,10 +123,10 @@ func TestCleanupCerts_NoMatches(t *testing.T) {
 	}
 }
 
-func TestVerifyCertificateByID(t *testing.T) {
+func TestCertificateFresh(t *testing.T) {
 	setupSSHDir(t)
 
-	certDir := util.CertPath()
+	certDir := util.SSHCertPath()
 	if err := os.MkdirAll(certDir, 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -141,13 +141,13 @@ func TestVerifyCertificateByID(t *testing.T) {
 	}
 	caPub := ssh.MarshalAuthorizedKey(signer.PublicKey())
 
-	signCert := func(s ssh.Signer) []byte {
+	signCert := func(s ssh.Signer, validFor time.Duration) []byte {
 		t.Helper()
 		c := &ssh.Certificate{
 			Key:         signer.PublicKey(),
 			CertType:    ssh.UserCert,
 			ValidAfter:  uint64(time.Now().Add(-time.Hour).Unix()),
-			ValidBefore: uint64(time.Now().Add(time.Hour).Unix()),
+			ValidBefore: uint64(time.Now().Add(validFor).Unix()),
 		}
 		if signErr := c.SignCert(rand.Reader, s); signErr != nil {
 			t.Fatal(signErr)
@@ -155,29 +155,41 @@ func TestVerifyCertificateByID(t *testing.T) {
 		return ssh.MarshalAuthorizedKey(c)
 	}
 
+	const margin = 15 * time.Minute
+
 	t.Run("file not found", func(t *testing.T) {
-		if err := VerifyCertificateByID("nonexistent-ca", string(caPub)); err == nil {
-			t.Error("expected error for missing certificate file")
+		if CertificateFresh("nonexistent-ca", string(caPub), margin) {
+			t.Error("expected false for missing certificate file")
 		}
 	})
 
 	t.Run("invalid cert file", func(t *testing.T) {
-		path := util.Certificate("bad-ca")
+		path := util.SSHCertificate("bad-ca")
 		if writeErr := os.WriteFile(path, []byte("not-a-cert"), 0o600); writeErr != nil {
 			t.Fatal(writeErr)
 		}
-		if err := VerifyCertificateByID("bad-ca", string(caPub)); err == nil {
-			t.Error("expected error for invalid certificate file")
+		if CertificateFresh("bad-ca", string(caPub), margin) {
+			t.Error("expected false for invalid certificate file")
 		}
 	})
 
-	t.Run("cert signed by current CA is accepted", func(t *testing.T) {
-		path := util.Certificate("good-ca")
-		if writeErr := os.WriteFile(path, signCert(signer), 0o600); writeErr != nil {
+	t.Run("cert signed by current CA is fresh", func(t *testing.T) {
+		path := util.SSHCertificate("good-ca")
+		if writeErr := os.WriteFile(path, signCert(signer, time.Hour), 0o600); writeErr != nil {
 			t.Fatal(writeErr)
 		}
-		if err := VerifyCertificateByID("good-ca", string(caPub)); err != nil {
-			t.Errorf("expected no error for cert signed by current CA, got %v", err)
+		if !CertificateFresh("good-ca", string(caPub), margin) {
+			t.Error("expected true for cert signed by current CA")
+		}
+	})
+
+	t.Run("cert within the renewal window is stale", func(t *testing.T) {
+		path := util.SSHCertificate("soon-ca")
+		if writeErr := os.WriteFile(path, signCert(signer, 5*time.Minute), 0o600); writeErr != nil {
+			t.Fatal(writeErr)
+		}
+		if CertificateFresh("soon-ca", string(caPub), margin) {
+			t.Error("expected false for cert expiring within the margin")
 		}
 	})
 
@@ -190,12 +202,16 @@ func TestVerifyCertificateByID(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		path := util.Certificate("rolled-ca")
-		if writeErr := os.WriteFile(path, signCert(otherSigner), 0o600); writeErr != nil {
+		path := util.SSHCertificate("rolled-ca")
+		if writeErr := os.WriteFile(
+			path,
+			signCert(otherSigner, time.Hour),
+			0o600,
+		); writeErr != nil {
 			t.Fatal(writeErr)
 		}
-		if verr := VerifyCertificateByID("rolled-ca", string(caPub)); verr == nil {
-			t.Error("expected error for cert signed by a different CA")
+		if CertificateFresh("rolled-ca", string(caPub), margin) {
+			t.Error("expected false for cert signed by a different CA")
 		}
 	})
 }
