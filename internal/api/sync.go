@@ -59,7 +59,9 @@ func (c *Client) syncWorkspaces(ctx context.Context) error {
 	return nil
 }
 
-// syncAccess fetches targets and CAs from all workspaces.
+// syncAccess fetches targets and CAs from all workspaces. Results are
+// collected into locals and assigned atomically: a failure partway through
+// leaves the previous snapshot untouched.
 func (c *Client) syncAccess(ctx context.Context) error {
 	if len(c.State.Workspaces) == 0 {
 		c.State.Targets = []state.Target{}
@@ -84,7 +86,13 @@ func (c *Client) syncAccess(ctx context.Context) error {
 		allCAs = append(allCAs, state.MapCAs(res.GetCertificateAuthorities())...)
 	}
 
+	// Cert files reference CA IDs; prune the removed ones before the
+	// snapshot is committed so the two stay consistent.
+	if err := ssh.CleanupCerts(allCAs); err != nil {
+		return err
+	}
+
 	c.State.Targets = allTargets
 	c.State.CAs = allCAs
-	return ssh.CleanupCerts(c.State.CAs)
+	return nil
 }

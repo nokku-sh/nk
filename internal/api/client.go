@@ -58,7 +58,7 @@ func New(ctx context.Context, cmd *cli.Command) (*Client, error) {
 			return nil, signerErr
 		}
 		c.signer = signer
-		c.proofer, signerErr = dpop.NewProofer(signer.CryptoSigner(), dpop.ProoferOptions{})
+		c.proofer, signerErr = dpop.NewProofer(signer, dpop.ProoferOptions{})
 		if signerErr != nil {
 			return nil, signerErr
 		}
@@ -73,11 +73,16 @@ func New(ctx context.Context, cmd *cli.Command) (*Client, error) {
 
 	if Healthy(ctx, s) {
 		if err := c.verifyOnline(ctx); err != nil {
-			c.State.Clear()
-			return nil, err
-		}
-		if err := c.State.Save(); err != nil {
-			return nil, err
+			if !s.HasCachedData() {
+				return nil, err
+			}
+			// A refresh may have partially mutated the in-memory state, but
+			// nothing is persisted until it succeeds. Reload the last-good
+			// snapshot from disk so the fallback serves a consistent view.
+			if loadErr := s.Cache.Load(); loadErr != nil {
+				slog.Warn("failed to reload cache", "err", loadErr)
+			}
+			slog.Warn("online refresh failed, continuing with cached data", "err", err)
 		}
 	} else if !s.HasCachedData() {
 		return nil, fmt.Errorf("backend unreachable and no cached data available")
@@ -109,6 +114,13 @@ func (c *Client) verifyOnline(ctx context.Context) error {
 	if err := c.syncAll(ctx); err != nil {
 		return err
 	}
+	// Commit the fresh snapshot before deriving artifacts from it. Only a
+	// fully successful sync reaches this point, so the on-disk cache is
+	// never left half-updated.
+	if err := c.State.Save(); err != nil {
+		return err
+	}
+
 	c.preSignCerts(ctx)
 
 	if err := ssh.GenerateSSHConfig(c.State); err != nil {
@@ -178,11 +190,6 @@ func (c *Client) Sign(ctx context.Context, ca state.CA) error {
 
 	res, err := c.cc.SignSSHCertificate(ctx, req)
 	if err != nil {
-		// If the API is unreachable but a cert file exists on disk,
-		// use the existing one rather than failing entirely.
-		if util.FileExists(util.Certificate(ca.ID)) {
-			return nil
-		}
 		return err
 	}
 
