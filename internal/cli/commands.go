@@ -2,18 +2,13 @@ package cli
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/urfave/cli/v3"
 
 	"github.com/nokku-sh/nk/internal/api"
-	"github.com/nokku-sh/nk/internal/cert"
-	nokkuv1 "github.com/nokku-sh/nk/internal/gen/nokku/v1"
 	"github.com/nokku-sh/nk/internal/ssh"
 	"github.com/nokku-sh/nk/internal/state"
 	"github.com/nokku-sh/nk/internal/util"
@@ -30,7 +25,7 @@ func Commands() []*cli.Command {
 		proxyCommand(),
 		doctorCommand(),
 		listCommand(),
-		certCommand(),
+		pkiCommand(),
 		loginCommand(),
 		logoutCommand(),
 	}
@@ -46,30 +41,37 @@ func proxyCommand() *cli.Command {
 			if host == "" {
 				return fmt.Errorf("host name is required")
 			}
-
 			port := cmd.Args().Get(1)
 			if port == "" {
 				port = "22"
 			}
 
-			client, err := api.New(ctx, cmd)
+			// The proxy path is deliberately lightweight: it loads cached
+			// state (no sync), resolves the target, and only signs a
+			// certificate when it is missing or close to expiry.
+			s := state.FromCommand(cmd)
+			client, err := api.New(s, cmd.Bool("require-tpm"))
 			if err != nil {
 				return err
 			}
 
-			if err = client.SignByTarget(ctx, host); err != nil {
+			target, err := ssh.ResolveTarget(s, host)
+			if err != nil {
+				return err
+			}
+			if err = client.SignTarget(ctx, target); err != nil {
 				return err
 			}
 
-			// Serve the TPM key over the agent socket before ssh
-			// starts the authentication phase.
+			// Serve the TPM key over the agent socket before ssh starts the
+			// authentication phase.
 			stopAgent, err := ssh.ServeAgent(ctx)
 			if err != nil {
 				return err
 			}
 			defer func() { _ = stopAgent() }()
 
-			return ssh.Proxy(ctx, client.State, host, port)
+			return ssh.Proxy(ctx, target, port)
 		},
 	}
 }
@@ -79,29 +81,19 @@ func doctorCommand() *cli.Command {
 		Name:  "doctor",
 		Usage: "Check local system setup and configuration",
 		Flags: []cli.Flag{
-			&cli.BoolFlag{
-				Name:  jsonFlag,
-				Usage: jsonFlagUse,
-			},
+			&cli.BoolFlag{Name: jsonFlag, Usage: jsonFlagUse},
 			&cli.BoolFlag{
 				Name:  "fix",
 				Usage: "Repair common issues (ssh config, permissions)",
 			},
 		},
 		Action: func(ctx context.Context, cmd *cli.Command) error {
-			opts := doctorOptions{
-				APIURL:     cmd.String("api"),
-				KeyType:    cmd.String("key-type"),
-				RequireTPM: cmd.Bool("require-tpm"),
-				Insecure:   cmd.Bool("insecure"),
-				TTL:        cmd.Duration("ttl"),
-				Fix:        cmd.Bool("fix"),
-			}
-			if cmd.IsSet("token") {
-				opts.Token = cmd.String("token")
-			}
-
-			report := runDoctor(ctx, opts)
+			report := runDoctor(
+				ctx,
+				state.FromCommand(cmd),
+				cmd.Bool("require-tpm"),
+				cmd.Bool("fix"),
+			)
 			_ = printReport(os.Stdout, report, cmd.Bool(jsonFlag))
 			if code := report.ExitCode(); code != 0 {
 				return cli.Exit("", code)
@@ -117,13 +109,10 @@ func listCommand() *cli.Command {
 		Aliases: []string{"ls"},
 		Usage:   "List available machines across all workspaces",
 		Flags: []cli.Flag{
-			&cli.BoolFlag{
-				Name:  jsonFlag,
-				Usage: jsonFlagUse,
-			},
+			&cli.BoolFlag{Name: jsonFlag, Usage: jsonFlagUse},
 		},
 		Action: func(ctx context.Context, cmd *cli.Command) error {
-			client, err := api.New(ctx, cmd)
+			client, err := api.Connect(ctx, cmd)
 			if err != nil {
 				return err
 			}
@@ -139,170 +128,15 @@ func listCommand() *cli.Command {
 
 			fmt.Printf("Targets (%d):\n", len(s.Targets))
 			for _, t := range s.Targets {
-				users := make([]string, 0, len(t.Principals))
-				for _, p := range t.Principals {
-					users = append(users, p.Username)
-				}
+				users := targetUsers(t)
 				userStr := "none"
 				if len(users) > 0 {
 					userStr = strings.Join(users, ", ")
 				}
-
 				fmt.Printf("-  %-20s  [Users: %s]\n", t.Name, userStr)
 			}
 			fmt.Println("Connect using: ssh <target-name> or ssh <user>@<target-name>")
 			return nil
-		},
-	}
-}
-
-//nolint:gocognit,funlen
-func certCommand() *cli.Command {
-	return &cli.Command{
-		Name:  "cert",
-		Usage: "Manage X.509 certificates (mTLS, databases, Kubernetes)",
-		Commands: []*cli.Command{
-			{
-				Name:  "list",
-				Usage: "List available X.509 certificate authorities",
-				Action: func(ctx context.Context, cmd *cli.Command) error {
-					client, err := api.New(ctx, cmd)
-					if err != nil {
-						return err
-					}
-
-					cas, err := client.ListX509CAs(ctx)
-					if err != nil {
-						return err
-					}
-					if len(cas) == 0 {
-						fmt.Println("No X.509 certificate authorities available.")
-						return nil
-					}
-
-					fmt.Printf("X.509 Certificate Authorities (%d):\n", len(cas))
-					for _, ca := range cas {
-						fmt.Printf(
-							"-  %-24s  %s  (expires %s)\n",
-							ca.GetName(),
-							ca.GetId(),
-							ca.GetNotAfter().AsTime().Format(time.DateOnly),
-						)
-					}
-					return nil
-				},
-			},
-			{
-				Name:      "issue",
-				Usage:     "Issue an X.509 certificate",
-				ArgsUsage: "<common-name>",
-				Flags: []cli.Flag{
-					&cli.StringSliceFlag{
-						Name:  "san",
-						Usage: "Subject alternative name (dns:name, ip:addr, email:addr, uri:uri, or bare value to auto-detect)",
-					},
-					&cli.StringFlag{
-						Name:  "usage",
-						Usage: "Certificate usage: client, server, or both",
-						Value: "client",
-					},
-					&cli.StringFlag{
-						Name:  "ca",
-						Usage: "CA ID or name (optional when only one X.509 CA exists)",
-					},
-					&cli.StringFlag{
-						Name:    "output",
-						Aliases: []string{"o"},
-						Usage:   "Output directory",
-						Value:   ".",
-					},
-				},
-				Action: func(ctx context.Context, cmd *cli.Command) error {
-					cn := cmd.Args().Get(0)
-					if cn == "" {
-						return fmt.Errorf("common name is required")
-					}
-					if strings.ContainsAny(cn, `/\`) {
-						return fmt.Errorf("common name must not contain path separators")
-					}
-
-					var usage nokkuv1.SignX509CertificateRequest_X509Usage
-					switch strings.ToLower(cmd.String("usage")) {
-					case "client":
-						usage = nokkuv1.SignX509CertificateRequest_X509_USAGE_CLIENT_AUTH
-					case "server":
-						usage = nokkuv1.SignX509CertificateRequest_X509_USAGE_SERVER_AUTH
-					case "both":
-						usage = nokkuv1.SignX509CertificateRequest_X509_USAGE_CLIENT_AND_SERVER
-					default:
-						return fmt.Errorf(
-							"invalid usage %q (expected client, server, or both)",
-							cmd.String("usage"),
-						)
-					}
-
-					client, err := api.New(ctx, cmd)
-					if err != nil {
-						return err
-					}
-					cas, err := client.ListX509CAs(ctx)
-					if err != nil {
-						return err
-					}
-					ca, err := cert.MatchX509CA(cas, cmd.String("ca"))
-					if err != nil {
-						return err
-					}
-
-					priv, err := cert.GenerateKey(cmd.String("key-type"))
-					if err != nil {
-						return err
-					}
-					csrPEM, err := cert.NewCSR(priv, cn, cmd.StringSlice("san"))
-					if err != nil {
-						return err
-					}
-
-					res, err := client.SignX509Certificate(
-						ctx,
-						ca,
-						csrPEM,
-						usage,
-						cmd.Duration("ttl"),
-					)
-					if err != nil {
-						return err
-					}
-
-					dir := cmd.String("output")
-					if err = os.MkdirAll(dir, 0o750); err != nil {
-						return err
-					}
-					certPath := filepath.Join(dir, cn+".crt")
-					keyPath := filepath.Join(dir, cn+".key")
-					caPath := filepath.Join(dir, cn+"-ca.crt")
-
-					if err = cert.WriteCert(certPath, []byte(res.GetCertificate())); err != nil {
-						return err
-					}
-					if err = cert.WriteKey(keyPath, priv); err != nil {
-						return err
-					}
-					if err = cert.WriteCert(caPath, []byte(res.GetCaChain())); err != nil {
-						return err
-					}
-
-					fmt.Printf("Certificate issued by %q (expires %s)\n",
-						ca.GetName(), res.GetExpiresAt().AsTime().Format(time.RFC3339))
-					fmt.Printf(
-						"  cert: %s\n  key:  %s\n  ca:   %s\n",
-						certPath,
-						keyPath,
-						caPath,
-					)
-					return nil
-				},
-			},
 		},
 	}
 }
@@ -313,7 +147,7 @@ func loginCommand() *cli.Command {
 		Usage:   "Authenticate or refresh credentials",
 		Aliases: []string{"refresh"},
 		Action: func(ctx context.Context, cmd *cli.Command) error {
-			_, err := api.New(ctx, cmd)
+			_, err := api.Connect(ctx, cmd)
 			return err
 		},
 	}
@@ -330,43 +164,4 @@ func logoutCommand() *cli.Command {
 			return nil
 		},
 	}
-}
-
-// printTargetsJSON writes the machine list as JSON, grouped by workspace.
-func printTargetsJSON(s *state.State) error {
-	workspaces := make(map[string]string, len(s.Workspaces))
-	for _, w := range s.Workspaces {
-		workspaces[w.ID] = w.Name
-	}
-
-	type target struct {
-		Name      string   `json:"name"`
-		Workspace string   `json:"workspace"`
-		Users     []string `json:"users"`
-	}
-	out := struct {
-		Targets []target `json:"targets"`
-	}{Targets: make([]target, 0, len(s.Targets))}
-
-	for _, t := range s.Targets {
-		users := make([]string, 0, len(t.Principals))
-		for _, p := range t.Principals {
-			users = append(users, p.Username)
-		}
-		out.Targets = append(out.Targets, target{
-			Name:      t.Name,
-			Workspace: workspaces[t.WorkspaceID],
-			Users:     users,
-		})
-	}
-	return writeJSON(out)
-}
-
-func writeJSON(v any) error {
-	b, err := json.MarshalIndent(v, "", "  ")
-	if err != nil {
-		return err
-	}
-	fmt.Println(string(b))
-	return nil
 }

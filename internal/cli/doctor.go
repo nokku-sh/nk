@@ -46,18 +46,6 @@ type Check struct {
 	Detail  string `json:"detail,omitempty"`
 }
 
-// doctorOptions carries the resolved configuration for a doctor run, as read
-// from the CLI flags (which already fold in env vars and the config file).
-type doctorOptions struct {
-	APIURL     string
-	KeyType    string
-	Token      string
-	RequireTPM bool
-	Insecure   bool
-	TTL        time.Duration
-	Fix        bool
-}
-
 // Report is the full doctor output.
 type Report struct {
 	Fixes  []string `json:"fixes,omitempty"`
@@ -65,8 +53,8 @@ type Report struct {
 }
 
 // runDoctor collects all checks without triggering a login or mutating state
-// (except when opts.Fix is set, which explicitly asks for repairs).
-func runDoctor(ctx context.Context, opts doctorOptions) Report {
+// (except when fix is set, which explicitly asks for repairs).
+func runDoctor(ctx context.Context, s *state.State, requireTPM, fix bool) Report {
 	var rep Report
 	add := func(section, name string, status Status, detail string) {
 		rep.Checks = append(rep.Checks, Check{
@@ -77,18 +65,14 @@ func runDoctor(ctx context.Context, opts doctorOptions) Report {
 		})
 	}
 
-	s := loadState(opts)
-	if opts.Fix {
-		rep.Fixes = fix(s)
+	if fix {
+		rep.Fixes = repair(s)
 	}
 
 	checkSystem(ctx, add)
-	checkConfig(add, opts)
+	checkConfig(add, s, requireTPM)
 
-	signer, signerErr := openSigner(opts)
-	if signer != nil {
-		defer func() { _ = signer.Close() }()
-	}
+	signerErr := openSigner(s, requireTPM)
 	checkIdentity(add, s, signerErr)
 	checkConnectivity(ctx, add, s)
 	checkSSH(add)
@@ -119,31 +103,19 @@ func hostname() string {
 	return "unknown"
 }
 
-func loadState(opts doctorOptions) *state.State {
-	var cfg state.Config
-	_ = cfg.Load()
-	var cache state.Cache
-	_ = cache.Load()
-
-	s := &state.State{Config: cfg, Cache: cache}
-	s.APIURL = opts.APIURL
-	s.KeyType = opts.KeyType
-	s.Token = opts.Token
-	return s
-}
-
 // openSigner loads the existing signing identity without creating one.
 // Returns errNotLoggedIn when none exists yet. Headless (service-account)
 // mode has no signing identity; it returns errNotLoggedIn too, which
 // checkIdentity reports as "not logged in" for headless runs.
-func openSigner(opts doctorOptions) (tpm.Signer, error) {
-	if opts.Token != "" {
-		return nil, errNotLoggedIn
+func openSigner(s *state.State, requireTPM bool) error {
+	if s.Token != "" {
+		return errNotLoggedIn
 	}
 	if tpm.SignerMethod(util.ConfigPath()) == "" {
-		return nil, errNotLoggedIn
+		return errNotLoggedIn
 	}
-	return tpm.New(util.ConfigPath(), opts.RequireTPM)
+	_, err := tpm.New(util.ConfigPath(), requireTPM)
+	return err
 }
 
 func checkSystem(ctx context.Context, add func(string, string, Status, string)) {
@@ -178,7 +150,7 @@ func checkSystem(ctx context.Context, add func(string, string, Status, string)) 
 	}
 }
 
-func checkConfig(add func(string, string, Status, string), opts doctorOptions) {
+func checkConfig(add func(string, string, Status, string), s *state.State, requireTPM bool) {
 	if !util.FileExists(util.ConfigFile()) {
 		add("Configuration", "config.json", StatusInfo, "no config yet (run nk login)")
 	} else {
@@ -186,7 +158,7 @@ func checkConfig(add func(string, string, Status, string), opts doctorOptions) {
 		if err := cfg.Load(); err != nil {
 			add("Configuration", "config.json", StatusFail, err.Error())
 		} else {
-			add("Configuration", "config.json", StatusOK, effectiveConfig(opts))
+			add("Configuration", "config.json", StatusOK, effectiveConfig(s, requireTPM))
 		}
 	}
 
@@ -203,15 +175,12 @@ func checkConfig(add func(string, string, Status, string), opts doctorOptions) {
 	checkFilePerms(add, "private key", util.KeyFile(), 0o600)
 }
 
-func effectiveConfig(opts doctorOptions) string {
-	var b strings.Builder
-	fmt.Fprintf(&b, "key-type=%s", opts.KeyType)
-	if opts.TTL > 0 {
-		fmt.Fprintf(&b, ", ttl=%v", util.HumanizeDuration(opts.TTL))
+func effectiveConfig(s *state.State, requireTPM bool) string {
+	ttl := "server default"
+	if s.TTL > 0 {
+		ttl = util.HumanizeDuration(s.TTL)
 	}
-	fmt.Fprintf(&b, ", insecure=%v", opts.Insecure)
-	fmt.Fprintf(&b, ", require-tpm=%v", opts.RequireTPM)
-	return b.String()
+	return fmt.Sprintf("ttl=%s, insecure=%v, require-tpm=%v", ttl, s.Insecure, requireTPM)
 }
 
 func checkFilePerms(add func(string, string, Status, string), name, path string, want os.FileMode) {
@@ -314,7 +283,7 @@ func checkSSH(add func(string, string, Status, string)) {
 }
 
 func checkCerts(add func(string, string, Status, string), s *state.State) {
-	certs, err := util.Certificates()
+	certs, err := util.SSHCertificates()
 	if err != nil {
 		add("Certificates", "local certificates", StatusFail, err.Error())
 		return
@@ -368,8 +337,8 @@ func checkCerts(add func(string, string, Status, string), s *state.State) {
 	}
 }
 
-// fix repairs common issues and returns a human-readable list of what changed.
-func fix(s *state.State) []string {
+// repair fixes common issues and returns a human-readable list of what changed.
+func repair(s *state.State) []string {
 	var fixed []string
 
 	if err := util.VerifyPaths(); err != nil {
@@ -407,7 +376,7 @@ func fix(s *state.State) []string {
 
 // cleanStaleCerts removes local certificate files whose CA is not in cas.
 func cleanStaleCerts(s *state.State, fixed []string) []string {
-	certs, err := util.Certificates()
+	certs, err := util.SSHCertificates()
 	if err != nil || len(certs) == 0 {
 		return fixed
 	}
