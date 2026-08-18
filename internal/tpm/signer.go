@@ -26,16 +26,6 @@ const (
 	pemTypePublicKey = "PUBLIC KEY"
 )
 
-// Signer is a machine-bound signing key, used to bind DPoP proofs and the
-// device session to the CLI's identity. It implements [crypto.Signer], so the
-// key material stays opaque to callers: go-jose hashes the signing input and
-// calls Sign with the digest directly.
-type Signer interface {
-	crypto.Signer
-	// Close releases the underlying key material.
-	Close() error
-}
-
 // state is the on-disk representation of a signer. Only public material is
 // stored for TPM keys. Software keys also carry their wrapped private key.
 type state struct {
@@ -48,8 +38,9 @@ type state struct {
 
 // New loads or creates the machine's signing identity in dir, using a
 // TPM when available and a software key otherwise. requireTPM makes a
-// missing TPM an error.
-func New(dir string, requireTPM bool) (Signer, error) {
+// missing TPM an error. The returned key implements [crypto.Signer]; a
+// TPM key's resources are reclaimed when the process exits.
+func New(dir string, requireTPM bool) (crypto.Signer, error) {
 	st, err := loadState(dir)
 	if err != nil && !errors.Is(err, errNoState) {
 		return nil, err

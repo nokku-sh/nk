@@ -146,7 +146,7 @@ type tpmSigner struct {
 	mu     sync.Mutex
 }
 
-func openTPM(dir string, st *state) (Signer, error) {
+func openTPM(dir string, st *state) (crypto.Signer, error) {
 	rwr, err := openTPMDevice()
 	if err != nil {
 		return nil, err

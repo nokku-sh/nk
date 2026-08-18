@@ -32,7 +32,7 @@ type softSigner struct {
 	key *ecdsa.PrivateKey
 }
 
-func openSoft(dir string, st *state) (Signer, error) {
+func openSoft(dir string, st *state) (crypto.Signer, error) {
 	if st != nil && len(st.Salt) > 0 && len(st.Nonce) > 0 && len(st.Data) > 0 {
 		key, err := unwrapSoftKey(st)
 		if err == nil {
@@ -85,10 +85,6 @@ func (s *softSigner) Public() crypto.PublicKey { return &s.key.PublicKey }
 
 func (s *softSigner) Sign(_ io.Reader, digest []byte, _ crypto.SignerOpts) ([]byte, error) {
 	return ecdsa.SignASN1(rand.Reader, s.key, digest)
-}
-
-func (s *softSigner) Close() error {
-	return nil
 }
 
 func unwrapSoftKey(st *state) (*ecdsa.PrivateKey, error) {

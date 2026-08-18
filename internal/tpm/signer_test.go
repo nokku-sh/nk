@@ -112,7 +112,6 @@ func TestSoftSignerRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create signer: %v", err)
 	}
-	defer s1.Close()
 	pub1 := s1.Public()
 
 	data := []byte("hello nokku")
@@ -130,7 +129,6 @@ func TestSoftSignerRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("reload signer: %v", err)
 	}
-	defer s2.Close()
 	if !pub1.(*ecdsa.PublicKey).Equal(s2.Public().(*ecdsa.PublicKey)) {
 		t.Fatal("public key changed after reload")
 	}
@@ -140,11 +138,10 @@ func TestSoftSignerRoundTrip(t *testing.T) {
 func TestSoftSignerRecoversOnMachineChange(t *testing.T) {
 	dir := t.TempDir()
 
-	s, err := openSoft(dir, nil)
+	_, err := openSoft(dir, nil)
 	if err != nil {
 		t.Fatalf("create signer: %v", err)
 	}
-	_ = s.Close()
 
 	st, err := loadState(dir)
 	if err != nil {
@@ -160,7 +157,6 @@ func TestSoftSignerRecoversOnMachineChange(t *testing.T) {
 	if err != nil {
 		t.Fatalf("openSoft should recover by creating a new key, got: %v", err)
 	}
-	defer s2.Close()
 	pub2 := s2.Public()
 
 	st2, err := loadState(dir)
