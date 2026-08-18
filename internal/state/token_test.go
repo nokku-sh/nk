@@ -13,8 +13,8 @@ func TestIsServiceAccount(t *testing.T) {
 		{"service account API key", "key-123.secret-value", true},
 		{"bare token without dot", "nks_abc", false},
 		{"empty token", "", false},
-		{"dot at start", ".secret", true},
-		{"dot at end", "key.", true},
+		{"dot at start", ".secret", false},
+		{"dot at end", "key.", false},
 		{"no dot", "abc", false},
 	}
 

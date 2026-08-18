@@ -6,7 +6,8 @@ import "strings"
 // API key. kagi API keys are "<keyID>.<secret>"; the dot separates the two,
 // exactly like the server's dispatch rule.
 func (s *State) IsServiceAccount() bool {
-	return strings.Contains(s.Token, ".")
+	key, secret, found := strings.Cut(s.Token, ".")
+	return found && key != "" && secret != ""
 }
 
 // ServiceAccountID returns the ID of the service account. The service account
