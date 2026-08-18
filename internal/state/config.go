@@ -11,11 +11,8 @@ import (
 )
 
 type Config struct {
-	APIURL  string `json:"api_url,omitempty"`
-	KeyType string `json:"key_type,omitempty"`
-	// DeviceID is the CLI device's identity, generated on first run and
-	// bound to the signing key registered with the backend.
-	DeviceID string        `json:"device_id,omitempty"`
+	APIURL   string        `json:"api_url,omitempty"`
+	KeyType  string        `json:"key_type,omitempty"`
 	TTL      time.Duration `json:"ttl,omitempty"`
 	Insecure bool          `json:"insecure,omitempty"`
 	// SessionToken is the DPoP-bound session token obtained from the device
@@ -25,7 +22,7 @@ type Config struct {
 	// SessionExpiresAt is when the persisted session token stops being
 	// valid. Zero means unknown (re-login via device flow).
 	// #nosec G117 -- session_token is a credential persisted to a 0600 file.
-	SessionExpiresAt time.Time `json:"session_expires_at,omitempty"` //nolint:modernize // omitempty is no-op for time.Time but documents intent
+	SessionExpiresAt time.Time `json:"session_expires_at"`
 }
 
 func (c *Config) Load() error {

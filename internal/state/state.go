@@ -7,8 +7,6 @@ import (
 	"os"
 	"time"
 
-	"github.com/google/uuid"
-
 	"github.com/nokku-sh/nk/internal/util"
 )
 
@@ -78,13 +76,6 @@ func New() *State {
 		slog.Warn("failed to load cache", "err", err)
 	}
 
-	if s.DeviceID == "" {
-		s.DeviceID = uuid.New().String()
-		if err := s.Config.Save(); err != nil {
-			slog.Warn("failed to persist device id", "err", err)
-		}
-	}
-
 	return s
 }
 
@@ -140,8 +131,4 @@ func (s *State) GetCAByID(id string) *CA {
 		}
 	}
 	return nil
-}
-
-func (s *State) GetDeviceID() string {
-	return s.DeviceID
 }

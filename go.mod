@@ -10,7 +10,6 @@ require (
 	github.com/cenkalti/backoff/v7 v7.0.0
 	github.com/go-jose/go-jose/v4 v4.1.4
 	github.com/google/go-tpm v0.9.8
-	github.com/google/uuid v1.6.0
 	github.com/mizuchilabs/kagi v0.0.0-00010101000000-000000000000
 	github.com/mizuchilabs/kata v0.1.3
 	github.com/pkg/browser v0.0.0-20240102092130-5ac0b6a4141c
