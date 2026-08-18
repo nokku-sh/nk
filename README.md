@@ -40,11 +40,7 @@ ssh user@target   # Connect using standard OpenSSH!
 
 ## Hardware Security (TPM 2.0)
 
-For enhanced security on Linux and Windows, use the `--key-type tpm` flag. Your SSH private key becomes a deterministic primary key that never leaves the TPM; signing happens via an embedded SSH agent (`agent.sock`).
-
-```bash
-nk login --key-type tpm
-```
+On Linux and Windows, `nk` automatically uses a TPM 2.0 when one is available. Your SSH private key becomes a deterministic primary key that never leaves the TPM; signing happens via an embedded SSH agent (`agent.sock`). Without a TPM, `nk` falls back to a software key transparently. Pass `--require-tpm` to refuse that fallback.
 
 _(Check `nk doctor` to see if a TPM is available and in use.)_
 
@@ -66,8 +62,8 @@ ssh user@target
 `nk` can also issue certificates for API clients, servers, and other workloads:
 
 ```bash
-nk cert list
-nk cert issue api-client --usage client --san dns:api.example.com
+nk pki list
+nk pki issue api-client --usage client --san dns:api.example.com
 ```
 
 The command generates a key pair, requests a signed certificate, and saves the certificate, private key, and CA certificate to the output directory.
@@ -81,8 +77,8 @@ The command generates a key pair, requests a signed certificate, and saves the c
 | `nk status`          | Show identity and workspace information    |
 | `nk ls` / `nk list`  | List targets and principals                |
 | `nk doctor`          | Check API reachability and local SSH setup |
-| `nk cert list`       | List active X.509 certificate authorities  |
-| `nk cert issue <cn>` | Issue an X.509 certificate                 |
+| `nk pki list`       | List active X.509 certificate authorities  |
+| `nk pki issue <cn>` | Issue an X.509 certificate                 |
 | `nk logout`          | Remove local credentials and cached state  |
 | `nk proxy`           | Internal OpenSSH `ProxyCommand` (internal) |
 
@@ -92,8 +88,8 @@ The command generates a key pair, requests a signed certificate, and saves the c
 | ------------ | ------------- | ----------------------------------------------------------------------- |
 | `--api`      | `NK_API_URL`  | Backend URL                                                             |
 | `--token`    | `NK_TOKEN`    | Service-account API key (`keyID.secret`); skips browser login for CI/CD |
-| `--key-type` | `NK_KEY_TYPE` | Local SSH key type; default `ed25519`, `tpm` keeps the key in a TPM 2.0 |
 | `--ttl`      | `NK_TTL`      | Requested SSH certificate lifetime                                      |
+| `--require-tpm` | `NK_REQUIRE_TPM` | Require a TPM 2.0; refuse the software key fallback                  |
 | `--insecure` | `NK_INSECURE` | Disable TLS verification; testing only                                  |
 
 Local state lives under `~/.config/nk/`. Your private key and tokens are credentials. Keep service-account tokens out of source control.
