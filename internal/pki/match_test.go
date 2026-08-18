@@ -1,4 +1,4 @@
-package cert
+package pki
 
 import (
 	"strings"
@@ -15,7 +15,7 @@ func testCA(id, name string) *nokkuv1.CertificateAuthority {
 	}
 }
 
-func TestMatchX509CA(t *testing.T) {
+func TestMatchCA(t *testing.T) {
 	t.Parallel()
 	cas := []*nokkuv1.CertificateAuthority{
 		testCA("ca-1", "Production CA"),
@@ -81,18 +81,18 @@ func TestMatchX509CA(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			got, err := MatchX509CA(tt.cas, tt.nameOrID)
+			got, err := MatchCA(tt.cas, tt.nameOrID)
 			if tt.wantErr != "" {
 				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
-					t.Fatalf("MatchX509CA() error = %v, want containing %q", err, tt.wantErr)
+					t.Fatalf("MatchCA() error = %v, want containing %q", err, tt.wantErr)
 				}
 				return
 			}
 			if err != nil {
-				t.Fatalf("MatchX509CA() error = %v, want nil", err)
+				t.Fatalf("MatchCA() error = %v, want nil", err)
 			}
 			if got != tt.want {
-				t.Fatalf("MatchX509CA() = %v, want %v", got.GetId(), tt.want.GetId())
+				t.Fatalf("MatchCA() = %v, want %v", got.GetId(), tt.want.GetId())
 			}
 		})
 	}

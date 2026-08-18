@@ -1,4 +1,4 @@
-package cert
+package pki
 
 import (
 	"crypto/ed25519"
@@ -94,20 +94,16 @@ func TestNewCSRRejectsBadIP(t *testing.T) {
 	}
 }
 
-func TestGenerateKeyTypes(t *testing.T) {
-	for _, kt := range []string{"ed25519", "rsa-2048", "rsa-4096", "ecdsa-p256", "ecdsa-p384", "ecdsa-p521"} {
-		priv, err := GenerateKey(kt)
-		if err != nil {
-			t.Errorf("GenerateKey(%q) failed: %v", kt, err)
-			continue
-		}
-		// Key must be usable for CSR creation
-		if _, err = NewCSR(priv, "test", nil); err != nil {
-			t.Errorf("NewCSR with %q key failed: %v", kt, err)
-		}
+func TestGenerateKey(t *testing.T) {
+	priv, err := GenerateKey()
+	if err != nil {
+		t.Fatalf("GenerateKey() failed: %v", err)
 	}
-
-	if _, err := GenerateKey("dsa"); err == nil {
-		t.Error("expected error for unsupported key type")
+	// Key must be usable for CSR creation.
+	if _, err = NewCSR(priv, "test", nil); err != nil {
+		t.Errorf("NewCSR with generated key failed: %v", err)
+	}
+	if _, ok := priv.(ed25519.PrivateKey); !ok {
+		t.Errorf("GenerateKey() = %T, want ed25519.PrivateKey", priv)
 	}
 }

@@ -1,14 +1,12 @@
-// Package cert provides X.509 certificate utilities for the nk CLI:
-// private key generation, PKCS#10 CSR creation, and PEM file output.
-package cert
+// Package pki provides X.509 (PKI) utilities for the nk CLI: private key
+// generation, PKCS#10 CSR creation, CA matching, and PEM file output. It is
+// strictly separate from the SSH certificate handling in internal/ssh.
+package pki
 
 import (
 	"crypto"
-	"crypto/ecdsa"
 	"crypto/ed25519"
-	"crypto/elliptic"
 	"crypto/rand"
-	"crypto/rsa"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
@@ -17,47 +15,14 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/nokku-sh/nk/internal/ssh"
 	"github.com/nokku-sh/nk/internal/util"
 )
 
-// GenerateKey creates a new private key of the given type.
-// Accepts the same key type strings as the SSH identity key
-// (ed25519, rsa-2048, rsa-4096, ecdsa-p256, ecdsa-p384, ecdsa-p521).
-func GenerateKey(keyType string) (crypto.PrivateKey, error) {
-	kt, ok := ssh.ParseKeyType(keyType)
-	if !ok {
-		return nil, fmt.Errorf(
-			"invalid key type %q. Allowed choices are: %v",
-			keyType,
-			ssh.ValidKeyTypes,
-		)
-	}
-
-	switch kt {
-	case ssh.KeyTypeTPM:
-		// X.509 issuance writes a private key file, which a TPM key can
-		// never produce.
-		return nil, fmt.Errorf(
-			"key type %q is not supported for X.509 certificates; pass --key-type (e.g. ed25519)",
-			keyType,
-		)
-	case ssh.KeyTypeRSA2048:
-		return rsa.GenerateKey(rand.Reader, 2048)
-	case ssh.KeyTypeRSA4096:
-		return rsa.GenerateKey(rand.Reader, 4096)
-	case ssh.KeyTypeECDSAP256:
-		return ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	case ssh.KeyTypeECDSAP384:
-		return ecdsa.GenerateKey(elliptic.P384(), rand.Reader)
-	case ssh.KeyTypeECDSAP521:
-		return ecdsa.GenerateKey(elliptic.P521(), rand.Reader)
-	case ssh.KeyTypeEd25519:
-		fallthrough
-	default:
-		_, priv, err := ed25519.GenerateKey(rand.Reader)
-		return priv, err
-	}
+// GenerateKey creates a new ed25519 private key. X.509 issuance writes the
+// private key to disk, so TPM-backed keys cannot be used here.
+func GenerateKey() (crypto.PrivateKey, error) {
+	_, priv, err := ed25519.GenerateKey(rand.Reader)
+	return priv, err
 }
 
 // NewCSR builds a PEM-encoded PKCS#10 CSR with the given common name
