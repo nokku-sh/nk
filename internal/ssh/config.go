@@ -9,22 +9,43 @@ import (
 )
 
 func GenerateSSHConfig(st *state.State) error {
+	// Workspace ID -> name, for qualifying targets whose name collides
+	// across workspaces.
+	wsNames := make(map[string]string, len(st.Workspaces))
+	for _, w := range st.Workspaces {
+		wsNames[w.ID] = w.Name
+	}
+
+	// Count valid targets per name so duplicated names get a qualified host.
+	nameCount := make(map[string]int, len(st.Targets))
+	for _, t := range st.Targets {
+		if validTarget(t) {
+			nameCount[t.Name]++
+		}
+	}
+
 	var buf strings.Builder
 	buf.WriteString("# Managed by Nokku\n")
 	buf.WriteString("# Do not edit manually. Changes will be overwritten.\n\n")
 
 	for _, t := range st.Targets {
-		if t.ID == "" || t.Name == "" || t.CAID == "" || len(t.Principals) == 0 {
-			continue
-		}
-		if !safeConfigToken(t.Name) || !safeConfigToken(t.Principals[0].Username) {
+		if !validTarget(t) {
 			continue
 		}
 
-		fmt.Fprintf(&buf, "Host %s\n", t.Name)
+		host := t.Name
+		if nameCount[t.Name] > 1 {
+			ws := wsNames[t.WorkspaceID]
+			if ws == "" || !safeConfigToken(ws) || strings.Contains(ws, "/") {
+				ws = t.WorkspaceID
+			}
+			host = ws + "/" + t.Name
+		}
+
+		fmt.Fprintf(&buf, "Host %s\n", host)
 		fmt.Fprintf(&buf, "    User %s\n", t.Principals[0].Username)
 		fmt.Fprintf(&buf, "    ProxyCommand nk proxy %%h %%p\n")
-		fmt.Fprintf(&buf, "    CertificateFile %s\n", util.Certificate(t.CAID))
+		fmt.Fprintf(&buf, "    CertificateFile %s\n", util.SSHCertificate(t.CAID))
 		if TPMKeyActive() {
 			// The private key lives in the TPM: point IdentityFile at the
 			// public key so ssh looks the private key up in the agent.
@@ -47,6 +68,12 @@ func GenerateSSHConfig(st *state.State) error {
 	}
 
 	return util.WriteIfChanged(util.SSHConfigFile(), []byte(buf.String()), 0o600)
+}
+
+// validTarget reports whether t is complete and safe to emit as an SSH host.
+func validTarget(t state.Target) bool {
+	return t.ID != "" && t.Name != "" && t.CAID != "" && len(t.Principals) > 0 &&
+		safeConfigToken(t.Name) && safeConfigToken(t.Principals[0].Username)
 }
 
 func GenerateKnownHosts(st *state.State) error {

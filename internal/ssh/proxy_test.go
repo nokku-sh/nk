@@ -6,126 +6,66 @@ import (
 	"github.com/nokku-sh/nk/internal/state"
 )
 
-func TestParseHost(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name          string
-		host          string
-		wantTarget    string
-		wantWorkspace string
-	}{
-		{
-			name:          "simple hostname",
-			host:          "web-server",
-			wantTarget:    "web-server",
-			wantWorkspace: "",
-		},
-		{
-			name:          "workspace/target format",
-			host:          "production/web-server",
-			wantTarget:    "web-server",
-			wantWorkspace: "production",
-		},
-		{
-			name:          "empty host",
-			host:          "",
-			wantTarget:    "",
-			wantWorkspace: "",
-		},
-		{
-			name:          "only workspace separator",
-			host:          "/target",
-			wantTarget:    "target",
-			wantWorkspace: "",
-		},
-		{
-			name:          "trailing separator",
-			host:          "ws/",
-			wantTarget:    "",
-			wantWorkspace: "ws",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			target, workspace := parseHost(tt.host)
-			if target != tt.wantTarget {
-				t.Errorf("parseHost(%q) target = %q, want %q", tt.host, target, tt.wantTarget)
-			}
-			if workspace != tt.wantWorkspace {
-				t.Errorf(
-					"parseHost(%q) workspace = %q, want %q",
-					tt.host,
-					workspace,
-					tt.wantWorkspace,
-				)
-			}
-		})
-	}
-}
-
-func TestResolveTargets(t *testing.T) {
+func TestResolveTarget(t *testing.T) {
 	t.Parallel()
 
 	makeState := func(targets []state.Target, workspaces []state.Workspace) *state.State {
 		return &state.State{Cache: state.Cache{Targets: targets, Workspaces: workspaces}}
 	}
+	dupTargets := []state.Target{
+		{ID: "1", Name: "db", WorkspaceID: "ws-1"},
+		{ID: "2", Name: "db", WorkspaceID: "ws-2"},
+	}
+	dupWorkspaces := []state.Workspace{
+		{ID: "ws-1", Name: "staging"},
+		{ID: "ws-2", Name: "production"},
+	}
 
-	t.Run("finds target by name", func(t *testing.T) {
-		s := makeState(
-			[]state.Target{{ID: "1", Name: "prod"}, {ID: "2", Name: "staging"}},
-			nil,
-		)
-		got := resolveTargets(s, "prod", "")
-		if len(got) != 1 || got[0].ID != "1" {
-			t.Errorf("resolveTargets = %+v", got)
-		}
-	})
-
-	t.Run("returns empty when not found", func(t *testing.T) {
+	t.Run("finds a unique target by name", func(t *testing.T) {
 		s := makeState(
 			[]state.Target{{ID: "1", Name: "prod"}},
 			nil,
 		)
-		got := resolveTargets(s, "nonexistent", "")
-		if len(got) != 0 {
-			t.Errorf("expected empty, got %d", len(got))
+		got, err := ResolveTarget(s, "prod")
+		if err != nil || got.ID != "1" {
+			t.Errorf("ResolveTarget = %+v, %v", got, err)
 		}
 	})
 
-	t.Run("filters by workspace name", func(t *testing.T) {
-		s := makeState(
-			[]state.Target{
-				{ID: "1", Name: "db", WorkspaceID: "ws-1"},
-				{ID: "2", Name: "db", WorkspaceID: "ws-2"},
-			},
-			[]state.Workspace{{ID: "ws-1", Name: "staging"}, {ID: "ws-2", Name: "production"}},
-		)
-		got := resolveTargets(s, "db", "staging")
-		if len(got) != 1 || got[0].ID != "1" {
-			t.Errorf("expected staging db, got %+v", got)
+	t.Run("disambiguates by workspace name", func(t *testing.T) {
+		s := makeState(dupTargets, dupWorkspaces)
+		got, err := ResolveTarget(s, "staging/db")
+		if err != nil || got.ID != "1" {
+			t.Errorf("ResolveTarget = %+v, %v", got, err)
 		}
 	})
 
-	t.Run("falls back to all targets when workspace filter has no match", func(t *testing.T) {
-		s := makeState(
-			[]state.Target{
-				{ID: "1", Name: "db", WorkspaceID: "ws-1"},
-			},
-			[]state.Workspace{{ID: "ws-1", Name: "production"}},
-		)
-		got := resolveTargets(s, "db", "nonexistent-ws")
-		if len(got) != 1 || got[0].ID != "1" {
-			t.Errorf("expected fallback, got %+v", got)
+	t.Run("disambiguates by workspace id", func(t *testing.T) {
+		s := makeState(dupTargets, dupWorkspaces)
+		got, err := ResolveTarget(s, "ws-2/db")
+		if err != nil || got.ID != "2" {
+			t.Errorf("ResolveTarget = %+v, %v", got, err)
 		}
 	})
 
-	t.Run("empty targets returns empty", func(t *testing.T) {
+	t.Run("rejects an ambiguous bare name", func(t *testing.T) {
+		s := makeState(dupTargets, dupWorkspaces)
+		if _, err := ResolveTarget(s, "db"); err == nil {
+			t.Error("expected ambiguity error")
+		}
+	})
+
+	t.Run("reports not found", func(t *testing.T) {
 		s := makeState(nil, nil)
-		got := resolveTargets(s, "prod", "")
-		if len(got) != 0 {
-			t.Errorf("expected empty, got %d", len(got))
+		if _, err := ResolveTarget(s, "missing"); err == nil {
+			t.Error("expected not-found error")
+		}
+	})
+
+	t.Run("reports unknown workspace", func(t *testing.T) {
+		s := makeState(dupTargets, dupWorkspaces)
+		if _, err := ResolveTarget(s, "unknown/db"); err == nil {
+			t.Error("expected unknown-workspace error")
 		}
 	})
 }

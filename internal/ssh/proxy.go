@@ -18,16 +18,12 @@ import (
 )
 
 // Proxy handles native ssh ProxyCommand connections.
-func Proxy(ctx context.Context, s *state.State, host, port string) error {
-	targetName, workspaceName := parseHost(host)
-	targets := resolveTargets(s, targetName, workspaceName)
-	if len(targets) == 0 {
-		return fmt.Errorf("target %s not found in your allowed targets", host)
+func Proxy(ctx context.Context, target *state.Target, port string) error {
+	if target == nil {
+		return fmt.Errorf("internal error: nil target")
 	}
-	target := targets[0]
-
 	if len(target.Endpoints) == 0 {
-		return fmt.Errorf("target %s has no endpoints configured", host)
+		return fmt.Errorf("target %s has no endpoints configured", target.Name)
 	}
 
 	// Shuffle to avoid hotspotting
@@ -88,41 +84,44 @@ func proxyIO(conn net.Conn) error {
 	return eg.Wait()
 }
 
-func parseHost(host string) (targetName, workspaceName string) {
+// ResolveTarget resolves an ssh host argument to a single target. A host is a
+// bare target name, or "workspace/target" to disambiguate duplicates. The
+// workspace part may be either a workspace name or ID.
+func ResolveTarget(s *state.State, host string) (*state.Target, error) {
+	name, workspace := host, ""
 	if before, after, found := strings.Cut(host, "/"); found {
-		return after, before
+		workspace, name = before, after
 	}
-	return host, ""
-}
 
-func resolveTargets(s *state.State, targetName, workspaceName string) []*state.Target {
-	targets := s.GetTargetsByName(targetName)
-	if workspaceName != "" {
-		var filtered []*state.Target
+	targets := s.GetTargetsByName(name)
+	if workspace != "" {
 		for _, t := range targets {
-			if t.WorkspaceID == workspaceName {
-				filtered = append(filtered, t)
-				continue
+			if t.WorkspaceID == workspace {
+				return t, nil
 			}
+		}
+		for _, t := range targets {
 			for _, ws := range s.Workspaces {
-				if ws.Name == workspaceName && ws.ID == t.WorkspaceID {
-					filtered = append(filtered, t)
-					break
+				if ws.Name == workspace && ws.ID == t.WorkspaceID {
+					return t, nil
 				}
 			}
 		}
-		if len(filtered) > 0 {
-			return filtered
-		}
+		return nil, fmt.Errorf("target %q not found in workspace %q", name, workspace)
 	}
-	if len(targets) > 1 {
-		fmt.Printf(
-			"Target name %q is ambiguous across workspaces (%d matches)",
-			targetName,
+
+	switch len(targets) {
+	case 0:
+		return nil, fmt.Errorf("target %q not found in your allowed targets", name)
+	case 1:
+		return targets[0], nil
+	default:
+		return nil, fmt.Errorf(
+			"target %q is ambiguous across %d workspaces; use <workspace>/<target>",
+			name,
 			len(targets),
 		)
 	}
-	return targets
 }
 
 func normalizeEndpoint(endpoint, sshPort string) (string, error) {

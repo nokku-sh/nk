@@ -54,7 +54,7 @@ func TestGenerateSSHConfig(t *testing.T) {
 		"Host prod\n",
 		"    User alice\n",
 		"    ProxyCommand nk proxy %h %p\n",
-		"    CertificateFile " + util.Certificate("ca-1") + "\n",
+		"    CertificateFile " + util.SSHCertificate("ca-1") + "\n",
 		"    IdentityFile " + util.KeyFile() + "\n",
 		"    HostKeyAlias t-1\n",
 		"    IdentitiesOnly yes\n",
@@ -109,6 +109,48 @@ func TestGenerateSSHConfigTPMIdentity(t *testing.T) {
 	}
 	if !strings.Contains(content, "    IdentityAgent "+util.AgentSocket()+"\n") {
 		t.Errorf("TPM identity must set IdentityAgent")
+	}
+}
+
+func TestGenerateSSHConfigDisambiguatesDuplicateNames(t *testing.T) {
+	setupSSHDir(t)
+	st := &state.State{
+		Cache: state.Cache{
+			Workspaces: []state.Workspace{
+				{ID: "ws-1", Name: "staging"},
+				{ID: "ws-2", Name: "production"},
+			},
+			Targets: []state.Target{
+				{ID: "t-1", Name: "db", WorkspaceID: "ws-1", CAID: "ca-1",
+					Principals: []state.Principal{{Username: "alice"}}},
+				{ID: "t-2", Name: "db", WorkspaceID: "ws-2", CAID: "ca-2",
+					Principals: []state.Principal{{Username: "bob"}}},
+				{ID: "t-3", Name: "unique", WorkspaceID: "ws-1", CAID: "ca-1",
+					Principals: []state.Principal{{Username: "carol"}}},
+			},
+		},
+	}
+
+	if err := GenerateSSHConfig(st); err != nil {
+		t.Fatalf("GenerateSSHConfig: %v", err)
+	}
+	data, err := os.ReadFile(util.SSHConfigFile())
+	if err != nil {
+		t.Fatalf("read generated config: %v", err)
+	}
+	content := string(data)
+
+	if !strings.Contains(content, "Host staging/db\n") {
+		t.Errorf("expected workspace-qualified host for duplicate name, got:\n%s", content)
+	}
+	if !strings.Contains(content, "Host production/db\n") {
+		t.Errorf("expected workspace-qualified host for duplicate name, got:\n%s", content)
+	}
+	if !strings.Contains(content, "Host unique\n") {
+		t.Errorf("expected bare host for unique name, got:\n%s", content)
+	}
+	if strings.Contains(content, "\nHost db\n") {
+		t.Errorf("duplicate bare name must not be emitted, got:\n%s", content)
 	}
 }
 
