@@ -3,7 +3,6 @@
 package tpm
 
 import (
-	"context"
 	"crypto"
 	"encoding/json"
 	"errors"
@@ -23,23 +22,16 @@ const (
 	MethodSoft = "soft"
 
 	stateFile = "signer.json"
+
+	pemTypePublicKey = "PUBLIC KEY"
 )
 
-// Signer signs with a machine-bound key, used to bind DPoP proofs and the
-// device session to the CLI's identity.
+// Signer is a machine-bound signing key, used to bind DPoP proofs and the
+// device session to the CLI's identity. It implements [crypto.Signer], so the
+// key material stays opaque to callers: go-jose hashes the signing input and
+// calls Sign with the digest directly.
 type Signer interface {
-	// Method returns the signing method: MethodTPM or MethodSoft.
-	Method() string
-	// Public returns the PEM-encoded PKIX public key to register with the
-	// backend.
-	Public() ([]byte, error)
-	// Sign signs data with SHA-256 and returns a DER-encoded ECDSA
-	// signature.
-	Sign(ctx context.Context, data []byte) ([]byte, error)
-	// CryptoSigner exposes the underlying key as a [crypto.Signer] for
-	// DPoP proofs (go-jose signs the SHA-256 digest and calls Sign with the
-	// digest directly).
-	CryptoSigner() crypto.Signer
+	crypto.Signer
 	// Close releases the underlying key material.
 	Close() error
 }

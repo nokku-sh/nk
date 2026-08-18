@@ -1,18 +1,17 @@
 package tpm
 
 import (
-	"context"
 	"crypto"
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
-	"crypto/sha256"
 	"crypto/x509"
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 
 	"golang.org/x/crypto/scrypt"
@@ -31,18 +30,16 @@ const (
 
 type softSigner struct {
 	key *ecdsa.PrivateKey
-	pem []byte
 }
 
 func openSoft(dir string, st *state) (Signer, error) {
 	if st != nil && len(st.Salt) > 0 && len(st.Nonce) > 0 && len(st.Data) > 0 {
 		key, err := unwrapSoftKey(st)
 		if err == nil {
-			return &softSigner{key: key, pem: []byte(st.PubKey)}, nil
+			return &softSigner{key: key}, nil
 		}
 		slog.Warn("software signing key cannot be unwrapped, creating a new key", "err", err)
 	}
-
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
 		return nil, fmt.Errorf("generate key: %w", err)
@@ -72,7 +69,7 @@ func openSoft(dir string, st *state) (Signer, error) {
 
 	st = &state{
 		Method: MethodSoft,
-		PubKey: string(pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: pubDER})),
+		PubKey: string(pem.EncodeToMemory(&pem.Block{Type: pemTypePublicKey, Bytes: pubDER})),
 		Salt:   salt,
 		Nonce:  nonce,
 		Data:   data,
@@ -80,24 +77,15 @@ func openSoft(dir string, st *state) (Signer, error) {
 	if err = saveState(dir, st); err != nil {
 		return nil, err
 	}
-	return &softSigner{key: key, pem: []byte(st.PubKey)}, nil
+	return &softSigner{key: key}, nil
 }
 
-func (s *softSigner) Method() string {
-	return MethodSoft
-}
+// Public returns the PKIX public key for this signer.
+func (s *softSigner) Public() crypto.PublicKey { return &s.key.PublicKey }
 
-func (s *softSigner) Public() ([]byte, error) {
-	return append([]byte(nil), s.pem...), nil
+func (s *softSigner) Sign(_ io.Reader, digest []byte, _ crypto.SignerOpts) ([]byte, error) {
+	return ecdsa.SignASN1(rand.Reader, s.key, digest)
 }
-
-func (s *softSigner) Sign(_ context.Context, data []byte) ([]byte, error) {
-	digest := sha256.Sum256(data)
-	return ecdsa.SignASN1(rand.Reader, s.key, digest[:])
-}
-
-// CryptoSigner exposes the software key as a [crypto.Signer] for DPoP proofs.
-func (s *softSigner) CryptoSigner() crypto.Signer { return s.key }
 
 func (s *softSigner) Close() error {
 	return nil

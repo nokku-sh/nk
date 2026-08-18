@@ -1,11 +1,9 @@
 package tpm
 
 import (
-	"context"
 	"crypto"
 	"crypto/ecdsa"
 	"crypto/elliptic"
-	"crypto/sha256"
 	"crypto/x509"
 	"encoding/asn1"
 	"encoding/pem"
@@ -161,18 +159,12 @@ func openTPM(dir string, st *state) (Signer, error) {
 	}
 	s.closer = rwr
 
-	pub, err := s.Public()
-	if err != nil {
-		_ = s.Close()
-		return nil, err
-	}
-
-	cur := string(pub)
-	if st == nil || st.PubKey != cur {
+	pub := string(s.pem)
+	if st == nil || st.PubKey != pub {
 		if st != nil && st.PubKey != "" {
 			slog.Warn("TPM identity changed since last login, a new key will be re-registered")
 		}
-		if err = saveState(dir, &state{Method: MethodTPM, PubKey: cur}); err != nil {
+		if err = saveState(dir, &state{Method: MethodTPM, PubKey: pub}); err != nil {
 			_ = s.Close()
 			return nil, err
 		}
@@ -197,47 +189,20 @@ func createTPMSigner(r transport.TPM) (*tpmSigner, error) {
 	return &tpmSigner{
 		tpm: r,
 		key: key,
-		pem: pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: der}),
+		pem: pem.EncodeToMemory(&pem.Block{Type: pemTypePublicKey, Bytes: der}),
 	}, nil
 }
 
-func (s *tpmSigner) Method() string {
-	return MethodTPM
-}
+// Public returns the PEM-encoded PKIX public key for this signer.
+func (s *tpmSigner) Public() crypto.PublicKey { return s.key.pub }
 
-func (s *tpmSigner) Public() ([]byte, error) {
-	return append([]byte(nil), s.pem...), nil
-}
-
-func (s *tpmSigner) Sign(_ context.Context, data []byte) ([]byte, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	digest := sha256.Sum256(data)
-	return signECDSA(s.tpm, s.key, digest[:])
-}
-
-// CryptoSigner exposes the TPM key as a [crypto.Signer] for DPoP proofs.
-func (s *tpmSigner) CryptoSigner() crypto.Signer {
-	return &tpmCryptoSigner{signer: s}
-}
-
-// tpmCryptoSigner adapts a tpmSigner to [crypto.Signer]: go-jose hashes the
-// signing input and calls Sign with the digest, and the TPM template pins
-// SHA-256, so the digest is signed directly without double-hashing.
-type tpmCryptoSigner struct {
-	signer *tpmSigner
-}
-
-func (s *tpmCryptoSigner) Public() crypto.PublicKey { return s.signer.key.pub }
-
-func (s *tpmCryptoSigner) Sign(_ io.Reader, digest []byte, opts crypto.SignerOpts) ([]byte, error) {
+func (s *tpmSigner) Sign(_ io.Reader, digest []byte, opts crypto.SignerOpts) ([]byte, error) {
 	if opts.HashFunc() != crypto.SHA256 {
 		return nil, fmt.Errorf("tpm: unsupported hash %v (key pins SHA-256)", opts.HashFunc())
 	}
-	s.signer.mu.Lock()
-	defer s.signer.mu.Unlock()
-	return signECDSA(s.signer.tpm, s.signer.key, digest)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return signECDSA(s.tpm, s.key, digest)
 }
 
 func (s *tpmSigner) Close() error {
