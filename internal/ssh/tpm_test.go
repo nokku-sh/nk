@@ -9,9 +9,9 @@ import (
 	"github.com/nokku-sh/nk/internal/util"
 )
 
-// TestSetupTPMKey exercises the TPM identity lifecycle against a real
-// TPM: login, determinism across runs, and switching between software
-// and TPM identities. Manual test, run with:
+// TestSetupTPMKey exercises the TPM identity lifecycle against a real TPM:
+// only the public key touches disk, and the key is deterministic across
+// runs. Manual test, run with:
 //
 //	NK_TPM_E2E=1 XDG_CONFIG_HOME=$(mktemp -d) go test -run TestSetupTPMKey ./internal/ssh/
 func TestSetupTPMKey(t *testing.T) {
@@ -28,13 +28,13 @@ func TestSetupTPMKey(t *testing.T) {
 	}
 	_ = probe.Close()
 
-	if err = os.MkdirAll(util.CertPath(), 0o700); err != nil {
+	if err = os.MkdirAll(util.SSHCertPath(), 0o700); err != nil {
 		t.Fatal(err)
 	}
 
 	// Login: only the public key may touch disk.
-	if err = SetupKey("tpm"); err != nil {
-		t.Fatalf("SetupKey(tpm): %v", err)
+	if err = SetupKey(true); err != nil {
+		t.Fatalf("SetupKey(true): %v", err)
 	}
 	if !TPMKeyActive() {
 		t.Fatal("expected a TPM identity: public key without a private key file")
@@ -48,8 +48,8 @@ func TestSetupTPMKey(t *testing.T) {
 	}
 
 	// Deterministic primary: re-running reproduces the same key.
-	if err = SetupKey("tpm"); err != nil {
-		t.Fatalf("SetupKey(tpm) again: %v", err)
+	if err = SetupKey(true); err != nil {
+		t.Fatalf("SetupKey(true) again: %v", err)
 	}
 	pub2, err := os.ReadFile(util.PubKeyFile())
 	if err != nil {
@@ -57,36 +57,5 @@ func TestSetupTPMKey(t *testing.T) {
 	}
 	if string(pub) != string(pub2) {
 		t.Fatal("TPM public key changed across runs")
-	}
-
-	// Switching to a software key writes both key files again.
-	if err = SetupKey("ecdsa-p256"); err != nil {
-		t.Fatalf("SetupKey(ecdsa-p256): %v", err)
-	}
-	if TPMKeyActive() {
-		t.Fatal("expected a software identity")
-	}
-
-	// Switching back to the TPM must remove the software private key and any
-	// certificates issued for it (they are re-signed for the TPM key).
-	fakeCert := util.Certificate("fake-ca")
-	if err = os.WriteFile(fakeCert, []byte("fake-cert"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if err = SetupKey("tpm"); err != nil {
-		t.Fatalf("SetupKey(tpm) switchback: %v", err)
-	}
-	if !TPMKeyActive() {
-		t.Fatal("expected a TPM identity after switching back")
-	}
-	if util.FileExists(fakeCert) {
-		t.Fatal("stale certificate was not removed after the identity changed")
-	}
-	pub3, err := os.ReadFile(util.PubKeyFile())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if string(pub) != string(pub3) {
-		t.Fatal("TPM public key changed after switching back")
 	}
 }

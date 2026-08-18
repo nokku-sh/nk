@@ -3,7 +3,6 @@ package ssh
 import (
 	"bytes"
 	"fmt"
-	"log/slog"
 	"os"
 
 	cryptossh "golang.org/x/crypto/ssh"
@@ -20,27 +19,10 @@ var sshTPMSalt = []byte("nokku-ssh")
 // setupTPMKey maintains a TPM-resident SSH identity: only the public
 // key is written to disk, the private key never leaves the TPM. The
 // key is deterministic, so re-running reproduces the same key.
-//
-// Without a TPM it falls back to a software key, or errors when a TPM
-// identity is already active (silently downgrading would break auth).
 func setupTPMKey() error {
 	key, err := tpm.OpenKey(sshTPMSalt)
 	if err != nil {
-		if TPMKeyActive() {
-			return fmt.Errorf(
-				"TPM identity exists but the TPM is unavailable: %w; remove %s to start over",
-				err,
-				util.PubKeyFile(),
-			)
-		}
-		slog.Warn(
-			"TPM unavailable, falling back to a software key",
-			"err",
-			err,
-			"key_type",
-			DefaultKeyType(),
-		)
-		return setupFileKey(DefaultKeyType())
+		return fmt.Errorf("open TPM key: %w", err)
 	}
 	defer func() { _ = key.Close() }()
 
@@ -88,11 +70,7 @@ func IdentityStatus() string {
 		return "TPM 2.0 (ecdsa-p256), private key never touches disk"
 	}
 	if util.FileExists(util.KeyFile()) {
-		kt, err := detectKeyType(util.KeyFile())
-		if err == nil {
-			return fmt.Sprintf("software key (%s)", kt)
-		}
-		return "software key (unknown type)"
+		return "software key (ed25519)"
 	}
 	return "not logged in yet"
 }
