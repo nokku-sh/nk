@@ -307,11 +307,3 @@ func TestMapPrincipals(t *testing.T) {
 		}
 	})
 }
-
-func TestWorkspaceRef(t *testing.T) {
-	t.Parallel()
-	target := &Target{WorkspaceID: "ws-42", Name: "test"}
-	if got := target.WorkspaceRef(); got != "ws-42" {
-		t.Errorf("WorkspaceRef() = %q, want %q", got, "ws-42")
-	}
-}

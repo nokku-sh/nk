@@ -12,7 +12,6 @@ import (
 
 type Config struct {
 	APIURL   string        `json:"api_url,omitempty"`
-	KeyType  string        `json:"key_type,omitempty"`
 	TTL      time.Duration `json:"ttl,omitempty"`
 	Insecure bool          `json:"insecure,omitempty"`
 	// SessionToken is the DPoP-bound session token obtained from the device

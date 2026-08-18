@@ -89,10 +89,6 @@ func MapTarget(t *nokkuv1.Target) *Target {
 	}
 }
 
-func (t *Target) WorkspaceRef() string {
-	return t.WorkspaceID
-}
-
 func MapPrincipal(p *nokkuv1.Principal) *Principal {
 	if p == nil {
 		return nil
