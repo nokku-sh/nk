@@ -13,7 +13,6 @@ require (
 	github.com/mizuchilabs/kagi v0.0.0-00010101000000-000000000000
 	github.com/mizuchilabs/kata v0.1.3
 	github.com/pkg/browser v0.0.0-20240102092130-5ac0b6a4141c
-	github.com/urfave/cli-altsrc/v3 v3.1.0
 	github.com/urfave/cli/v3 v3.11.0
 	golang.org/x/crypto v0.55.0
 	golang.org/x/sync v0.22.0
@@ -23,9 +22,6 @@ require (
 	google.golang.org/protobuf v1.36.12
 )
 
-require (
-	github.com/google/go-tpm-tools v0.3.13-0.20230620182252-4639ecce2aba // indirect
-	gopkg.in/yaml.v3 v3.0.1 // indirect
-)
+require github.com/google/go-tpm-tools v0.3.13-0.20230620182252-4639ecce2aba // indirect
 
 replace github.com/mizuchilabs/kagi => /home/roxas/Projects/kagi
