@@ -132,20 +132,23 @@ func (c *Client) pollDeviceToken(
 			if uerr := json.Unmarshal(body, &out); uerr == nil && out.AccessToken != "" {
 				return out.AccessToken, out.ExpiresIn, nil
 			}
-			var authErr struct {
-				Error string `json:"error"`
+		}
+
+		var authErr struct {
+			Error string `json:"error"`
+		}
+		if uerr := json.Unmarshal(body, &authErr); uerr == nil {
+			switch authErr.Error {
+			case "authorization_pending", "invalid_dpop_proof", "slow_down":
+				// keep polling (invalid_dpop_proof carries a fresh
+				// nonce, consumed above, so the next poll succeeds)
+			case "access_denied", "expired_token":
+				return "", 0, errors.New("device authorization: " + authErr.Error)
+			default:
+				return "", 0, errors.New("device authorization failed: " + authErr.Error)
 			}
-			if uerr := json.Unmarshal(body, &authErr); uerr == nil {
-				switch authErr.Error {
-				case "authorization_pending", "invalid_dpop_proof":
-					// keep polling (invalid_dpop_proof carries a fresh
-					// nonce, consumed above, so the next poll succeeds)
-				case "access_denied", "expired_token":
-					return "", 0, errors.New("device authorization: " + authErr.Error)
-				default:
-					return "", 0, errors.New("device authorization failed: " + authErr.Error)
-				}
-			}
+		} else if doErr != nil {
+			return "", 0, doErr
 		}
 
 		select {
