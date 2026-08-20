@@ -3,7 +3,7 @@ package api
 import (
 	"context"
 	"errors"
-	"log/slog"
+	"fmt"
 	"net/http"
 	"strings"
 	"sync"
@@ -34,8 +34,18 @@ type dpopAuth struct {
 // WithDPoP builds the interactive-session interceptor. baseURL is the API
 // origin used to reconstruct each request's htu, matching the server's
 // BaseURL configuration.
-func WithDPoP(st *state.State, proofer *dpop.Proofer, baseURL string) connect.Interceptor {
-	return &dpopAuth{state: st, proofer: proofer, baseURL: strings.TrimRight(baseURL, "/")}
+func WithDPoP(
+	st *state.State,
+	proofer *dpop.Proofer,
+	baseURL string,
+	initialNonce string,
+) connect.Interceptor {
+	return &dpopAuth{
+		state:   st,
+		proofer: proofer,
+		baseURL: strings.TrimRight(baseURL, "/"),
+		nonce:   initialNonce,
+	}
 }
 
 func (a *dpopAuth) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
@@ -43,13 +53,17 @@ func (a *dpopAuth) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
 		if !a.interactive() {
 			return next(ctx, req)
 		}
-		a.sign(req.Header(), req.Spec().Procedure)
+		if err := a.sign(req.Header(), req.Spec().Procedure); err != nil {
+			return nil, err
+		}
+
 		resp, err := next(ctx, req)
 		if err != nil && a.learnNonce(err) {
-			// Re-sign with the fresh nonce and retry exactly once. The
-			// request message is re-serialized on the second call, so the
-			// retry is a full re-send.
-			a.sign(req.Header(), req.Spec().Procedure)
+			// Wipe the old DPoP header before signing again
+			req.Header().Del("DPoP")
+			if err = a.sign(req.Header(), req.Spec().Procedure); err != nil {
+				return nil, err
+			}
 			return next(ctx, req)
 		}
 		return resp, err
@@ -62,7 +76,7 @@ func (a *dpopAuth) WrapStreamingClient(
 	return func(ctx context.Context, spec connect.Spec) connect.StreamingClientConn {
 		conn := next(ctx, spec)
 		if a.interactive() {
-			a.sign(conn.RequestHeader(), spec.Procedure)
+			_ = a.sign(conn.RequestHeader(), spec.Procedure)
 		}
 		return conn
 	}
@@ -81,11 +95,11 @@ func (a *dpopAuth) interactive() bool {
 }
 
 // sign sets the bearer token and DPoP proof on the request header.
-func (a *dpopAuth) sign(header http.Header, procedure string) {
-	header.Set("Authorization", "Bearer "+a.state.SessionToken)
-	// procedure is a fully-qualified RPC path ("/pkg.Service/Method"), so no
-	// separator is needed after the base URL.
+func (a *dpopAuth) sign(header http.Header, procedure string) error {
+	// RFC 9449: MUST use "DPoP" scheme for bound tokens
+	header.Set("Authorization", "DPoP "+a.state.SessionToken)
 	htu := a.baseURL + procedure
+
 	proof, err := a.proofer.Sign(
 		http.MethodPost,
 		htu,
@@ -93,10 +107,13 @@ func (a *dpopAuth) sign(header http.Header, procedure string) {
 		a.currentNonce(),
 	)
 	if err != nil {
-		slog.Warn("failed to sign DPoP proof", "err", err)
-		return
+		return connect.NewError(
+			connect.CodeInternal,
+			fmt.Errorf("failed to sign DPoP proof: %w", err),
+		)
 	}
 	header.Set("DPoP", proof)
+	return nil
 }
 
 // learnNonce records a fresh nonce from a stale-nonce error response and

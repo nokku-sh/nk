@@ -91,13 +91,13 @@ func TestDPoPAuthInteractiveSignsRequest(t *testing.T) {
 		return connect.NewResponse(&nokkuv1.User{}), nil
 	}
 
-	wrapped := WithDPoP(st, proofer, "https://app.example.com").WrapUnary(next)
+	wrapped := WithDPoP(st, proofer, "https://app.example.com", "").WrapUnary(next)
 	req := connect.NewRequest(&nokkuv1.User{})
 	if _, err := wrapped(context.Background(), req); err != nil {
 		t.Fatalf("wrap: %v", err)
 	}
-	if authz != "Bearer sess-token" {
-		t.Errorf("Authorization = %q, want Bearer sess-token", authz)
+	if authz != "DPoP sess-token" {
+		t.Errorf("Authorization = %q, want DPoP sess-token", authz)
 	}
 	if proof == "" {
 		t.Error("expected a DPoP proof header")
@@ -144,7 +144,7 @@ func TestDPoPAuthSkipsServiceAccount(t *testing.T) {
 		return connect.NewResponse(&nokkuv1.User{}), nil
 	}
 
-	wrapped := WithDPoP(st, proofer, "https://app.example.com").WrapUnary(next)
+	wrapped := WithDPoP(st, proofer, "https://app.example.com", "").WrapUnary(next)
 	req := connect.NewRequest(&nokkuv1.User{})
 	if _, err := wrapped(context.Background(), req); err != nil {
 		t.Fatalf("wrap: %v", err)
@@ -166,7 +166,7 @@ func TestDPoPAuthNoSessionNoHeaders(t *testing.T) {
 		return connect.NewResponse(&nokkuv1.User{}), nil
 	}
 
-	wrapped := WithDPoP(st, proofer, "https://app.example.com").WrapUnary(next)
+	wrapped := WithDPoP(st, proofer, "https://app.example.com", "").WrapUnary(next)
 	req := connect.NewRequest(&nokkuv1.User{})
 	if _, err := wrapped(context.Background(), req); err != nil {
 		t.Fatalf("wrap: %v", err)

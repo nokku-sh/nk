@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"crypto/tls"
 	"errors"
 	"net"
@@ -51,7 +52,12 @@ func (c *Client) SetupClients() error {
 
 	interceptors := []connect.Interceptor{withRetry(), withClientHeaders(c.State)}
 	if c.proofer != nil {
-		interceptors = append(interceptors, WithDPoP(c.State, c.proofer, c.State.APIURL))
+		initialNonce, _ := FetchNonce(context.Background(), httpc, c.State.APIURL)
+
+		interceptors = append(
+			interceptors,
+			WithDPoP(c.State, c.proofer, c.State.APIURL, initialNonce),
+		)
 	}
 	opts := connect.WithInterceptors(interceptors...)
 
