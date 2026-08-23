@@ -50,13 +50,13 @@ func (c *Client) SetupClients() error {
 	}
 	c.httpc = httpc
 
-	interceptors := []connect.Interceptor{withRetry(), withClientHeaders(c.State)}
+	interceptors := []connect.Interceptor{withRetry(), withUA()}
 	if c.proofer != nil {
 		initialNonce, _ := FetchNonce(context.Background(), httpc, c.State.APIURL)
 
 		interceptors = append(
 			interceptors,
-			WithDPoP(c.State, c.proofer, c.State.APIURL, initialNonce),
+			WithDPoP(c.State, c.proofer, initialNonce),
 		)
 	}
 	opts := connect.WithInterceptors(interceptors...)

@@ -2,56 +2,42 @@ package api
 
 import (
 	"context"
-	"net/http"
 	"time"
 
 	"connectrpc.com/connect"
 	"github.com/cenkalti/backoff/v7"
 	"github.com/mizuchilabs/kata/buildinfo"
-
-	"github.com/nokku-sh/nk/internal/state"
 )
 
-// withClientHeaders sets a standard User-Agent and, for service accounts,
-// the bearer token on every request. Interactive sessions carry their bearer
-// token and DPoP proof via the dpopAuth interceptor instead.
-func withClientHeaders(st *state.State) connect.Interceptor {
-	return &clientHeadersInterceptor{st: st, userAgent: buildinfo.UserAgent("nk")}
+type uaInterceptor struct {
+	ua string
 }
 
-type clientHeadersInterceptor struct {
-	st        *state.State
-	userAgent string
+func withUA() connect.Interceptor {
+	return &uaInterceptor{ua: buildinfo.UserAgent("nk")}
 }
 
-func (a *clientHeadersInterceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
+func (a *uaInterceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
 	return func(ctx context.Context, req connect.AnyRequest) (connect.AnyResponse, error) {
-		a.setHeaders(req.Header())
+		req.Header().Set("User-Agent", a.ua)
 		return next(ctx, req)
 	}
 }
 
-func (a *clientHeadersInterceptor) WrapStreamingClient(
+func (a *uaInterceptor) WrapStreamingClient(
 	next connect.StreamingClientFunc,
 ) connect.StreamingClientFunc {
 	return func(ctx context.Context, spec connect.Spec) connect.StreamingClientConn {
 		conn := next(ctx, spec)
-		a.setHeaders(conn.RequestHeader())
+		conn.RequestHeader().Set("User-Agent", a.ua)
 		return conn
 	}
 }
 
-func (a *clientHeadersInterceptor) WrapStreamingHandler(
+func (a *uaInterceptor) WrapStreamingHandler(
 	next connect.StreamingHandlerFunc,
 ) connect.StreamingHandlerFunc {
 	return next
-}
-
-func (a *clientHeadersInterceptor) setHeaders(header http.Header) {
-	header.Set("User-Agent", a.userAgent)
-	if a.st.IsServiceAccount() {
-		header.Set("Authorization", "Bearer "+a.st.Token)
-	}
 }
 
 func withRetry() connect.UnaryInterceptorFunc {

@@ -7,7 +7,6 @@ import (
 	"crypto/rand"
 	"encoding/json"
 	"net/http"
-	"strings"
 	"testing"
 
 	"connectrpc.com/connect"
@@ -31,57 +30,11 @@ func newTestProofer(t *testing.T) *dpop.Proofer {
 	return p
 }
 
-func TestClientHeadersServiceAccount(t *testing.T) {
-	t.Parallel()
-	st := &state.State{Token: "key-123.secret"}
-
-	var authz, userAgent string
-	next := func(_ context.Context, req connect.AnyRequest) (connect.AnyResponse, error) {
-		authz = req.Header().Get("Authorization")
-		userAgent = req.Header().Get("User-Agent")
-		return connect.NewResponse(&nokkuv1.User{}), nil
-	}
-
-	wrapped := withClientHeaders(st).WrapUnary(next)
-	req := connect.NewRequest(&nokkuv1.User{})
-	if _, err := wrapped(context.Background(), req); err != nil {
-		t.Fatalf("wrap: %v", err)
-	}
-	if authz != "Bearer key-123.secret" {
-		t.Errorf("Authorization = %q, want Bearer key-123.secret", authz)
-	}
-	if userAgent == "" || !strings.HasPrefix(userAgent, "nk/") {
-		t.Errorf("User-Agent = %q, want a nk/<version> value", userAgent)
-	}
-}
-
-func TestClientHeadersInteractiveNoAuthorization(t *testing.T) {
-	t.Parallel()
-	st := &state.State{Config: state.Config{SessionToken: "sess-token"}}
-
-	var authz, userAgent string
-	next := func(_ context.Context, req connect.AnyRequest) (connect.AnyResponse, error) {
-		authz = req.Header().Get("Authorization")
-		userAgent = req.Header().Get("User-Agent")
-		return connect.NewResponse(&nokkuv1.User{}), nil
-	}
-
-	wrapped := withClientHeaders(st).WrapUnary(next)
-	req := connect.NewRequest(&nokkuv1.User{})
-	if _, err := wrapped(context.Background(), req); err != nil {
-		t.Fatalf("wrap: %v", err)
-	}
-	if authz != "" {
-		t.Errorf("Authorization = %q, want empty for interactive sessions", authz)
-	}
-	if userAgent == "" || !strings.HasPrefix(userAgent, "nk/") {
-		t.Errorf("User-Agent = %q, want a nk/<version> value", userAgent)
-	}
-}
-
 func TestDPoPAuthInteractiveSignsRequest(t *testing.T) {
 	t.Parallel()
-	st := &state.State{Config: state.Config{SessionToken: "sess-token"}}
+	st := &state.State{
+		Config: state.Config{SessionToken: "sess-token", APIURL: "https://app.example.com"},
+	}
 	proofer := newTestProofer(t)
 
 	var authz, proof string
@@ -91,7 +44,7 @@ func TestDPoPAuthInteractiveSignsRequest(t *testing.T) {
 		return connect.NewResponse(&nokkuv1.User{}), nil
 	}
 
-	wrapped := WithDPoP(st, proofer, "https://app.example.com", "").WrapUnary(next)
+	wrapped := WithDPoP(st, proofer, "").WrapUnary(next)
 	req := connect.NewRequest(&nokkuv1.User{})
 	if _, err := wrapped(context.Background(), req); err != nil {
 		t.Fatalf("wrap: %v", err)
@@ -106,10 +59,12 @@ func TestDPoPAuthInteractiveSignsRequest(t *testing.T) {
 
 func TestDPoPAuthHTUHasNoDoubleSlash(t *testing.T) {
 	t.Parallel()
-	st := &state.State{Config: state.Config{SessionToken: "sess-token"}}
+	st := &state.State{
+		Config: state.Config{SessionToken: "sess-token", APIURL: "https://app.example.com"},
+	}
 	proofer := newTestProofer(t)
 
-	a := &dpopAuth{state: st, proofer: proofer, baseURL: "https://app.example.com"}
+	a := &dpopAuth{state: st, proofer: proofer}
 	header := http.Header{}
 	a.sign(header, "/nokku.v1.UserService/Whoami")
 
@@ -135,7 +90,10 @@ func TestDPoPAuthHTUHasNoDoubleSlash(t *testing.T) {
 
 func TestDPoPAuthSkipsServiceAccount(t *testing.T) {
 	t.Parallel()
-	st := &state.State{Token: "key-123.secret"}
+	st := &state.State{
+		Token:  "key-123.secret",
+		Config: state.Config{APIURL: "https://app.example.com"},
+	}
 	proofer := newTestProofer(t)
 
 	var proof string
@@ -144,7 +102,7 @@ func TestDPoPAuthSkipsServiceAccount(t *testing.T) {
 		return connect.NewResponse(&nokkuv1.User{}), nil
 	}
 
-	wrapped := WithDPoP(st, proofer, "https://app.example.com", "").WrapUnary(next)
+	wrapped := WithDPoP(st, proofer, "").WrapUnary(next)
 	req := connect.NewRequest(&nokkuv1.User{})
 	if _, err := wrapped(context.Background(), req); err != nil {
 		t.Fatalf("wrap: %v", err)
@@ -156,7 +114,7 @@ func TestDPoPAuthSkipsServiceAccount(t *testing.T) {
 
 func TestDPoPAuthNoSessionNoHeaders(t *testing.T) {
 	t.Parallel()
-	st := &state.State{}
+	st := &state.State{Config: state.Config{APIURL: "https://app.example.com"}}
 	proofer := newTestProofer(t)
 
 	var authz, proof string
@@ -166,7 +124,7 @@ func TestDPoPAuthNoSessionNoHeaders(t *testing.T) {
 		return connect.NewResponse(&nokkuv1.User{}), nil
 	}
 
-	wrapped := WithDPoP(st, proofer, "https://app.example.com", "").WrapUnary(next)
+	wrapped := WithDPoP(st, proofer, "").WrapUnary(next)
 	req := connect.NewRequest(&nokkuv1.User{})
 	if _, err := wrapped(context.Background(), req); err != nil {
 		t.Fatalf("wrap: %v", err)

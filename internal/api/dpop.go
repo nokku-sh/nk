@@ -15,17 +15,16 @@ import (
 )
 
 // dpopAuth authenticates interactive (device) sessions: it sends the
-// persisted session token as a bearer and binds every request to the CLI's
-// signing key with a DPoP proof. It learns the server nonce from the
+// persisted session token with the "DPoP" scheme and binds every request to
+// the CLI's signing key with a DPoP proof. It learns the server nonce from the
 // DPoP-Nonce response header and retries once when the server reports a stale
 // nonce (RFC 9449 section 8).
 //
-// Service-account requests skip this path entirely: their API key is a plain
-// bearer token with no DPoP binding.
+// Service-account requests take the non-interactive path instead: their API
+// key is a plain bearer token with no DPoP binding.
 type dpopAuth struct {
 	state   *state.State
 	proofer *dpop.Proofer
-	baseURL string
 
 	mu    sync.Mutex
 	nonce string
@@ -37,36 +36,36 @@ type dpopAuth struct {
 func WithDPoP(
 	st *state.State,
 	proofer *dpop.Proofer,
-	baseURL string,
 	initialNonce string,
 ) connect.Interceptor {
 	return &dpopAuth{
 		state:   st,
 		proofer: proofer,
-		baseURL: strings.TrimRight(baseURL, "/"),
 		nonce:   initialNonce,
 	}
 }
 
 func (a *dpopAuth) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
 	return func(ctx context.Context, req connect.AnyRequest) (connect.AnyResponse, error) {
-		if !a.interactive() {
-			return next(ctx, req)
-		}
-		if err := a.sign(req.Header(), req.Spec().Procedure); err != nil {
-			return nil, err
-		}
-
-		resp, err := next(ctx, req)
-		if err != nil && a.learnNonce(err) {
-			// Wipe the old DPoP header before signing again
-			req.Header().Del("DPoP")
-			if err = a.sign(req.Header(), req.Spec().Procedure); err != nil {
+		switch {
+		case a.interactive():
+			if err := a.sign(req.Header(), req.Spec().Procedure); err != nil {
 				return nil, err
 			}
-			return next(ctx, req)
+			resp, err := next(ctx, req)
+			if err != nil && a.learnNonce(err) {
+				// Wipe the old DPoP header before signing again
+				req.Header().Del("DPoP")
+				if err = a.sign(req.Header(), req.Spec().Procedure); err != nil {
+					return nil, err
+				}
+				return next(ctx, req)
+			}
+			return resp, err
+		case a.state.IsServiceAccount():
+			req.Header().Set("Authorization", "Bearer "+a.state.Token)
 		}
-		return resp, err
+		return next(ctx, req)
 	}
 }
 
@@ -75,8 +74,11 @@ func (a *dpopAuth) WrapStreamingClient(
 ) connect.StreamingClientFunc {
 	return func(ctx context.Context, spec connect.Spec) connect.StreamingClientConn {
 		conn := next(ctx, spec)
-		if a.interactive() {
+		switch {
+		case a.interactive():
 			_ = a.sign(conn.RequestHeader(), spec.Procedure)
+		case a.state.IsServiceAccount():
+			conn.RequestHeader().Set("Authorization", "Bearer "+a.state.Token)
 		}
 		return conn
 	}
@@ -94,11 +96,11 @@ func (a *dpopAuth) interactive() bool {
 	return !a.state.IsServiceAccount() && a.state.SessionToken != ""
 }
 
-// sign sets the bearer token and DPoP proof on the request header.
+// sign sets the DPoP-bound token and DPoP proof on the request header.
 func (a *dpopAuth) sign(header http.Header, procedure string) error {
 	// RFC 9449: MUST use "DPoP" scheme for bound tokens
 	header.Set("Authorization", "DPoP "+a.state.SessionToken)
-	htu := a.baseURL + procedure
+	htu := a.state.APIURL + procedure
 
 	proof, err := a.proofer.Sign(
 		http.MethodPost,
