@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
 	"strings"
 
@@ -60,7 +61,11 @@ func proxyCommand() *cli.Command {
 				return err
 			}
 			if err = client.SignTarget(ctx, target); err != nil {
-				return err
+				if !ssh.CertificateOnDisk(target.CAID) {
+					return err
+				}
+				slog.Warn("certificate signing failed, using cached certificate",
+					"target", target.Name, "err", err)
 			}
 
 			// Serve the TPM key over the agent socket before ssh starts the

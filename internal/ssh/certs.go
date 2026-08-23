@@ -37,6 +37,14 @@ func CertificateFresh(caID, caPublicKey string, margin time.Duration) bool {
 	return time.Until(validBefore) > margin
 }
 
+// CertificateOnDisk reports whether a cached certificate file exists for
+// caID, regardless of freshness. Used to decide whether a failed signing
+// attempt can fall back to the last cached certificate.
+func CertificateOnDisk(caID string) bool {
+	_, err := os.Stat(util.SSHCertificate(caID))
+	return err == nil
+}
+
 // VerifyCertificateForCA validates data's validity window and that it was
 // signed by caPub.
 func VerifyCertificateForCA(data []byte, caPub ssh.PublicKey) error {

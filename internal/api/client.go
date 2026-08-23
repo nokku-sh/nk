@@ -128,6 +128,9 @@ func (c *Client) refresh(ctx context.Context) error {
 	if err := c.syncAll(ctx); err != nil {
 		return err
 	}
+
+	c.ensureUserCerts(ctx)
+
 	// Commit the fresh snapshot before deriving artifacts from it. Only a
 	// fully successful sync reaches this point, so the on-disk cache is
 	// never left half-updated.
@@ -139,6 +142,22 @@ func (c *Client) refresh(ctx context.Context) error {
 		return err
 	}
 	return ssh.GenerateKnownHosts(c.State)
+}
+
+// ensureUserCerts signs every user SSH certificate that is missing or near
+// expiry. It is best-effort: failures are logged and the previously cached
+// certificate remains in place, so an offline connection can still fall back
+// to it.
+func (c *Client) ensureUserCerts(ctx context.Context) {
+	for _, target := range c.State.Targets {
+		ca := c.State.GetCAByID(target.CAID)
+		if ca == nil {
+			continue
+		}
+		if err := c.SignSSHCertificate(ctx, *ca); err != nil {
+			slog.Warn("certificate signing failed", "target", target.Name, "err", err)
+		}
+	}
 }
 
 // SignTarget signs the SSH certificate for a target's CA.
