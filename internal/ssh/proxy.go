@@ -45,9 +45,6 @@ func Proxy(ctx context.Context, target *state.Target, port string) error {
 		conn, err := dialer.DialContext(ctx, "tcp", addr)
 		if err != nil {
 			dialErrs = append(dialErrs, fmt.Errorf("failed to dial %s: %w", addr, err))
-			if len(endpoints) > 1 {
-				fmt.Printf("Skipping %s: %v", addr, err)
-			}
 			continue
 		}
 		return proxyIO(conn)
