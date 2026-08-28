@@ -12,30 +12,28 @@ import (
 func TestGenerateSSHConfig(t *testing.T) {
 	setupSSHDir(t)
 	st := &state.State{
-		Cache: state.Cache{
-			Targets: []state.Target{
-				{
-					ID:         "t-1",
-					Name:       "prod",
-					CAID:       "ca-1",
-					Principals: []state.Principal{{Username: "alice"}},
-				},
-				{
-					ID:         "t-2",
-					Name:       "staging",
-					CAID:       "ca-2",
-					Principals: []state.Principal{{Username: "bob"}},
-				},
-				// Incomplete targets must be skipped.
-				{
-					ID:         "t-3",
-					Name:       "no-ca",
-					CAID:       "",
-					Principals: []state.Principal{{Username: "c"}},
-				},
-				{ID: "t-4", Name: "no-principals", CAID: "ca-3"},
-				{ID: "t-5", Name: "", CAID: "ca-3", Principals: []state.Principal{{Username: "e"}}},
+		Targets: []state.Target{
+			{
+				ID:         "t-1",
+				Name:       "prod",
+				CAID:       "ca-1",
+				Principals: []state.Principal{{Username: "alice"}},
 			},
+			{
+				ID:         "t-2",
+				Name:       "staging",
+				CAID:       "ca-2",
+				Principals: []state.Principal{{Username: "bob"}},
+			},
+			// Incomplete targets must be skipped.
+			{
+				ID:         "t-3",
+				Name:       "no-ca",
+				CAID:       "",
+				Principals: []state.Principal{{Username: "c"}},
+			},
+			{ID: "t-4", Name: "no-principals", CAID: "ca-3"},
+			{ID: "t-5", Name: "", CAID: "ca-3", Principals: []state.Principal{{Username: "e"}}},
 		},
 	}
 
@@ -84,14 +82,12 @@ func TestGenerateSSHConfigTPMIdentity(t *testing.T) {
 	}
 
 	st := &state.State{
-		Cache: state.Cache{
-			Targets: []state.Target{
-				{
-					ID:         "t-1",
-					Name:       "prod",
-					CAID:       "ca-1",
-					Principals: []state.Principal{{Username: "alice"}},
-				},
+		Targets: []state.Target{
+			{
+				ID:         "t-1",
+				Name:       "prod",
+				CAID:       "ca-1",
+				Principals: []state.Principal{{Username: "alice"}},
 			},
 		},
 	}
@@ -115,19 +111,17 @@ func TestGenerateSSHConfigTPMIdentity(t *testing.T) {
 func TestGenerateSSHConfigDisambiguatesDuplicateNames(t *testing.T) {
 	setupSSHDir(t)
 	st := &state.State{
-		Cache: state.Cache{
-			Workspaces: []state.Workspace{
-				{ID: "ws-1", Name: "staging"},
-				{ID: "ws-2", Name: "production"},
-			},
-			Targets: []state.Target{
-				{ID: "t-1", Name: "db", WorkspaceID: "ws-1", CAID: "ca-1",
-					Principals: []state.Principal{{Username: "alice"}}},
-				{ID: "t-2", Name: "db", WorkspaceID: "ws-2", CAID: "ca-2",
-					Principals: []state.Principal{{Username: "bob"}}},
-				{ID: "t-3", Name: "unique", WorkspaceID: "ws-1", CAID: "ca-1",
-					Principals: []state.Principal{{Username: "carol"}}},
-			},
+		Workspaces: []state.Workspace{
+			{ID: "ws-1", Name: "staging"},
+			{ID: "ws-2", Name: "production"},
+		},
+		Targets: []state.Target{
+			{ID: "t-1", Name: "db", WorkspaceID: "ws-1", CAID: "ca-1",
+				Principals: []state.Principal{{Username: "alice"}}},
+			{ID: "t-2", Name: "db", WorkspaceID: "ws-2", CAID: "ca-2",
+				Principals: []state.Principal{{Username: "bob"}}},
+			{ID: "t-3", Name: "unique", WorkspaceID: "ws-1", CAID: "ca-1",
+				Principals: []state.Principal{{Username: "carol"}}},
 		},
 	}
 
@@ -157,21 +151,19 @@ func TestGenerateSSHConfigDisambiguatesDuplicateNames(t *testing.T) {
 func TestGenerateSSHConfigRejectsControlCharacters(t *testing.T) {
 	setupSSHDir(t)
 	st := &state.State{
-		Cache: state.Cache{
-			Targets: []state.Target{
-				{
-					ID:         "t-1",
-					Name:       "prod\n    ProxyCommand curl http://evil",
-					CAID:       "ca-1",
-					Principals: []state.Principal{{Username: "alice"}},
-				},
-				{
-					ID:   "t-2",
-					Name: "ok",
-					CAID: "ca-1",
-					Principals: []state.Principal{
-						{Username: "alice\n    ProxyCommand curl http://evil2"},
-					},
+		Targets: []state.Target{
+			{
+				ID:         "t-1",
+				Name:       "prod\n    ProxyCommand curl http://evil",
+				CAID:       "ca-1",
+				Principals: []state.Principal{{Username: "alice"}},
+			},
+			{
+				ID:   "t-2",
+				Name: "ok",
+				CAID: "ca-1",
+				Principals: []state.Principal{
+					{Username: "alice\n    ProxyCommand curl http://evil2"},
 				},
 			},
 		},
@@ -196,11 +188,9 @@ func TestGenerateSSHConfigRejectsControlCharacters(t *testing.T) {
 func TestGenerateKnownHosts(t *testing.T) {
 	setupSSHDir(t)
 	st := &state.State{
-		Cache: state.Cache{
-			CAs: []state.CA{
-				{ID: "ca-1", Name: "Production CA", PublicKey: "ssh-ed25519 AAAACa1== production"},
-				{ID: "ca-2", Name: "Staging CA", PublicKey: "  ssh-rsa AAAACa2== staging\n"},
-			},
+		CAs: []state.CA{
+			{ID: "ca-1", Name: "Production CA", PublicKey: "ssh-ed25519 AAAACa1== production"},
+			{ID: "ca-2", Name: "Staging CA", PublicKey: "  ssh-rsa AAAACa2== staging\n"},
 		},
 	}
 

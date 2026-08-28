@@ -10,7 +10,7 @@ func TestResolveTarget(t *testing.T) {
 	t.Parallel()
 
 	makeState := func(targets []state.Target, workspaces []state.Workspace) *state.State {
-		return &state.State{Cache: state.Cache{Targets: targets, Workspaces: workspaces}}
+		return &state.State{Targets: targets, Workspaces: workspaces}
 	}
 	dupTargets := []state.Target{
 		{ID: "1", Name: "db", WorkspaceID: "ws-1"},

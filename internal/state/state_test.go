@@ -21,35 +21,35 @@ func TestState_GetTargetsByName(t *testing.T) {
 	}{
 		{
 			name:   "find existing target",
-			s:      &State{Cache: Cache{Targets: targets}},
+			s:      &State{Targets: targets},
 			target: "prod",
 			want:   1,
 			wantID: "1",
 		},
 		{
 			name:   "target not found",
-			s:      &State{Cache: Cache{Targets: targets}},
+			s:      &State{Targets: targets},
 			target: "nonexistent",
 			want:   0,
 		},
 		{
 			name:   "empty targets",
-			s:      &State{Cache: Cache{Targets: []Target{}}},
+			s:      &State{Targets: []Target{}},
 			target: "prod",
 			want:   0,
 		},
 		{
 			name:   "nil targets",
-			s:      &State{Cache: Cache{Targets: nil}},
+			s:      &State{Targets: nil},
 			target: "prod",
 			want:   0,
 		},
 		{
 			name: "duplicate names across workspaces",
-			s: &State{Cache: Cache{Targets: []Target{
+			s: &State{Targets: []Target{
 				{ID: "1", Name: "prod"},
 				{ID: "2", Name: "prod"},
-			}}},
+			}},
 			target: "prod",
 			want:   2,
 		},
@@ -82,7 +82,7 @@ func TestStateIsLoggedIn(t *testing.T) {
 		want bool
 	}{
 		{name: "service account token", s: &State{Token: "key.secret"}, want: true},
-		{name: "session token", s: &State{Config: Config{SessionToken: "sess-1"}}, want: true},
+		{name: "session token", s: &State{SessionToken: "sess-1"}, want: true},
 		{name: "nothing", s: &State{}, want: false},
 	}
 	for _, tt := range tests {
@@ -103,12 +103,10 @@ func TestStateSubjectID(t *testing.T) {
 		want string
 	}{
 		{name: "service account takes precedence", s: &State{
-			Cache: Cache{
-				ServiceAccount: &ServiceAccount{ID: "sa-1"},
-				User:           &User{ID: "user-1"},
-			},
+			ServiceAccount: &ServiceAccount{ID: "sa-1"},
+			User:           &User{ID: "user-1"},
 		}, want: "sa-1"},
-		{name: "user", s: &State{Cache: Cache{User: &User{ID: "user-1"}}}, want: "user-1"},
+		{name: "user", s: &State{User: &User{ID: "user-1"}}, want: "user-1"},
 		{name: "nobody", s: &State{}, want: ""},
 	}
 	for _, tt := range tests {
@@ -129,15 +127,13 @@ func TestStateHasCachedData(t *testing.T) {
 		want bool
 	}{
 		{name: "targets and identity", s: &State{
-			Cache: Cache{
-				Targets: []Target{{ID: "1", Name: "prod"}},
-				User:    &User{ID: "user-1"},
-			},
+			Targets: []Target{{ID: "1", Name: "prod"}},
+			User:    &User{ID: "user-1"},
 		}, want: true},
 		{name: "targets only", s: &State{
-			Cache: Cache{Targets: []Target{{ID: "1", Name: "prod"}}},
+			Targets: []Target{{ID: "1", Name: "prod"}},
 		}, want: false},
-		{name: "identity only", s: &State{Cache: Cache{User: &User{ID: "user-1"}}}, want: false},
+		{name: "identity only", s: &State{User: &User{ID: "user-1"}}, want: false},
 		{name: "empty", s: &State{}, want: false},
 	}
 	for _, tt := range tests {
@@ -165,19 +161,19 @@ func TestState_GetCAByID(t *testing.T) {
 	}{
 		{
 			name:     "find existing ca",
-			s:        &State{Cache: Cache{CAs: cas}},
+			s:        &State{CAs: cas},
 			caID:     "ca-1",
 			expected: &CA{ID: "ca-1", Name: "Production CA", PublicKey: "key1"},
 		},
 		{
 			name:     "ca not found",
-			s:        &State{Cache: Cache{CAs: cas}},
+			s:        &State{CAs: cas},
 			caID:     "ca-999",
 			expected: nil,
 		},
 		{
 			name:     "empty cas",
-			s:        &State{Cache: Cache{CAs: []CA{}}},
+			s:        &State{CAs: []CA{}},
 			caID:     "ca-1",
 			expected: nil,
 		},

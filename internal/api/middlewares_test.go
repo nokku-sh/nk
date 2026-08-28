@@ -33,7 +33,7 @@ func newTestProofer(t *testing.T) *dpop.Proofer {
 func TestDPoPAuthInteractiveSignsRequest(t *testing.T) {
 	t.Parallel()
 	st := &state.State{
-		Config: state.Config{SessionToken: "sess-token", APIURL: "https://app.example.com"},
+		SessionToken: "sess-token", APIURL: "https://app.example.com",
 	}
 	proofer := newTestProofer(t)
 
@@ -60,7 +60,7 @@ func TestDPoPAuthInteractiveSignsRequest(t *testing.T) {
 func TestDPoPAuthHTUHasNoDoubleSlash(t *testing.T) {
 	t.Parallel()
 	st := &state.State{
-		Config: state.Config{SessionToken: "sess-token", APIURL: "https://app.example.com"},
+		SessionToken: "sess-token", APIURL: "https://app.example.com",
 	}
 	proofer := newTestProofer(t)
 
@@ -92,7 +92,7 @@ func TestDPoPAuthSkipsServiceAccount(t *testing.T) {
 	t.Parallel()
 	st := &state.State{
 		Token:  "key-123.secret",
-		Config: state.Config{APIURL: "https://app.example.com"},
+		APIURL: "https://app.example.com",
 	}
 	proofer := newTestProofer(t)
 
@@ -114,7 +114,7 @@ func TestDPoPAuthSkipsServiceAccount(t *testing.T) {
 
 func TestDPoPAuthNoSessionNoHeaders(t *testing.T) {
 	t.Parallel()
-	st := &state.State{Config: state.Config{APIURL: "https://app.example.com"}}
+	st := &state.State{APIURL: "https://app.example.com"}
 	proofer := newTestProofer(t)
 
 	var authz, proof string
