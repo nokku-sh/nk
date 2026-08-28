@@ -29,6 +29,7 @@ func Proxy(ctx context.Context, target *state.Target, port string) error {
 	// Shuffle to avoid hotspotting
 	endpoints := make([]string, len(target.Endpoints))
 	copy(endpoints, target.Endpoints)
+	//nolint:gosec // no need for crypto
 	rand.Shuffle(len(endpoints), func(i, j int) {
 		endpoints[i], endpoints[j] = endpoints[j], endpoints[i]
 	})
