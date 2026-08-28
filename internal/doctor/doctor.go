@@ -1,4 +1,4 @@
-package cli
+package doctor
 
 // The `nk doctor` diagnostics command produces pass/fail checks as text
 // or JSON for CI.
@@ -52,9 +52,9 @@ type Report struct {
 	Checks []Check  `json:"checks"`
 }
 
-// runDoctor collects all checks without triggering a login or mutating state
+// RunDoctor collects all checks without triggering a login or mutating state
 // (except when fix is set, which explicitly asks for repairs).
-func runDoctor(ctx context.Context, s *state.State, requireTPM, fix bool) Report {
+func RunDoctor(ctx context.Context, s *state.State, fix bool) Report {
 	var rep Report
 	add := func(section, name string, status Status, detail string) {
 		rep.Checks = append(rep.Checks, Check{
@@ -70,9 +70,9 @@ func runDoctor(ctx context.Context, s *state.State, requireTPM, fix bool) Report
 	}
 
 	checkSystem(ctx, add)
-	checkConfig(add, s, requireTPM)
+	checkConfig(add, s)
 
-	signerErr := openSigner(s, requireTPM)
+	signerErr := openSigner(s)
 	checkIdentity(add, s, signerErr)
 	checkConnectivity(ctx, add, s)
 	checkSSH(add)
@@ -107,14 +107,14 @@ func hostname() string {
 // Returns errNotLoggedIn when none exists yet. Headless (service-account)
 // mode has no signing identity; it returns errNotLoggedIn too, which
 // checkIdentity reports as "not logged in" for headless runs.
-func openSigner(s *state.State, requireTPM bool) error {
+func openSigner(s *state.State) error {
 	if s.Token != "" {
 		return errNotLoggedIn
 	}
 	if tpm.SignerMethod(util.ConfigPath()) == "" {
 		return errNotLoggedIn
 	}
-	_, err := tpm.New(util.ConfigPath(), requireTPM)
+	_, err := tpm.New(util.ConfigPath(), s.RequireTPM)
 	return err
 }
 
@@ -150,7 +150,7 @@ func checkSystem(ctx context.Context, add func(string, string, Status, string)) 
 	}
 }
 
-func checkConfig(add func(string, string, Status, string), s *state.State, requireTPM bool) {
+func checkConfig(add func(string, string, Status, string), s *state.State) {
 	if !util.FileExists(util.ConfigFile()) {
 		add("Configuration", "config.json", StatusInfo, "no config yet (run nk login)")
 	} else {
@@ -158,7 +158,7 @@ func checkConfig(add func(string, string, Status, string), s *state.State, requi
 		if err := cfg.Load(); err != nil {
 			add("Configuration", "config.json", StatusFail, err.Error())
 		} else {
-			add("Configuration", "config.json", StatusOK, effectiveConfig(s, requireTPM))
+			add("Configuration", "config.json", StatusOK, effectiveConfig(s))
 		}
 	}
 
@@ -175,12 +175,12 @@ func checkConfig(add func(string, string, Status, string), s *state.State, requi
 	checkFilePerms(add, "private key", util.KeyFile(), 0o600)
 }
 
-func effectiveConfig(s *state.State, requireTPM bool) string {
+func effectiveConfig(s *state.State) string {
 	ttl := "server default"
 	if s.TTL > 0 {
 		ttl = util.HumanizeDuration(s.TTL)
 	}
-	return fmt.Sprintf("ttl=%s, insecure=%v, require-tpm=%v", ttl, s.Insecure, requireTPM)
+	return fmt.Sprintf("ttl=%s, insecure=%v, require-tpm=%v", ttl, s.Insecure, s.RequireTPM)
 }
 
 func checkFilePerms(add func(string, string, Status, string), name, path string, want os.FileMode) {
