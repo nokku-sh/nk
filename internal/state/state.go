@@ -4,10 +4,7 @@ package state
 import (
 	"fmt"
 	"log/slog"
-	"os"
 	"time"
-
-	"github.com/nokku-sh/nk/internal/util"
 )
 
 type Workspace struct {
@@ -64,6 +61,10 @@ type State struct {
 	// NK_TOKEN. It is intentionally not part of Config: it is ephemeral
 	// and never written to disk.
 	Token string
+
+	// RequireTPM mirrors the --require-tpm flag: refuse the software key
+	// fallback. Like Token, it is ephemeral and never persisted.
+	RequireTPM bool
 }
 
 func New() *State {
@@ -87,13 +88,6 @@ func (s *State) Save() error {
 		return fmt.Errorf("saving cache: %w", err)
 	}
 	return nil
-}
-
-func (s *State) Clear() {
-	s.Config.Clear()
-	s.Cache.Clear()
-	_ = os.Remove(util.ConfigFile())
-	_ = os.Remove(util.CacheFile())
 }
 
 func (s *State) IsLoggedIn() bool {

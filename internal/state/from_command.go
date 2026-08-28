@@ -24,6 +24,7 @@ func FromCommand(cmd *cli.Command) *State {
 	if cmd.IsSet("token") {
 		s.Token = cmd.String("token")
 	}
+	s.RequireTPM = cmd.Bool("require-tpm")
 
 	// Fall back to the flag default when nothing was persisted.
 	if s.APIURL == "" {

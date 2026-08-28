@@ -43,7 +43,7 @@ func newHTTPClient(insecure bool) (*http.Client, error) {
 // SetupClients constructs the connectrpc clients. Authentication is layered:
 // the DPoP interceptor signs interactive device sessions, the identity
 // interceptor adds the service-account API key and client headers.
-func (c *Client) SetupClients() error {
+func (c *Client) SetupClients(ctx context.Context) error {
 	httpc, err := newHTTPClient(c.State.Insecure)
 	if err != nil {
 		return err
@@ -52,7 +52,7 @@ func (c *Client) SetupClients() error {
 
 	interceptors := []connect.Interceptor{withRetry(), withUA()}
 	if c.proofer != nil {
-		initialNonce, _ := FetchNonce(context.Background(), httpc, c.State.APIURL)
+		initialNonce, _ := FetchNonce(ctx, httpc, c.State.APIURL)
 
 		interceptors = append(
 			interceptors,

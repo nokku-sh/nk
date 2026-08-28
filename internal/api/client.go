@@ -10,7 +10,6 @@ import (
 
 	"connectrpc.com/grpchealth"
 	"github.com/mizuchilabs/kagi/dpop"
-	"github.com/urfave/cli/v3"
 	"google.golang.org/protobuf/types/known/durationpb"
 
 	nokkuv1 "github.com/nokku-sh/nk/internal/gen/nokku/v1"
@@ -37,10 +36,10 @@ type Client struct {
 	tc nokkuv1connect.TargetServiceClient
 }
 
-// Connect builds a client from the command's resolved state and refreshes
-// it, falling back to cached data when the backend is unreachable.
-func Connect(ctx context.Context, cmd *cli.Command) (*Client, error) {
-	c, err := New(state.FromCommand(cmd), cmd.Bool("require-tpm"))
+// Connect builds a client from s and refreshes it, falling back to cached
+// data when the backend is unreachable.
+func Connect(ctx context.Context, s *state.State) (*Client, error) {
+	c, err := New(ctx, s)
 	if err != nil {
 		return nil, err
 	}
@@ -51,16 +50,17 @@ func Connect(ctx context.Context, cmd *cli.Command) (*Client, error) {
 }
 
 // New builds a client for s: it loads the machine signing identity, ensures
-// the SSH key exists, and constructs the connectrpc clients. It performs no
-// network I/O; call Refresh to authenticate and sync.
-func New(s *state.State, requireTPM bool) (*Client, error) {
+// the SSH key exists, and constructs the connectrpc clients. The only
+// network I/O is the DPoP nonce bootstrap; call Refresh to authenticate and
+// sync.
+func New(ctx context.Context, s *state.State) (*Client, error) {
 	c := &Client{State: s}
 
 	// Headless (service-account) mode has no signing identity: the API key
 	// is a plain bearer token with no DPoP binding. Interactive mode creates
 	// the machine key that binds the device session.
 	if !s.IsServiceAccount() {
-		signer, err := tpm.New(util.ConfigPath(), requireTPM)
+		signer, err := tpm.New(util.ConfigPath(), s.RequireTPM)
 		if err != nil {
 			return nil, err
 		}
@@ -70,10 +70,10 @@ func New(s *state.State, requireTPM bool) (*Client, error) {
 		}
 	}
 
-	if err := ssh.SetupKey(requireTPM); err != nil {
+	if err := ssh.SetupKey(s.RequireTPM); err != nil {
 		return nil, err
 	}
-	if err := c.SetupClients(); err != nil {
+	if err := c.SetupClients(ctx); err != nil {
 		return nil, err
 	}
 	return c, nil
@@ -141,7 +141,12 @@ func (c *Client) refresh(ctx context.Context) error {
 	if err := ssh.GenerateSSHConfig(c.State); err != nil {
 		return err
 	}
-	return ssh.GenerateKnownHosts(c.State)
+	if err := ssh.GenerateKnownHosts(c.State); err != nil {
+		return err
+	}
+	// The generated config is only reachable through the user's include
+	// directive; wire it up now that we have written a managed config.
+	return util.EnsureSSHConfigInclude()
 }
 
 // ensureUserCerts signs every user SSH certificate that is missing or near
