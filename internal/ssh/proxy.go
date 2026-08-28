@@ -48,15 +48,22 @@ func Proxy(ctx context.Context, target *state.Target, port string) error {
 			dialErrs = append(dialErrs, fmt.Errorf("failed to dial %s: %w", addr, err))
 			continue
 		}
-		return proxyIO(conn)
+		return proxyIO(ctx, conn)
 	}
 
 	// If we get here, all endpoints failed. Return a combined error.
 	return fmt.Errorf("all endpoints failed:\n%w", errors.Join(dialErrs...))
 }
 
-func proxyIO(conn net.Conn) error {
+func proxyIO(ctx context.Context, conn net.Conn) error {
 	defer func() { _ = conn.Close() }()
+
+	// Closing the connection is the only way to unblock the io.Copy calls
+	// when the context is cancelled: they read from stdin/stdout pipes.
+	go func() {
+		<-ctx.Done()
+		_ = conn.Close()
+	}()
 
 	var eg errgroup.Group
 
