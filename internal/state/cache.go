@@ -37,7 +37,3 @@ func (c *Cache) Save() error {
 	}
 	return util.WriteIfChanged(util.CacheFile(), data, 0o600)
 }
-
-func (c *Cache) Clear() {
-	*c = Cache{}
-}

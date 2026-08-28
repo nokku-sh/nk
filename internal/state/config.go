@@ -47,7 +47,3 @@ func (c *Config) Save() error {
 	}
 	return util.WriteIfChanged(util.ConfigFile(), data, 0o600)
 }
-
-func (c *Config) Clear() {
-	*c = Config{}
-}
