@@ -28,7 +28,36 @@ func VerifyPaths() error {
 			return fmt.Errorf("cannot create directory %s: %w", dir, err)
 		}
 	}
-	return verifySSHConfig(sshPath)
+	return nil
+}
+
+// EnsureSSHConfigInclude writes the Include directive into the user's
+// ~/.ssh/config when it is missing. Called after a successful login.
+func EnsureSSHConfigInclude() error {
+	sshPath, err := SSHPath()
+	if err != nil {
+		return err
+	}
+	path := filepath.Join(sshPath, "config")
+	include := fmt.Sprintf("Include %s", SSHConfigFile())
+
+	// Read the existing config file (if it exists)
+	var content []byte
+	if _, err = os.Stat(path); err == nil {
+		content, err = os.ReadFile(filepath.Clean(path))
+		if err != nil {
+			return fmt.Errorf("failed to read ssh config: %w", err)
+		}
+	}
+
+	if strings.Contains(string(content), include) {
+		return nil
+	}
+
+	var buf bytes.Buffer
+	fmt.Fprintf(&buf, "%s\n\n", include)
+	buf.Write(content)
+	return WriteFile(path, buf.Bytes(), 0o600)
 }
 
 // Common Paths ---------------------------------------------------------------
@@ -91,30 +120,6 @@ func SSHCertificates() ([]string, error) {
 }
 
 // Helpers --------------------------------------------------------------------
-
-// verifySSHConfig checks if the user's ~/.ssh/config includes our app's config.
-func verifySSHConfig(sshPath string) error {
-	path := filepath.Join(sshPath, "config")
-	include := fmt.Sprintf("Include %s", SSHConfigFile())
-
-	// Read the existing config file (if it exists)
-	var content []byte
-	if _, err := os.Stat(path); err == nil {
-		content, err = os.ReadFile(filepath.Clean(path))
-		if err != nil {
-			return fmt.Errorf("failed to read ssh config: %w", err)
-		}
-	}
-
-	if strings.Contains(string(content), include) {
-		return nil
-	}
-
-	var buf bytes.Buffer
-	fmt.Fprintf(&buf, "%s\n\n", include)
-	buf.Write(content)
-	return WriteFile(path, buf.Bytes(), 0o600)
-}
 
 // CleanupPaths removes safe application data, not ssh dir!
 func CleanupPaths() {
