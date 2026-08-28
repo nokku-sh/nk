@@ -124,20 +124,22 @@ func (c *Client) pollDeviceToken(
 		if freshNonce != "" {
 			nonce = freshNonce
 		}
-		if doErr == nil {
-			var out struct {
-				AccessToken string `json:"access_token"`
-				ExpiresIn   int    `json:"expires_in"`
-			}
-			if uerr := json.Unmarshal(body, &out); uerr == nil && out.AccessToken != "" {
-				return out.AccessToken, out.ExpiresIn, nil
-			}
+
+		var out struct {
+			AccessToken string `json:"access_token"`
+			ExpiresIn   int    `json:"expires_in"`
 		}
+		tokenErr := json.Unmarshal(body, &out)
 
 		var authErr struct {
 			Error string `json:"error"`
 		}
-		if uerr := json.Unmarshal(body, &authErr); uerr == nil {
+		decodeErr := json.Unmarshal(body, &authErr)
+
+		switch {
+		case doErr == nil && tokenErr == nil && out.AccessToken != "":
+			return out.AccessToken, out.ExpiresIn, nil
+		case decodeErr == nil && authErr.Error != "":
 			switch authErr.Error {
 			case "authorization_pending", "invalid_dpop_proof", "slow_down":
 				// keep polling (invalid_dpop_proof carries a fresh
@@ -147,8 +149,17 @@ func (c *Client) pollDeviceToken(
 			default:
 				return "", 0, errors.New("device authorization failed: " + authErr.Error)
 			}
-		} else if doErr != nil {
+		case doErr != nil:
+			// Transport error, or an HTTP error whose body carries no
+			// RFC 8628 error code: retrying won't fix it.
 			return "", 0, doErr
+		default:
+			// 2xx whose body is neither a token nor an RFC 8628 error:
+			// don't spin until the timeout.
+			return "", 0, fmt.Errorf(
+				"device authorization: unexpected response: %s",
+				strings.TrimSpace(string(body)),
+			)
 		}
 
 		select {
