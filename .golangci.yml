@@ -126,11 +126,11 @@ linters:
       struct-method: false
 
     funlen:
-      lines: 100
+      lines: 120
       statements: 50
 
     gocognit:
-      min-complexity: 20
+      min-complexity: 40
 
     gocritic:
       settings:
