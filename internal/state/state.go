@@ -90,10 +90,6 @@ func (s *State) Save() error {
 	return nil
 }
 
-func (s *State) IsLoggedIn() bool {
-	return s.Token != "" || s.SessionToken != ""
-}
-
 func (s *State) SessionValid() bool {
 	if s.IsServiceAccount() {
 		return s.Token != ""
@@ -106,16 +102,6 @@ func (s *State) SessionValid() bool {
 
 func (s *State) HasCachedData() bool {
 	return len(s.Targets) > 0 && (s.User != nil || s.ServiceAccount != nil)
-}
-
-func (s *State) SubjectID() string {
-	if s.ServiceAccount != nil {
-		return s.ServiceAccount.ID
-	}
-	if s.User != nil {
-		return s.User.ID
-	}
-	return ""
 }
 
 func (s *State) GetTargetsByName(name string) []*Target {

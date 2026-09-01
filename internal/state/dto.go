@@ -39,16 +39,6 @@ func MapWorkspace(ws *nokkuv1.Workspace) *Workspace {
 	}
 }
 
-func MapWorkspaces(wss []*nokkuv1.Workspace) []Workspace {
-	res := make([]Workspace, 0, len(wss))
-	for _, ws := range wss {
-		if ws != nil {
-			res = append(res, *MapWorkspace(ws))
-		}
-	}
-	return res
-}
-
 func MapCA(ca *nokkuv1.CertificateAuthority) *CA {
 	if ca == nil {
 		return nil

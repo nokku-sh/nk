@@ -92,51 +92,6 @@ func TestMapWorkspace(t *testing.T) {
 	})
 }
 
-func TestMapWorkspaces(t *testing.T) {
-	t.Parallel()
-
-	t.Run("nil slice returns empty", func(t *testing.T) {
-		got := MapWorkspaces(nil)
-		if got == nil {
-			t.Error("MapWorkspaces(nil) returned nil, want empty slice")
-		}
-		if len(got) != 0 {
-			t.Errorf("MapWorkspaces(nil) len = %d, want 0", len(got))
-		}
-	})
-
-	t.Run("empty slice returns empty", func(t *testing.T) {
-		got := MapWorkspaces([]*nokkuv1.Workspace{})
-		if len(got) != 0 {
-			t.Errorf("MapWorkspaces(empty) len = %d, want 0", len(got))
-		}
-	})
-
-	t.Run("skips nil entries", func(t *testing.T) {
-		got := MapWorkspaces([]*nokkuv1.Workspace{
-			{Id: new("1"), Name: new("ws-a")},
-			nil,
-			{Id: new("2"), Name: new("ws-b")},
-		})
-		if len(got) != 2 {
-			t.Errorf("MapWorkspaces len = %d, want 2", len(got))
-		}
-	})
-
-	t.Run("maps all entries", func(t *testing.T) {
-		got := MapWorkspaces([]*nokkuv1.Workspace{
-			{Id: new("1"), Name: new("prod")},
-			{Id: new("2"), Name: new("staging")},
-		})
-		if len(got) != 2 {
-			t.Fatalf("MapWorkspaces len = %d, want 2", len(got))
-		}
-		if got[0].Name != "prod" || got[1].Name != "staging" {
-			t.Errorf("MapWorkspaces = %+v", got)
-		}
-	})
-}
-
 func TestMapCA(t *testing.T) {
 	t.Parallel()
 
