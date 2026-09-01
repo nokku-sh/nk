@@ -36,7 +36,7 @@ ssh user@target   # Connect using standard OpenSSH!
 ```
 
 > [!NOTE]
-> When the backend is unavailable, `nk` works seamlessly from cached data and existing valid certificates.
+> Access is synced just in time: every `nk ls` and every SSH connection refreshes what you can reach, so grants and revocations apply immediately. When the backend is unreachable, `nk` fails fast and works seamlessly from cached data and existing valid certificates.
 
 ## Hardware Security (TPM 2.0)
 
@@ -74,7 +74,6 @@ The command generates a key pair, requests a signed certificate, and saves the c
 | -------------------- | ------------------------------------------ |
 | `nk login`           | Authenticate and synchronize local state   |
 | `nk refresh`         | Re-authenticate and refresh state          |
-| `nk status`          | Show identity and workspace information    |
 | `nk ls` / `nk list`  | List targets and principals                |
 | `nk doctor`          | Check API reachability and local SSH setup |
 | `nk pki list`       | List active X.509 certificate authorities  |
