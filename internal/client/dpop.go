@@ -130,15 +130,13 @@ func (a *dpopAuth) set(nonce, serverURL string) {
 // learnResponse records the nonce and canonical URL a raw HTTP response
 // (the device-flow endpoints) advertised, if any.
 func (a *dpopAuth) learnResponse(header http.Header) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
 	if n := header.Get("DPoP-Nonce"); n != "" {
-		a.mu.Lock()
 		a.nonce = n
-		a.mu.Unlock()
 	}
 	if u := header.Get(urlHeader); u != "" {
-		a.mu.Lock()
 		a.serverURL = u
-		a.mu.Unlock()
 	}
 }
 
@@ -146,8 +144,8 @@ func (a *dpopAuth) learnResponse(header http.Header) {
 // reports whether the server advertised one (so the caller retries). The same
 // response carries the canonical API URL, which is learned alongside.
 func (a *dpopAuth) learnNonce(err error) bool {
-	var cerr *connect.Error
-	if !errors.As(err, &cerr) || connect.CodeOf(err) != connect.CodeUnauthenticated {
+	cerr, ok := errors.AsType[*connect.Error](err)
+	if !ok || connect.CodeOf(err) != connect.CodeUnauthenticated {
 		return false
 	}
 	a.mu.Lock()
