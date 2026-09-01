@@ -13,7 +13,7 @@ import (
 	"connectrpc.com/connect"
 	"github.com/go-jose/go-jose/v4"
 
-	"github.com/nokku-sh/nk/internal/dpop"
+	"github.com/nokku-sh/mon/dpop"
 	nokkuv1 "github.com/nokku-sh/nk/internal/gen/nokku/v1"
 	"github.com/nokku-sh/nk/internal/state"
 )

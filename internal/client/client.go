@@ -13,14 +13,15 @@ import (
 
 	"golang.org/x/sync/errgroup"
 
-	"github.com/nokku-sh/nk/internal/dpop"
+	"github.com/nokku-sh/mon/dpop"
+	"github.com/nokku-sh/mon/id"
+	"github.com/nokku-sh/mon/tpm"
 	"github.com/nokku-sh/nk/internal/fsutil"
 	nokkuv1 "github.com/nokku-sh/nk/internal/gen/nokku/v1"
 	"github.com/nokku-sh/nk/internal/gen/nokku/v1/nokkuv1connect"
 	"github.com/nokku-sh/nk/internal/paths"
 	"github.com/nokku-sh/nk/internal/ssh"
 	"github.com/nokku-sh/nk/internal/state"
-	"github.com/nokku-sh/nk/internal/tpm"
 )
 
 const (
@@ -47,9 +48,17 @@ func New(ctx context.Context, s *state.State) (*Client, error) {
 	c := &Client{State: s}
 
 	// Headless (service-account) mode has no signing identity: the API key
-	// is a plain bearer token with no DPoP binding.
+	// is a plain bearer token with no DPoP binding. The CLI recovers from a
+	// changed machine identity (relogin re-registers the new key), unlike
+	// the daemon, whose enrollment is bound to its key.
 	if !s.IsServiceAccount() {
-		signer, err := tpm.New(paths.ConfigPath(), s.RequireTPM)
+		signer, err := tpm.NewSigner(tpm.SignerOptions{
+			Salt:            []byte(tpm.SaltCLI),
+			Store:           tpm.NewFileStore(paths.SignerStateFile()),
+			MachineID:       id.MachineID,
+			RequireTPM:      s.RequireTPM,
+			RecoverIdentity: true,
+		})
 		if err != nil {
 			return nil, err
 		}

@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/nokku-sh/mon/tpm"
 	"github.com/nokku-sh/nk/internal/paths"
-	"github.com/nokku-sh/nk/internal/tpm"
 )
 
 // TestSetupTPMKey exercises the TPM identity lifecycle against a real TPM:

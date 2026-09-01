@@ -73,6 +73,12 @@ func SSHCertPath() string {
 	return filepath.Join(ConfigPath(), "certs")
 }
 
+// SignerStateFile returns the machine signing identity state path. The file
+// is owned by the shared mon/tpm package; its JSON shape must not change.
+func SignerStateFile() string {
+	return filepath.Join(ConfigPath(), "signer.json")
+}
+
 func KnownHostsPath() string {
 	return filepath.Join(ConfigPath(), "known_hosts")
 }

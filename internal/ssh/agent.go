@@ -9,8 +9,8 @@ import (
 
 	"golang.org/x/crypto/ssh/agent"
 
+	"github.com/nokku-sh/mon/tpm"
 	"github.com/nokku-sh/nk/internal/paths"
-	"github.com/nokku-sh/nk/internal/tpm"
 )
 
 // ServeAgent serves the TPM identity key over an SSH agent socket so

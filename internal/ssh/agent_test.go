@@ -18,7 +18,7 @@ import (
 	cryptossh "golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/agent"
 
-	"github.com/nokku-sh/nk/internal/tpm"
+	"github.com/nokku-sh/mon/tpm"
 )
 
 // e2eKey opens the TPM identity key: the real device when available, the

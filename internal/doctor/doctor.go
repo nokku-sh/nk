@@ -13,12 +13,13 @@ import (
 
 	"github.com/mizuchilabs/kata/buildinfo"
 
+	"github.com/nokku-sh/mon/id"
+	"github.com/nokku-sh/mon/tpm"
 	"github.com/nokku-sh/nk/internal/client"
 	"github.com/nokku-sh/nk/internal/fsutil"
 	"github.com/nokku-sh/nk/internal/paths"
 	"github.com/nokku-sh/nk/internal/ssh"
 	"github.com/nokku-sh/nk/internal/state"
-	"github.com/nokku-sh/nk/internal/tpm"
 	"github.com/nokku-sh/nk/internal/ui"
 )
 
@@ -104,13 +105,20 @@ func hostname() string {
 // mode has no signing identity; it returns errNotLoggedIn too, which
 // checkIdentity reports as "not logged in" for headless runs.
 func openSigner(s *state.State) error {
+	store := tpm.NewFileStore(paths.SignerStateFile())
 	if s.Token != "" {
 		return errors.New("no signing identity exists (run nk login)")
 	}
-	if tpm.SignerMethod(paths.ConfigPath()) == "" {
+	if tpm.IdentityMethod(store) == "" {
 		return errors.New("no signing identity exists (run nk login)")
 	}
-	_, err := tpm.New(paths.ConfigPath(), s.RequireTPM)
+	_, err := tpm.NewSigner(tpm.SignerOptions{
+		Salt:            []byte(tpm.SaltCLI),
+		Store:           store,
+		MachineID:       id.MachineID,
+		RequireTPM:      s.RequireTPM,
+		RecoverIdentity: true,
+	})
 	return err
 }
 
@@ -217,7 +225,7 @@ func checkIdentity(add func(string, string, Status, string), s *state.State, sig
 		),
 	)
 
-	switch method := tpm.SignerMethod(paths.ConfigPath()); {
+	switch method := tpm.IdentityMethod(tpm.NewFileStore(paths.SignerStateFile())); {
 	case method == "":
 		add("Identity", "signing identity", StatusInfo, "not logged in (run nk login)")
 	case signerErr != nil:
