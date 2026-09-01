@@ -1,4 +1,4 @@
-package api
+package client
 
 import (
 	"context"
@@ -14,22 +14,24 @@ import (
 	"github.com/pkg/browser"
 )
 
-// login obtains a session. Service accounts authenticate with their injected
-// API key (no session). Interactive users run the RFC 8628 device flow: the
-// CLI gets a user code, opens the browser, and polls for a DPoP-bound session
-// token.
-func (c *Client) login(ctx context.Context) error {
+// ensureSession guarantees a usable session before a request. Service
+// accounts authenticate with their injected API key (no session).
+// Interactive callers may run the RFC 8628 device flow; non-interactive
+// callers fail fast with ErrNotLoggedIn instead of blocking on a browser.
+//
+// The persisted expiry time is trusted locally: no probe request is spent on
+// validation, and a server-side rejection surfaces as CodeUnauthenticated,
+// which Sync turns into a single re-login and retry.
+func (c *Client) ensureSession(ctx context.Context, interactive bool) error {
 	if c.State.IsServiceAccount() {
 		return nil // Skip login; the API key is injected via --token.
 	}
-	if c.State.SessionToken != "" {
-		if c.State.SessionExpiresAt.IsZero() || time.Now().Before(c.State.SessionExpiresAt) {
-			if err := c.syncUser(ctx); err == nil {
-				return nil // Skip login; the session is still valid.
-			}
-		}
+	if c.State.SessionValid() {
+		return nil // Skip login; the session is still valid.
 	}
-
+	if !interactive {
+		return errors.New("not logged in (run nk login)")
+	}
 	return c.deviceLogin(ctx)
 }
 
@@ -40,10 +42,13 @@ func (c *Client) deviceLogin(ctx context.Context) error {
 	// the server nonce. Fetch it up front so the flow is a single poll; a
 	// failure is not fatal, the token endpoint advertises a fresh nonce on
 	// a use_dpop_nonce error and the loop retries (RFC 9449 section 8).
-	nonce, _ := FetchNonce(ctx, c.httpc, c.State.APIURL)
+	if c.dpopAuth != nil {
+		nonce, apiURL, _ := FetchNonce(ctx, c.httpc, c.State.APIURL)
+		c.dpopAuth.set(nonce, apiURL)
+	}
 
 	// Request a device code.
-	deviceCode, userCode, verificationURI, err := c.beginDeviceAuth(ctx, nonce)
+	deviceCode, userCode, verificationURI, err := c.beginDeviceAuth(ctx)
 	if err != nil {
 		return err
 	}
@@ -56,7 +61,7 @@ func (c *Client) deviceLogin(ctx context.Context) error {
 	}
 
 	// Poll for the session token.
-	token, expiresIn, err := c.pollDeviceToken(ctx, deviceCode, nonce)
+	token, expiresIn, err := c.pollDeviceToken(ctx, deviceCode)
 	if err != nil {
 		return err
 	}
@@ -69,17 +74,17 @@ func (c *Client) deviceLogin(ctx context.Context) error {
 		return err
 	}
 
-	// Resolve the authenticated user for the greeting and subject id.
-	return c.syncUser(ctx)
+	// The identity itself is resolved by the following access sync; the
+	// device flow only needs to establish the session.
+	return nil
 }
 
 // beginDeviceAuth asks the authorization server for a device code.
 func (c *Client) beginDeviceAuth(
 	ctx context.Context,
-	nonce string,
 ) (deviceCode, userCode, verificationURI string, err error) {
 	form := url.Values{}
-	resp, _, err := c.postForm(ctx, "/auth/device", form, nonce)
+	resp, err := c.postForm(ctx, "/auth/device", form)
 	if err != nil {
 		return "", "", "", err
 	}
@@ -107,7 +112,7 @@ func (c *Client) beginDeviceAuth(
 // pollDeviceToken polls the token endpoint until the user approves.
 func (c *Client) pollDeviceToken(
 	ctx context.Context,
-	deviceCode, nonce string,
+	deviceCode string,
 ) (token string, expiresIn int, err error) {
 	// Poll interval defaults to 5s; cap the total wait at the grant TTL.
 	ticker := time.NewTicker(5 * time.Second)
@@ -117,12 +122,7 @@ func (c *Client) pollDeviceToken(
 
 	for {
 		form := url.Values{"device_code": {deviceCode}}
-		body, freshNonce, doErr := c.postForm(ctx, "/auth/device/token", form, nonce)
-		// The nonce rotates every few minutes; when the server advertises a
-		// fresh one, use it for the next poll.
-		if freshNonce != "" {
-			nonce = freshNonce
-		}
+		body, doErr := c.postForm(ctx, "/auth/device/token", form)
 
 		var out struct {
 			AccessToken string `json:"access_token"`
@@ -173,50 +173,52 @@ func (c *Client) pollDeviceToken(
 }
 
 // postForm sends an application/x-www-form-urlencoded POST to path, signing a
-// DPoP proof over the request URL (no access token yet, so no ath claim). It
-// returns the response body and, when the server advertised one, a fresh DPoP
-// nonce the caller should use next.
+// DPoP proof over the request URL (no access token yet, so no ath claim). The
+// proof binds to the canonical API URL the server advertises, which may
+// differ from the configured one the request goes to. Any nonce and canonical
+// URL the response advertises are learned, so the next proof succeeds.
 func (c *Client) postForm(
 	ctx context.Context,
 	path string,
 	form url.Values,
-	nonce string,
-) (body []byte, freshNonce string, err error) {
+) (body []byte, err error) {
 	encoded := form.Encode()
 	u := strings.TrimRight(c.State.APIURL, "/") + path
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, u, strings.NewReader(encoded))
 	if err != nil {
-		return nil, "", err
+		return nil, err
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
-	if c.proofer != nil {
-		proof, serr := c.proofer.Sign(http.MethodPost, u, "", nonce)
+	if c.proofer != nil && c.dpopAuth != nil {
+		htu := c.dpopAuth.htuBase() + path
+		proof, serr := c.proofer.Sign(http.MethodPost, htu, "", c.dpopAuth.currentNonce())
 		if serr != nil {
-			return nil, "", serr
+			return nil, serr
 		}
 		req.Header.Set("DPoP", proof)
 	}
 
 	resp, err := c.httpc.Do(req)
 	if err != nil {
-		return nil, "", err
+		return nil, err
 	}
 	defer func() { _ = resp.Body.Close() }()
 
+	if c.dpopAuth != nil {
+		c.dpopAuth.learnResponse(resp.Header)
+	}
+
 	data, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, "", err
-	}
-	if n := resp.Header.Get("DPoP-Nonce"); n != "" && n != nonce {
-		freshNonce = n
+		return nil, err
 	}
 	if resp.StatusCode >= 400 {
-		return data, freshNonce, fmt.Errorf(
+		return data, fmt.Errorf(
 			"device authorization: HTTP %d: %s",
 			resp.StatusCode,
 			strings.TrimSpace(string(data)),
 		)
 	}
-	return data, freshNonce, nil
+	return data, nil
 }

@@ -1,4 +1,4 @@
-package api
+package client
 
 import (
 	"context"
@@ -6,6 +6,7 @@ import (
 	"crypto/elliptic"
 	"crypto/rand"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"testing"
 
@@ -44,7 +45,8 @@ func TestDPoPAuthInteractiveSignsRequest(t *testing.T) {
 		return connect.NewResponse(&nokkuv1.User{}), nil
 	}
 
-	wrapped := WithDPoP(st, proofer, "").WrapUnary(next)
+	auth := dpopAuth{state: st, proofer: proofer, nonce: "", serverURL: ""}
+	wrapped := auth.WrapUnary(next)
 	req := connect.NewRequest(&nokkuv1.User{})
 	if _, err := wrapped(context.Background(), req); err != nil {
 		t.Fatalf("wrap: %v", err)
@@ -102,7 +104,8 @@ func TestDPoPAuthSkipsServiceAccount(t *testing.T) {
 		return connect.NewResponse(&nokkuv1.User{}), nil
 	}
 
-	wrapped := WithDPoP(st, proofer, "").WrapUnary(next)
+	auth := dpopAuth{state: st, proofer: proofer, nonce: "", serverURL: ""}
+	wrapped := auth.WrapUnary(next)
 	req := connect.NewRequest(&nokkuv1.User{})
 	if _, err := wrapped(context.Background(), req); err != nil {
 		t.Fatalf("wrap: %v", err)
@@ -124,7 +127,8 @@ func TestDPoPAuthNoSessionNoHeaders(t *testing.T) {
 		return connect.NewResponse(&nokkuv1.User{}), nil
 	}
 
-	wrapped := WithDPoP(st, proofer, "").WrapUnary(next)
+	auth := dpopAuth{state: st, proofer: proofer, nonce: "", serverURL: ""}
+	wrapped := auth.WrapUnary(next)
 	req := connect.NewRequest(&nokkuv1.User{})
 	if _, err := wrapped(context.Background(), req); err != nil {
 		t.Fatalf("wrap: %v", err)
@@ -135,3 +139,67 @@ func TestDPoPAuthNoSessionNoHeaders(t *testing.T) {
 }
 
 var _ = http.MethodPost
+
+func TestDPoPAuthHTUUsesCanonicalServerURL(t *testing.T) {
+	t.Parallel()
+	st := &state.State{
+		SessionToken: "sess-token", APIURL: "http://localhost:3000",
+	}
+	a := &dpopAuth{
+		state:     st,
+		proofer:   newTestProofer(t),
+		serverURL: "https://app.example.com", // canonical URL advertised by the server
+	}
+
+	header := http.Header{}
+	if err := a.sign(header, "/nokku.v1.UserService/Whoami"); err != nil {
+		t.Fatalf("sign: %v", err)
+	}
+
+	parsed, err := jose.ParseSigned(header.Get("DPoP"), []jose.SignatureAlgorithm{jose.ES256})
+	if err != nil {
+		t.Fatalf("parse proof: %v", err)
+	}
+	var claims struct {
+		HTU string `json:"htu"`
+	}
+	if err = json.Unmarshal(parsed.UnsafePayloadWithoutVerification(), &claims); err != nil {
+		t.Fatalf("unmarshal claims: %v", err)
+	}
+	if claims.HTU != "https://app.example.com/nokku.v1.UserService/Whoami" {
+		t.Fatalf("proof htu = %q", claims.HTU)
+	}
+}
+
+func TestDPoPAuthLearnsNonceAndServerURL(t *testing.T) {
+	t.Parallel()
+	st := &state.State{APIURL: "http://localhost:3000"}
+	a := &dpopAuth{state: st, proofer: newTestProofer(t)}
+
+	// Stale-nonce connect error (the RPC retry path).
+	cerr := connect.NewError(connect.CodeUnauthenticated, errors.New("stale DPoP nonce"))
+	cerr.Meta().Set("DPoP-Nonce", "nonce-2")
+	cerr.Meta().Set(urlHeader, "https://app.example.com")
+	if !a.learnNonce(cerr) {
+		t.Fatal("learnNonce() = false, want true")
+	}
+
+	// Raw device-flow response (the login path).
+	h := http.Header{}
+	h.Set("DPoP-Nonce", "nonce-3")
+	a.learnResponse(h)
+
+	a.mu.Lock()
+	nonce, serverURL := a.nonce, a.serverURL
+	a.mu.Unlock()
+	if nonce != "nonce-3" {
+		t.Errorf("nonce = %q, want nonce-3", nonce)
+	}
+	if serverURL != "https://app.example.com" {
+		t.Errorf("serverURL = %q, want https://app.example.com", serverURL)
+	}
+
+	if got := a.htuBase(); got != "https://app.example.com" {
+		t.Errorf("htuBase() = %q", got)
+	}
+}

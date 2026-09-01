@@ -1,4 +1,4 @@
-package api
+package client
 
 import (
 	"context"
@@ -62,7 +62,9 @@ func withRetry() connect.UnaryInterceptorFunc {
 			return backoff.Retry(
 				ctx, ops,
 				backoff.WithBackOff(b),
-				backoff.WithMaxElapsedTime(10*time.Second),
+				// Keep the retry budget small: a down backend must fail
+				// fast so commands fall back to cached data quickly.
+				backoff.WithMaxElapsedTime(3*time.Second),
 			)
 		}
 	}

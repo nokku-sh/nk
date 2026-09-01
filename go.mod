@@ -5,7 +5,6 @@ go 1.27
 require (
 	buf.build/gen/go/bufbuild/protovalidate/protocolbuffers/go v1.36.12-20260825204119-511051f7f437.1
 	connectrpc.com/connect v1.20.0
-	connectrpc.com/grpchealth v1.5.0
 	github.com/adrg/xdg v0.5.3
 	github.com/cenkalti/backoff/v7 v7.0.0
 	github.com/go-jose/go-jose/v4 v4.1.4

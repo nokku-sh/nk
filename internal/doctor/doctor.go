@@ -1,8 +1,5 @@
 package doctor
 
-// The `nk doctor` diagnostics command produces pass/fail checks as text
-// or JSON for CI.
-
 import (
 	"context"
 	"errors"
@@ -16,11 +13,13 @@ import (
 
 	"github.com/mizuchilabs/kata/buildinfo"
 
-	"github.com/nokku-sh/nk/internal/api"
+	"github.com/nokku-sh/nk/internal/client"
+	"github.com/nokku-sh/nk/internal/fsutil"
+	"github.com/nokku-sh/nk/internal/paths"
 	"github.com/nokku-sh/nk/internal/ssh"
 	"github.com/nokku-sh/nk/internal/state"
 	"github.com/nokku-sh/nk/internal/tpm"
-	"github.com/nokku-sh/nk/internal/util"
+	"github.com/nokku-sh/nk/internal/ui"
 )
 
 // Status is the outcome of a single check.
@@ -34,9 +33,6 @@ const (
 )
 
 const goosWindows = "windows"
-
-// errNotLoggedIn signals that no signing identity exists on this machine.
-var errNotLoggedIn = errors.New("no signing identity exists (run nk login)")
 
 // Check is a single diagnostic result.
 type Check struct {
@@ -109,12 +105,12 @@ func hostname() string {
 // checkIdentity reports as "not logged in" for headless runs.
 func openSigner(s *state.State) error {
 	if s.Token != "" {
-		return errNotLoggedIn
+		return errors.New("no signing identity exists (run nk login)")
 	}
-	if tpm.SignerMethod(util.ConfigPath()) == "" {
-		return errNotLoggedIn
+	if tpm.SignerMethod(paths.ConfigPath()) == "" {
+		return errors.New("no signing identity exists (run nk login)")
 	}
-	_, err := tpm.New(util.ConfigPath(), s.RequireTPM)
+	_, err := tpm.New(paths.ConfigPath(), s.RequireTPM)
 	return err
 }
 
@@ -122,9 +118,9 @@ func checkSystem(ctx context.Context, add func(string, string, Status, string)) 
 	add("System", "version", StatusInfo, buildinfo.Version)
 	add("System", "hostname", StatusInfo, hostname())
 	add("System", "platform", StatusInfo, runtime.GOOS+"/"+runtime.GOARCH)
-	add("System", "config", StatusInfo, util.ConfigPath())
+	add("System", "config", StatusInfo, paths.ConfigPath())
 
-	if util.IsTerminal(os.Stdout) {
+	if ui.IsTerminal(os.Stdout) {
 		add("System", "environment", StatusInfo, "interactive")
 	} else {
 		add("System", "environment", StatusInfo, "headless (non-interactive)")
@@ -151,7 +147,7 @@ func checkSystem(ctx context.Context, add func(string, string, Status, string)) 
 }
 
 func checkConfig(add func(string, string, Status, string), s *state.State) {
-	if !util.FileExists(util.ConfigFile()) {
+	if !fsutil.FileExists(paths.ConfigFile()) {
 		add("Configuration", "config.json", StatusInfo, "no config yet (run nk login)")
 	} else {
 		var cfg state.Config
@@ -162,7 +158,7 @@ func checkConfig(add func(string, string, Status, string), s *state.State) {
 		}
 	}
 
-	dir := util.ConfigPath()
+	dir := paths.ConfigPath()
 	if info, err := os.Stat(dir); err != nil {
 		add("Configuration", "data directory", StatusFail, err.Error())
 	} else if runtime.GOOS != goosWindows && info.Mode().Perm() != 0o700 {
@@ -172,19 +168,19 @@ func checkConfig(add func(string, string, Status, string), s *state.State) {
 		add("Configuration", "data directory", StatusOK, dir)
 	}
 
-	checkFilePerms(add, "private key", util.KeyFile(), 0o600)
+	checkFilePerms(add, "private key", paths.KeyFile(), 0o600)
 }
 
 func effectiveConfig(s *state.State) string {
 	ttl := "server default"
 	if s.TTL > 0 {
-		ttl = util.HumanizeDuration(s.TTL)
+		ttl = ui.HumanizeDuration(s.TTL)
 	}
 	return fmt.Sprintf("ttl=%s, insecure=%v, require-tpm=%v", ttl, s.Insecure, s.RequireTPM)
 }
 
 func checkFilePerms(add func(string, string, Status, string), name, path string, want os.FileMode) {
-	if runtime.GOOS == goosWindows || !util.FileExists(path) {
+	if runtime.GOOS == goosWindows || !fsutil.FileExists(path) {
 		return
 	}
 	info, err := os.Stat(path)
@@ -221,7 +217,7 @@ func checkIdentity(add func(string, string, Status, string), s *state.State, sig
 		),
 	)
 
-	switch method := tpm.SignerMethod(util.ConfigPath()); {
+	switch method := tpm.SignerMethod(paths.ConfigPath()); {
 	case method == "":
 		add("Identity", "signing identity", StatusInfo, "not logged in (run nk login)")
 	case signerErr != nil:
@@ -232,7 +228,7 @@ func checkIdentity(add func(string, string, Status, string), s *state.State, sig
 		add("Identity", "signing identity", StatusOK, "soft (encrypted at rest)")
 	}
 
-	if ssh.TPMKeyActive() || util.FileExists(util.KeyFile()) {
+	if ssh.TPMKeyActive() || fsutil.FileExists(paths.KeyFile()) {
 		add("Identity", "ssh identity", StatusOK, ssh.IdentityStatus())
 	} else {
 		add("Identity", "ssh identity", StatusInfo, ssh.IdentityStatus())
@@ -244,7 +240,7 @@ func checkConnectivity(
 	add func(string, string, Status, string),
 	s *state.State,
 ) {
-	if api.Healthy(ctx, s) {
+	if client.Reachable(ctx, s) {
 		add("Connectivity", "API", StatusOK, "connected")
 	} else {
 		add("Connectivity", "API", StatusWarn, "offline")
@@ -252,9 +248,9 @@ func checkConnectivity(
 }
 
 func checkSSH(add func(string, string, Status, string)) {
-	sshPath, _ := util.SSHPath()
+	sshPath, _ := paths.SSHPath()
 	configPath := filepath.Join(sshPath, "config")
-	include := "Include " + util.SSHConfigFile()
+	include := "Include " + paths.SSHConfigFile()
 
 	content, err := os.ReadFile(filepath.Clean(configPath))
 	switch {
@@ -267,14 +263,14 @@ func checkSSH(add func(string, string, Status, string)) {
 		add("SSH", "~/.ssh/config", StatusOK, "include directive present")
 	}
 
-	managed := util.SSHConfigFile()
+	managed := paths.SSHConfigFile()
 	if hosts := countPrefix(managed, "Host "); hosts == 0 {
 		add("SSH", "managed ssh_config", StatusInfo, "no hosts configured yet")
 	} else {
 		add("SSH", "managed ssh_config", StatusOK, fmt.Sprintf("%d host(s)", hosts))
 	}
 
-	knownHosts := util.KnownHostsPath()
+	knownHosts := paths.KnownHostsPath()
 	if cas := countPrefix(knownHosts, "@cert-authority"); cas == 0 {
 		add("SSH", "known_hosts", StatusInfo, "no certificate authorities yet")
 	} else {
@@ -283,7 +279,7 @@ func checkSSH(add func(string, string, Status, string)) {
 }
 
 func checkCerts(add func(string, string, Status, string), s *state.State) {
-	certs, err := util.SSHCertificates()
+	certs, err := paths.SSHCertificates()
 	if err != nil {
 		add("Certificates", "local certificates", StatusFail, err.Error())
 		return
@@ -326,13 +322,13 @@ func checkCerts(add func(string, string, Status, string), s *state.State) {
 				"not yet valid until "+validAfter.Format(time.RFC3339))
 		case now.After(validBefore):
 			add("Certificates", name, StatusFail,
-				"expired "+util.HumanizeDuration(now.Sub(validBefore))+" ago")
+				"expired "+ui.HumanizeDuration(now.Sub(validBefore))+" ago")
 		case validBefore.Sub(now) < warnWindow:
 			add("Certificates", name, StatusWarn,
-				"expires in "+util.HumanizeDuration(validBefore.Sub(now)))
+				"expires in "+ui.HumanizeDuration(validBefore.Sub(now)))
 		default:
 			add("Certificates", name, StatusOK,
-				"expires in "+util.HumanizeDuration(validBefore.Sub(now)))
+				"expires in "+ui.HumanizeDuration(validBefore.Sub(now)))
 		}
 	}
 }
@@ -341,29 +337,29 @@ func checkCerts(add func(string, string, Status, string), s *state.State) {
 func repair(s *state.State) []string {
 	var fixed []string
 
-	if err := util.VerifyPaths(); err != nil {
+	if err := paths.VerifyPaths(); err != nil {
 		return append(fixed, "ensure paths: "+err.Error())
 	}
 	if err := ssh.GenerateSSHConfig(s); err != nil {
 		fixed = append(fixed, "regenerate ssh_config: "+err.Error())
 	} else {
-		fixed = append(fixed, "regenerated "+util.SSHConfigFile())
+		fixed = append(fixed, "regenerated "+paths.SSHConfigFile())
 	}
 	if err := ssh.GenerateKnownHosts(s); err != nil {
 		fixed = append(fixed, "regenerate known_hosts: "+err.Error())
 	} else {
-		fixed = append(fixed, "regenerated "+util.KnownHostsPath())
+		fixed = append(fixed, "regenerated "+paths.KnownHostsPath())
 	}
 	if runtime.GOOS != goosWindows {
 		// #nosec G302 -- the config directory must remain owner-only.
-		if err := os.Chmod(util.ConfigPath(), 0o700); err == nil {
-			fixed = append(fixed, "chmod 0700 "+util.ConfigPath())
+		if err := os.Chmod(paths.ConfigPath(), 0o700); err == nil {
+			fixed = append(fixed, "chmod 0700 "+paths.ConfigPath())
 		}
 		for _, f := range []string{
-			util.ConfigFile(), util.CacheFile(), util.KeyFile(),
-			util.PubKeyFile(), util.SSHConfigFile(), util.KnownHostsPath(),
+			paths.ConfigFile(), paths.CacheFile(), paths.KeyFile(),
+			paths.PubKeyFile(), paths.SSHConfigFile(), paths.KnownHostsPath(),
 		} {
-			if util.FileExists(f) {
+			if fsutil.FileExists(f) {
 				if err := os.Chmod(f, 0o600); err == nil {
 					fixed = append(fixed, "chmod 0600 "+f)
 				}
@@ -376,7 +372,7 @@ func repair(s *state.State) []string {
 
 // cleanStaleCerts removes local certificate files whose CA is not in cas.
 func cleanStaleCerts(s *state.State, fixed []string) []string {
-	certs, err := util.SSHCertificates()
+	certs, err := paths.SSHCertificates()
 	if err != nil || len(certs) == 0 {
 		return fixed
 	}
