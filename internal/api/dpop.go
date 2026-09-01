@@ -9,8 +9,8 @@ import (
 	"sync"
 
 	"connectrpc.com/connect"
-	"github.com/mizuchilabs/kagi/dpop"
 
+	"github.com/nokku-sh/nk/internal/dpop"
 	"github.com/nokku-sh/nk/internal/state"
 )
 
@@ -146,7 +146,7 @@ func FetchNonce(ctx context.Context, httpc *http.Client, baseURL string) (string
 	req, err := http.NewRequestWithContext(
 		ctx,
 		http.MethodGet,
-		strings.TrimRight(baseURL, "/")+"/auth/nonce",
+		strings.TrimRight(baseURL, "/")+"/auth/device/nonce",
 		nil,
 	)
 	if err != nil {

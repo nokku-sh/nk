@@ -9,9 +9,9 @@ import (
 	"time"
 
 	"connectrpc.com/grpchealth"
-	"github.com/mizuchilabs/kagi/dpop"
 	"google.golang.org/protobuf/types/known/durationpb"
 
+	"github.com/nokku-sh/nk/internal/dpop"
 	nokkuv1 "github.com/nokku-sh/nk/internal/gen/nokku/v1"
 	"github.com/nokku-sh/nk/internal/gen/nokku/v1/nokkuv1connect"
 	"github.com/nokku-sh/nk/internal/ssh"

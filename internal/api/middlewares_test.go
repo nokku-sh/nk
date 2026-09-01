@@ -11,8 +11,8 @@ import (
 
 	"connectrpc.com/connect"
 	"github.com/go-jose/go-jose/v4"
-	"github.com/mizuchilabs/kagi/dpop"
 
+	"github.com/nokku-sh/nk/internal/dpop"
 	nokkuv1 "github.com/nokku-sh/nk/internal/gen/nokku/v1"
 	"github.com/nokku-sh/nk/internal/state"
 )
@@ -91,7 +91,7 @@ func TestDPoPAuthHTUHasNoDoubleSlash(t *testing.T) {
 func TestDPoPAuthSkipsServiceAccount(t *testing.T) {
 	t.Parallel()
 	st := &state.State{
-		Token:  "key-123.secret",
+		Token:  "nokku_sa_secret",
 		APIURL: "https://app.example.com",
 	}
 	proofer := newTestProofer(t)
