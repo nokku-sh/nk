@@ -13,10 +13,7 @@ import (
 	"github.com/nokku-sh/nk/internal/paths"
 )
 
-// sshTPMSalt namespaces the SSH identity key derivation. It must stay
-// distinct from the request-signing salt so each purpose derives its own
-// key from the same TPM.
-var sshTPMSalt = []byte("nokku-ssh")
+var sshTPMSalt = []byte("nokku-cli-ssh")
 
 // setupTPMKey maintains a TPM-resident SSH identity: only the public
 // key is written to disk, the private key never leaves the TPM. The
