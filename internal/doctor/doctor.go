@@ -14,7 +14,6 @@ import (
 	"github.com/mizuchilabs/kata/buildinfo"
 
 	"github.com/nokku-sh/mon/id"
-	"github.com/nokku-sh/mon/nokku"
 	"github.com/nokku-sh/mon/tpm"
 	"github.com/nokku-sh/nk/internal/client"
 	"github.com/nokku-sh/nk/internal/fsutil"
@@ -114,7 +113,7 @@ func openSigner(s *state.State) error {
 		return errors.New("no signing identity exists (run nk login)")
 	}
 	_, err := tpm.NewSigner(tpm.SignerOptions{
-		Salt:            []byte(nokku.SaltCLI),
+		Salt:            []byte(client.SignerSalt),
 		Store:           store,
 		MachineID:       id.MachineID,
 		RequireTPM:      s.RequireTPM,
