@@ -10,11 +10,12 @@ import (
 	"github.com/mizuchilabs/kata/sigx"
 	"github.com/urfave/cli/v3"
 
-	"github.com/nokku-sh/nk/internal/util"
+	"github.com/nokku-sh/nk/internal/cmd"
+	"github.com/nokku-sh/nk/internal/paths"
 )
 
 func main() {
-	cmd := &cli.Command{
+	root := &cli.Command{
 		EnableShellCompletion: true,
 		Suggest:               true,
 		Name:                  "nk",
@@ -22,12 +23,12 @@ func main() {
 		Version:               buildinfo.String(),
 		Before: func(ctx context.Context, cmd *cli.Command) (context.Context, error) {
 			logx.Init(cmd.Bool("debug"))
-			if err := util.VerifyPaths(); err != nil {
+			if err := paths.VerifyPaths(); err != nil {
 				return nil, err
 			}
 			return ctx, nil
 		},
-		Commands: Commands,
+		Commands: cmd.Commands,
 		Flags: []cli.Flag{
 			&cli.StringFlag{
 				Name:    "api",
@@ -63,7 +64,7 @@ func main() {
 		},
 	}
 
-	if err := cmd.Run(sigx.NotifyContext(), os.Args); err != nil {
+	if err := root.Run(sigx.NotifyContext(), os.Args); err != nil {
 		fmt.Fprintf(os.Stderr, "nk: %v\n", err)
 		os.Exit(1)
 	}
