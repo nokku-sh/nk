@@ -70,26 +70,26 @@ The command generates a key pair, requests a signed certificate, and saves the c
 
 ## Commands
 
-| Command              | Purpose                                    |
-| -------------------- | ------------------------------------------ |
-| `nk login`           | Authenticate and synchronize local state   |
-| `nk refresh`         | Re-authenticate and refresh state          |
-| `nk ls` / `nk list`  | List targets and principals                |
-| `nk doctor`          | Check API reachability and local SSH setup |
+| Command             | Purpose                                    |
+| ------------------- | ------------------------------------------ |
+| `nk login`          | Authenticate and synchronize local state   |
+| `nk refresh`        | Re-authenticate and refresh state          |
+| `nk ls` / `nk list` | List targets and principals                |
+| `nk doctor`         | Check API reachability and local SSH setup |
 | `nk pki list`       | List active X.509 certificate authorities  |
 | `nk pki issue <cn>` | Issue an X.509 certificate                 |
-| `nk logout`          | Remove local credentials and cached state  |
-| `nk proxy`           | Internal OpenSSH `ProxyCommand` (internal) |
+| `nk logout`         | Remove local credentials and cached state  |
+| `nk proxy`          | Internal OpenSSH `ProxyCommand` (internal) |
 
 ## Configuration
 
-| Flag         | Environment   | Purpose                                                                 |
-| ------------ | ------------- | ----------------------------------------------------------------------- |
-| `--api`      | `NK_API_URL`  | Backend URL                                                             |
-| `--token`    | `NK_TOKEN`    | Service-account API key (`keyID.secret`); skips browser login for CI/CD |
-| `--ttl`      | `NK_TTL`      | Requested SSH certificate lifetime                                      |
-| `--require-tpm` | `NK_REQUIRE_TPM` | Require a TPM 2.0; refuse the software key fallback                  |
-| `--insecure` | `NK_INSECURE` | Disable TLS verification; testing only                                  |
+| Flag            | Environment      | Purpose                                                                 |
+| --------------- | ---------------- | ----------------------------------------------------------------------- |
+| `--api`         | `NK_API_URL`     | Backend URL                                                             |
+| `--token`       | `NK_TOKEN`       | Service-account API key (`keyID.secret`); skips browser login for CI/CD |
+| `--ttl`         | `NK_TTL`         | Requested SSH certificate lifetime                                      |
+| `--require-tpm` | `NK_REQUIRE_TPM` | Require a TPM 2.0; refuse the software key fallback                     |
+| `--insecure`    | `NK_INSECURE`    | Disable TLS verification; testing only                                  |
 
 Local state lives under `~/.config/nk/`. Your private key and tokens are credentials. Keep service-account tokens out of source control.
 
