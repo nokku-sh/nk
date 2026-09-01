@@ -1,6 +1,7 @@
 package pki
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 
@@ -15,7 +16,7 @@ func MatchCA(
 	nameOrID string,
 ) (*nokkuv1.CertificateAuthority, error) {
 	if len(cas) == 0 {
-		return nil, fmt.Errorf("no X.509 certificate authorities available")
+		return nil, errors.New("no X.509 certificate authorities available")
 	}
 	if nameOrID == "" {
 		if len(cas) > 1 {
