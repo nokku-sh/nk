@@ -37,11 +37,10 @@ func (c *Client) login(ctx context.Context) error {
 // DPoP-bound session token.
 func (c *Client) deviceLogin(ctx context.Context) error {
 	// The device must prove its key at token issuance, and the proof needs
-	// the server nonce. Fetch it up front so the flow is a single poll.
-	nonce, err := FetchNonce(ctx, c.httpc, c.State.APIURL)
-	if err != nil {
-		return fmt.Errorf("failed to fetch DPoP nonce: %w", err)
-	}
+	// the server nonce. Fetch it up front so the flow is a single poll; a
+	// failure is not fatal, the token endpoint advertises a fresh nonce on
+	// a use_dpop_nonce error and the loop retries (RFC 9449 section 8).
+	nonce, _ := FetchNonce(ctx, c.httpc, c.State.APIURL)
 
 	// Request a device code.
 	deviceCode, userCode, verificationURI, err := c.beginDeviceAuth(ctx, nonce)
@@ -141,9 +140,10 @@ func (c *Client) pollDeviceToken(
 			return out.AccessToken, out.ExpiresIn, nil
 		case decodeErr == nil && authErr.Error != "":
 			switch authErr.Error {
-			case "authorization_pending", "invalid_dpop_proof", "slow_down":
-				// keep polling (invalid_dpop_proof carries a fresh
-				// nonce, consumed above, so the next poll succeeds)
+			case "authorization_pending", "invalid_dpop_proof", "slow_down", "use_dpop_nonce":
+				// keep polling (invalid_dpop_proof and use_dpop_nonce
+				// carry a fresh nonce, consumed above, so the next poll
+				// succeeds)
 			case "access_denied", "expired_token":
 				return "", 0, errors.New("device authorization: " + authErr.Error)
 			default:
