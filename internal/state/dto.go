@@ -67,7 +67,9 @@ func MapCA(ca *nokkuv1.CertificateAuthority) *CA {
 func MapCAs(cas []*nokkuv1.CertificateAuthority) []CA {
 	res := make([]CA, 0, len(cas))
 	for _, ca := range cas {
-		if ca != nil {
+		// Only SSH authorities belong in the client snapshot: X.509 CAs are
+		// fetched separately and must never reach known_hosts.
+		if ca != nil && ca.GetAuthorityType() != nokkuv1.AuthorityType_AUTHORITY_TYPE_X509 {
 			res = append(res, *MapCA(ca))
 		}
 	}

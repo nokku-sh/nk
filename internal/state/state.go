@@ -94,6 +94,16 @@ func (s *State) IsLoggedIn() bool {
 	return s.Token != "" || s.SessionToken != ""
 }
 
+func (s *State) SessionValid() bool {
+	if s.IsServiceAccount() {
+		return s.Token != ""
+	}
+	if s.SessionToken == "" {
+		return false
+	}
+	return s.SessionExpiresAt.IsZero() || time.Now().Before(s.SessionExpiresAt)
+}
+
 func (s *State) HasCachedData() bool {
 	return len(s.Targets) > 0 && (s.User != nil || s.ServiceAccount != nil)
 }
