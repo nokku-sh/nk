@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/nokku-sh/mon/tpm"
+
 	"github.com/nokku-sh/nk/internal/paths"
 )
 
