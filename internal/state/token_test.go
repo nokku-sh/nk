@@ -10,12 +10,11 @@ func TestIsServiceAccount(t *testing.T) {
 		token string
 		want  bool
 	}{
-		{"service account API key", "key-123.secret-value", true},
-		{"bare token without dot", "nks_abc", false},
+		{"service account token", "nokku_sa_abc123", true},
+		{"device session token", "sess-abc123", false},
 		{"empty token", "", false},
-		{"dot at start", ".secret", false},
-		{"dot at end", "key.", false},
-		{"no dot", "abc", false},
+		{"prefix only", "nokku_sa_", true},
+		{"lookalike without prefix", "nokku_sa", false},
 	}
 
 	for _, tt := range tests {
