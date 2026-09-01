@@ -21,15 +21,15 @@ func TestMapUser(t *testing.T) {
 
 	t.Run("maps all fields correctly", func(t *testing.T) {
 		u := &nokkuv1.User{
-			Id:       new("user-1"),
-			Username: new("alice"),
-			Email:    new("alice@example.com"),
+			Id:    new("user-1"),
+			Name:  new("alice"),
+			Email: new("alice@example.com"),
 		}
 		got := MapUser(u)
 		if got == nil {
 			t.Fatal("MapUser returned nil")
 		}
-		if got.ID != "user-1" || got.Username != "alice" || got.Email != "alice@example.com" {
+		if got.ID != "user-1" || got.Name != "alice" || got.Email != "alice@example.com" {
 			t.Errorf("MapUser = %+v, want {ID:user-1 Username:alice Email:alice@example.com}", got)
 		}
 	})

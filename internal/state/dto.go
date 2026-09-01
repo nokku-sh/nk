@@ -9,9 +9,9 @@ func MapUser(u *nokkuv1.User) *User {
 		return nil
 	}
 	return &User{
-		ID:       u.GetId(),
-		Username: u.GetUsername(),
-		Email:    u.GetEmail(),
+		ID:    u.GetId(),
+		Name:  u.GetName(),
+		Email: u.GetEmail(),
 	}
 }
 

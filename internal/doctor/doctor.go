@@ -204,7 +204,7 @@ func checkIdentity(add func(string, string, Status, string), s *state.State, sig
 		add("Identity", "signed in as", StatusOK, "service account "+s.ServiceAccount.Name)
 	case s.User != nil:
 		add("Identity", "signed in as", StatusOK,
-			fmt.Sprintf("%s <%s>", s.User.Username, s.User.Email))
+			fmt.Sprintf("%s <%s>", s.User.Name, s.User.Email))
 	default:
 		add("Identity", "signed in as", StatusInfo, "not logged in")
 	}
