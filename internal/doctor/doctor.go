@@ -114,7 +114,7 @@ func openSigner(s *state.State) error {
 		return errors.New("no signing identity exists (run nk login)")
 	}
 	_, err := tpm.NewSigner(tpm.SignerOptions{
-		Salt:            []byte(client.SignerSalt),
+		Salt:            client.SignerSalt,
 		Store:           store,
 		MachineID:       id.MachineID,
 		RequireTPM:      s.RequireTPM,

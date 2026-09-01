@@ -30,11 +30,7 @@ const (
 	syncTimeout     = 5 * time.Second
 )
 
-// SignerSalt namespaces the CLI's request-signing key derivation. It must
-// stay distinct from the SSH identity salt so each purpose derives a
-// distinct key from the same TPM. Exported for doctor, which reopens the
-// identity read-only.
-const SignerSalt = "nokku-cli"
+var SignerSalt = []byte("nokku-cli")
 
 type Client struct {
 	State    *state.State
@@ -60,7 +56,7 @@ func New(ctx context.Context, s *state.State) (*Client, error) {
 	// the daemon, whose enrollment is bound to its key.
 	if !s.IsServiceAccount() {
 		signer, err := tpm.NewSigner(tpm.SignerOptions{
-			Salt:            []byte(SignerSalt),
+			Salt:            SignerSalt,
 			Store:           tpm.NewFileStore(paths.SignerStateFile()),
 			MachineID:       id.MachineID,
 			RequireTPM:      s.RequireTPM,
