@@ -7,6 +7,7 @@ import (
 
 	cryptossh "golang.org/x/crypto/ssh"
 
+	"github.com/nokku-sh/mon/nokku"
 	"github.com/nokku-sh/mon/tpm"
 	"github.com/nokku-sh/nk/internal/fsutil"
 	"github.com/nokku-sh/nk/internal/paths"
@@ -15,7 +16,7 @@ import (
 // sshTPMSalt is the canonical nk SSH identity salt from the shared registry
 // in mon, kept distinct from the request-signing salts so each purpose
 // derives its own key from the same TPM.
-var sshTPMSalt = []byte(tpm.SaltSSH)
+var sshTPMSalt = []byte(nokku.SaltSSH)
 
 // setupTPMKey maintains a TPM-resident SSH identity: only the public
 // key is written to disk, the private key never leaves the TPM. The

@@ -15,6 +15,7 @@ import (
 
 	"github.com/nokku-sh/mon/dpop"
 	"github.com/nokku-sh/mon/id"
+	"github.com/nokku-sh/mon/nokku"
 	"github.com/nokku-sh/mon/tpm"
 	"github.com/nokku-sh/nk/internal/fsutil"
 	nokkuv1 "github.com/nokku-sh/nk/internal/gen/nokku/v1"
@@ -53,7 +54,7 @@ func New(ctx context.Context, s *state.State) (*Client, error) {
 	// the daemon, whose enrollment is bound to its key.
 	if !s.IsServiceAccount() {
 		signer, err := tpm.NewSigner(tpm.SignerOptions{
-			Salt:            []byte(tpm.SaltCLI),
+			Salt:            []byte(nokku.SaltCLI),
 			Store:           tpm.NewFileStore(paths.SignerStateFile()),
 			MachineID:       id.MachineID,
 			RequireTPM:      s.RequireTPM,
