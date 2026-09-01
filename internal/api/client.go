@@ -30,7 +30,7 @@ type Client struct {
 	proofer *dpop.Proofer
 	httpc   *http.Client
 
-	uc nokkuv1connect.UserServiceClient
+	uc nokkuv1connect.UtilServiceClient
 	wc nokkuv1connect.WorkspaceServiceClient
 	cc nokkuv1connect.CertificateServiceClient
 	tc nokkuv1connect.TargetServiceClient

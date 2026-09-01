@@ -61,7 +61,7 @@ func (c *Client) SetupClients(ctx context.Context) error {
 	}
 	opts := connect.WithInterceptors(interceptors...)
 
-	c.uc = nokkuv1connect.NewUserServiceClient(httpc, c.State.APIURL, opts)
+	c.uc = nokkuv1connect.NewUtilServiceClient(httpc, c.State.APIURL, opts)
 	c.wc = nokkuv1connect.NewWorkspaceServiceClient(httpc, c.State.APIURL, opts)
 	c.cc = nokkuv1connect.NewCertificateServiceClient(httpc, c.State.APIURL, opts)
 	c.tc = nokkuv1connect.NewTargetServiceClient(httpc, c.State.APIURL, opts)
