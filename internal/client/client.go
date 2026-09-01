@@ -38,7 +38,6 @@ type Client struct {
 	httpc    *http.Client
 	dpopAuth *dpopAuth
 
-	wc nokkuv1connect.WorkspaceServiceClient
 	cc nokkuv1connect.CertificateServiceClient
 	tc nokkuv1connect.TargetServiceClient
 }
