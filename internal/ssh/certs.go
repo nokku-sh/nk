@@ -4,14 +4,15 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"time"
 
 	"golang.org/x/crypto/ssh"
 
+	"github.com/nokku-sh/nk/internal/paths"
 	"github.com/nokku-sh/nk/internal/state"
-	"github.com/nokku-sh/nk/internal/util"
 )
 
 // CertificateFresh reports whether the cached cert for caID is present,
@@ -19,7 +20,7 @@ import (
 // margin longer. A cert close to expiry is treated as stale so it is
 // re-signed while the backend is still reachable.
 func CertificateFresh(caID, caPublicKey string, margin time.Duration) bool {
-	data, err := os.ReadFile(util.SSHCertificate(caID))
+	data, err := os.ReadFile(paths.SSHCertificate(caID))
 	if err != nil {
 		return false
 	}
@@ -41,7 +42,7 @@ func CertificateFresh(caID, caPublicKey string, margin time.Duration) bool {
 // caID, regardless of freshness. Used to decide whether a failed signing
 // attempt can fall back to the last cached certificate.
 func CertificateOnDisk(caID string) bool {
-	_, err := os.Stat(util.SSHCertificate(caID))
+	_, err := os.Stat(paths.SSHCertificate(caID))
 	return err == nil
 }
 
@@ -76,7 +77,16 @@ func CertificateValidity(data []byte) (validAfter, validBefore time.Time, err er
 	if !ok {
 		return validAfter, validBefore, errors.New("invalid certificate format")
 	}
-	return util.Uint64ToUnixTime(cert.ValidAfter), util.Uint64ToUnixTime(cert.ValidBefore), nil
+	return unixTime(cert.ValidAfter), unixTime(cert.ValidBefore), nil
+}
+
+// unixTime converts an SSH certificate validity timestamp (uint64 seconds
+// since the epoch) to a Go timestamp, clamping overflow.
+func unixTime(t uint64) time.Time {
+	if t > math.MaxInt64 {
+		return time.Unix(math.MaxInt64, 0)
+	}
+	return time.Unix(int64(t), 0)
 }
 
 func VerifyCertificate(data []byte) error {
@@ -93,7 +103,7 @@ func VerifyCertificate(data []byte) error {
 
 // CleanupCerts removes certificate files for CA IDs no longer in the provided set.
 func CleanupCerts(cas []state.CA) error {
-	existingFiles, err := util.SSHCertificates()
+	existingFiles, err := paths.SSHCertificates()
 	if err != nil {
 		return fmt.Errorf("failed to get local certificates: %w", err)
 	}
@@ -120,7 +130,7 @@ func CleanupCerts(cas []state.CA) error {
 // removeCerts deletes all locally cached SSH certificates, forcing the CA to
 // re-sign them for the current key.
 func removeCerts() error {
-	certs, err := util.SSHCertificates()
+	certs, err := paths.SSHCertificates()
 	if err != nil {
 		return fmt.Errorf("failed to get local certificates: %w", err)
 	}

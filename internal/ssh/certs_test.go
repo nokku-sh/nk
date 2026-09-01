@@ -10,7 +10,7 @@ import (
 
 	"golang.org/x/crypto/ssh"
 
-	"github.com/nokku-sh/nk/internal/util"
+	"github.com/nokku-sh/nk/internal/paths"
 )
 
 func TestVerifyCertificate(t *testing.T) {
@@ -126,7 +126,7 @@ func TestCleanupCerts_NoMatches(t *testing.T) {
 func TestCertificateFresh(t *testing.T) {
 	setupSSHDir(t)
 
-	certDir := util.SSHCertPath()
+	certDir := paths.SSHCertPath()
 	if err := os.MkdirAll(certDir, 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -164,7 +164,7 @@ func TestCertificateFresh(t *testing.T) {
 	})
 
 	t.Run("invalid cert file", func(t *testing.T) {
-		path := util.SSHCertificate("bad-ca")
+		path := paths.SSHCertificate("bad-ca")
 		if writeErr := os.WriteFile(path, []byte("not-a-cert"), 0o600); writeErr != nil {
 			t.Fatal(writeErr)
 		}
@@ -174,7 +174,7 @@ func TestCertificateFresh(t *testing.T) {
 	})
 
 	t.Run("cert signed by current CA is fresh", func(t *testing.T) {
-		path := util.SSHCertificate("good-ca")
+		path := paths.SSHCertificate("good-ca")
 		if writeErr := os.WriteFile(path, signCert(signer, time.Hour), 0o600); writeErr != nil {
 			t.Fatal(writeErr)
 		}
@@ -184,7 +184,7 @@ func TestCertificateFresh(t *testing.T) {
 	})
 
 	t.Run("cert within the renewal window is stale", func(t *testing.T) {
-		path := util.SSHCertificate("soon-ca")
+		path := paths.SSHCertificate("soon-ca")
 		if writeErr := os.WriteFile(path, signCert(signer, 5*time.Minute), 0o600); writeErr != nil {
 			t.Fatal(writeErr)
 		}
@@ -202,7 +202,7 @@ func TestCertificateFresh(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		path := util.SSHCertificate("rolled-ca")
+		path := paths.SSHCertificate("rolled-ca")
 		if writeErr := os.WriteFile(
 			path,
 			signCert(otherSigner, time.Hour),

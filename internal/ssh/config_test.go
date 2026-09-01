@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/nokku-sh/nk/internal/paths"
 	"github.com/nokku-sh/nk/internal/state"
-	"github.com/nokku-sh/nk/internal/util"
 )
 
 func TestGenerateSSHConfig(t *testing.T) {
@@ -41,7 +41,7 @@ func TestGenerateSSHConfig(t *testing.T) {
 		t.Fatalf("GenerateSSHConfig: %v", err)
 	}
 
-	data, err := os.ReadFile(util.SSHConfigFile())
+	data, err := os.ReadFile(paths.SSHConfigFile())
 	if err != nil {
 		t.Fatalf("read generated config: %v", err)
 	}
@@ -52,8 +52,8 @@ func TestGenerateSSHConfig(t *testing.T) {
 		"Host prod\n",
 		"    User alice\n",
 		"    ProxyCommand nk proxy %h %p\n",
-		"    CertificateFile " + util.SSHCertificate("ca-1") + "\n",
-		"    IdentityFile " + util.KeyFile() + "\n",
+		"    CertificateFile " + paths.SSHCertificate("ca-1") + "\n",
+		"    IdentityFile " + paths.KeyFile() + "\n",
 		"    HostKeyAlias t-1\n",
 		"    IdentitiesOnly yes\n",
 		"    PasswordAuthentication no\n",
@@ -77,7 +77,7 @@ func TestGenerateSSHConfigTPMIdentity(t *testing.T) {
 	setupSSHDir(t)
 	// A TPM identity is detected by the absence of a private key file while
 	// the public key exists. ssh then uses the agent for the private key.
-	if err := os.WriteFile(util.PubKeyFile(), []byte("ssh-ed25519 AAAA\n"), 0o600); err != nil {
+	if err := os.WriteFile(paths.PubKeyFile(), []byte("ssh-ed25519 AAAA\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
@@ -95,15 +95,15 @@ func TestGenerateSSHConfigTPMIdentity(t *testing.T) {
 		t.Fatalf("GenerateSSHConfig: %v", err)
 	}
 
-	data, err := os.ReadFile(util.SSHConfigFile())
+	data, err := os.ReadFile(paths.SSHConfigFile())
 	if err != nil {
 		t.Fatalf("read generated config: %v", err)
 	}
 	content := string(data)
-	if !strings.Contains(content, "    IdentityFile "+util.PubKeyFile()+"\n") {
+	if !strings.Contains(content, "    IdentityFile "+paths.PubKeyFile()+"\n") {
 		t.Errorf("TPM identity must point IdentityFile at the public key")
 	}
-	if !strings.Contains(content, "    IdentityAgent "+util.AgentSocket()+"\n") {
+	if !strings.Contains(content, "    IdentityAgent "+paths.AgentSocket()+"\n") {
 		t.Errorf("TPM identity must set IdentityAgent")
 	}
 }
@@ -128,7 +128,7 @@ func TestGenerateSSHConfigDisambiguatesDuplicateNames(t *testing.T) {
 	if err := GenerateSSHConfig(st); err != nil {
 		t.Fatalf("GenerateSSHConfig: %v", err)
 	}
-	data, err := os.ReadFile(util.SSHConfigFile())
+	data, err := os.ReadFile(paths.SSHConfigFile())
 	if err != nil {
 		t.Fatalf("read generated config: %v", err)
 	}
@@ -172,7 +172,7 @@ func TestGenerateSSHConfigRejectsControlCharacters(t *testing.T) {
 	if err := GenerateSSHConfig(st); err != nil {
 		t.Fatalf("GenerateSSHConfig: %v", err)
 	}
-	data, err := os.ReadFile(util.SSHConfigFile())
+	data, err := os.ReadFile(paths.SSHConfigFile())
 	if err != nil {
 		t.Fatalf("read generated config: %v", err)
 	}
@@ -197,7 +197,7 @@ func TestGenerateKnownHosts(t *testing.T) {
 	if err := GenerateKnownHosts(st); err != nil {
 		t.Fatalf("GenerateKnownHosts: %v", err)
 	}
-	data, err := os.ReadFile(util.KnownHostsPath())
+	data, err := os.ReadFile(paths.KnownHostsPath())
 	if err != nil {
 		t.Fatalf("read known_hosts: %v", err)
 	}

@@ -15,7 +15,7 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/nokku-sh/nk/internal/util"
+	"github.com/nokku-sh/nk/internal/fsutil"
 )
 
 // GenerateKey creates a new ed25519 private key. X.509 issuance writes the
@@ -97,7 +97,7 @@ func WriteKey(path string, priv crypto.PrivateKey) error {
 	if err != nil {
 		return fmt.Errorf("failed to marshal private key: %w", err)
 	}
-	return util.WriteFile(
+	return fsutil.WriteFile(
 		path,
 		pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: der}),
 		0o600,
@@ -106,5 +106,5 @@ func WriteKey(path string, priv crypto.PrivateKey) error {
 
 // WriteCert writes a PEM-encoded certificate with mode 0644.
 func WriteCert(path string, certPEM []byte) error {
-	return util.WriteFile(path, certPEM, 0o644)
+	return fsutil.WriteFile(path, certPEM, 0o644)
 }

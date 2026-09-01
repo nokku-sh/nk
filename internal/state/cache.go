@@ -5,7 +5,8 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/nokku-sh/nk/internal/util"
+	"github.com/nokku-sh/nk/internal/fsutil"
+	"github.com/nokku-sh/nk/internal/paths"
 )
 
 type Cache struct {
@@ -17,7 +18,7 @@ type Cache struct {
 }
 
 func (c *Cache) Load() error {
-	data, err := os.ReadFile(util.CacheFile())
+	data, err := os.ReadFile(paths.CacheFile())
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil
@@ -35,5 +36,5 @@ func (c *Cache) Save() error {
 	if err != nil {
 		return fmt.Errorf("serializing cache: %w", err)
 	}
-	return util.WriteIfChanged(util.CacheFile(), data, 0o600)
+	return fsutil.WriteIfChanged(paths.CacheFile(), data, 0o600)
 }

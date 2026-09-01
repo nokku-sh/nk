@@ -10,7 +10,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/nokku-sh/nk/internal/util"
+	"github.com/nokku-sh/nk/internal/fsutil"
 )
 
 var errNoState = errors.New("no signer state")
@@ -117,7 +117,7 @@ func saveState(dir string, st *state) error {
 	if err != nil {
 		return fmt.Errorf("serialize signer state: %w", err)
 	}
-	if err = util.WriteIfChanged(statePath(dir), data, 0o600); err != nil {
+	if err = fsutil.WriteIfChanged(statePath(dir), data, 0o600); err != nil {
 		return fmt.Errorf("write signer state: %w", err)
 	}
 	return nil

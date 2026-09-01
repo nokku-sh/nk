@@ -4,8 +4,9 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/nokku-sh/nk/internal/fsutil"
+	"github.com/nokku-sh/nk/internal/paths"
 	"github.com/nokku-sh/nk/internal/state"
-	"github.com/nokku-sh/nk/internal/util"
 )
 
 func GenerateSSHConfig(st *state.State) error {
@@ -45,16 +46,16 @@ func GenerateSSHConfig(st *state.State) error {
 		fmt.Fprintf(&buf, "Host %s\n", host)
 		fmt.Fprintf(&buf, "    User %s\n", t.Principals[0].Username)
 		fmt.Fprintf(&buf, "    ProxyCommand nk proxy %%h %%p\n")
-		fmt.Fprintf(&buf, "    CertificateFile %s\n", util.SSHCertificate(t.CAID))
+		fmt.Fprintf(&buf, "    CertificateFile %s\n", paths.SSHCertificate(t.CAID))
 		if TPMKeyActive() {
 			// The private key lives in the TPM: point IdentityFile at the
 			// public key so ssh looks the private key up in the agent.
-			fmt.Fprintf(&buf, "    IdentityFile %s\n", util.PubKeyFile())
-			fmt.Fprintf(&buf, "    IdentityAgent %s\n", util.AgentSocket())
+			fmt.Fprintf(&buf, "    IdentityFile %s\n", paths.PubKeyFile())
+			fmt.Fprintf(&buf, "    IdentityAgent %s\n", paths.AgentSocket())
 		} else {
-			fmt.Fprintf(&buf, "    IdentityFile %s\n", util.KeyFile())
+			fmt.Fprintf(&buf, "    IdentityFile %s\n", paths.KeyFile())
 		}
-		fmt.Fprintf(&buf, "    UserKnownHostsFile %s\n", util.KnownHostsPath())
+		fmt.Fprintf(&buf, "    UserKnownHostsFile %s\n", paths.KnownHostsPath())
 		fmt.Fprintf(&buf, "    HostKeyAlias %s\n", t.ID)
 		buf.WriteString("    IdentitiesOnly yes\n")
 		buf.WriteString("    PubkeyAuthentication yes\n")
@@ -67,7 +68,7 @@ func GenerateSSHConfig(st *state.State) error {
 		buf.WriteString("\n")
 	}
 
-	return util.WriteIfChanged(util.SSHConfigFile(), []byte(buf.String()), 0o600)
+	return fsutil.WriteIfChanged(paths.SSHConfigFile(), []byte(buf.String()), 0o600)
 }
 
 // validTarget reports whether t is complete and safe to emit as an SSH host.
@@ -83,7 +84,7 @@ func GenerateKnownHosts(st *state.State) error {
 	for _, ca := range st.CAs {
 		fmt.Fprintf(&buf, "@cert-authority * %s\n", strings.TrimSpace(ca.PublicKey))
 	}
-	return util.WriteIfChanged(util.KnownHostsPath(), []byte(buf.String()), 0o600)
+	return fsutil.WriteIfChanged(paths.KnownHostsPath(), []byte(buf.String()), 0o600)
 }
 
 // safeConfigToken reports whether s is safe to embed in a generated SSH

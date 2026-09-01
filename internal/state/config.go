@@ -7,7 +7,8 @@ import (
 	"os"
 	"time"
 
-	"github.com/nokku-sh/nk/internal/util"
+	"github.com/nokku-sh/nk/internal/fsutil"
+	"github.com/nokku-sh/nk/internal/paths"
 )
 
 type Config struct {
@@ -25,7 +26,7 @@ type Config struct {
 }
 
 func (c *Config) Load() error {
-	data, err := os.ReadFile(util.ConfigFile())
+	data, err := os.ReadFile(paths.ConfigFile())
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return nil
@@ -45,5 +46,5 @@ func (c *Config) Save() error {
 	if err != nil {
 		return fmt.Errorf("serializing config: %w", err)
 	}
-	return util.WriteIfChanged(util.ConfigFile(), data, 0o600)
+	return fsutil.WriteIfChanged(paths.ConfigFile(), data, 0o600)
 }

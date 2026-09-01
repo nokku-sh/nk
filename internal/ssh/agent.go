@@ -9,8 +9,8 @@ import (
 
 	"golang.org/x/crypto/ssh/agent"
 
+	"github.com/nokku-sh/nk/internal/paths"
 	"github.com/nokku-sh/nk/internal/tpm"
-	"github.com/nokku-sh/nk/internal/util"
 )
 
 // ServeAgent serves the TPM identity key over an SSH agent socket so
@@ -58,7 +58,7 @@ func ServeAgent(ctx context.Context) (func() error, error) {
 
 	return func() error {
 		_ = ln.Close()
-		_ = os.Remove(util.AgentSocket())
+		_ = os.Remove(paths.AgentSocket())
 		return key.Close()
 	}, nil
 }
@@ -66,7 +66,7 @@ func ServeAgent(ctx context.Context) (func() error, error) {
 // listenAgentSocket binds the agent socket, alreadyServing is true when a
 // live agent holds the socket, a stale socket file is removed and rebound.
 func listenAgentSocket(ctx context.Context) (ln net.Listener, alreadyServing bool, err error) {
-	path := util.AgentSocket()
+	path := paths.AgentSocket()
 	var lc net.ListenConfig
 	ln, err = lc.Listen(ctx, "unix", path)
 	if err == nil {

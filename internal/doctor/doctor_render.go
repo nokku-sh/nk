@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/nokku-sh/nk/internal/util"
+	"github.com/nokku-sh/nk/internal/ui"
 )
 
 // glyph maps a check status to its terminal symbol.
@@ -20,15 +20,15 @@ var glyph = map[Status]string{
 func color(status Status) func(string) string {
 	switch status {
 	case StatusOK:
-		return util.Green
+		return ui.Green
 	case StatusWarn:
-		return util.Yellow
+		return ui.Yellow
 	case StatusFail:
-		return util.Red
+		return ui.Red
 	case StatusInfo:
-		return util.Dim
+		return ui.Dim
 	default:
-		return util.Dim
+		return ui.Dim
 	}
 }
 
@@ -50,7 +50,7 @@ func printJSON(w io.Writer, r Report) error {
 
 func printText(w io.Writer, r Report) {
 	for _, f := range r.Fixes {
-		fmt.Fprintf(w, "  %s %s\n", util.Green("✔"), f)
+		fmt.Fprintf(w, "  %s %s\n", ui.Green("✔"), f)
 	}
 	if len(r.Fixes) > 0 {
 		fmt.Fprintln(w)
@@ -63,14 +63,14 @@ func printText(w io.Writer, r Report) {
 			if lastSection != "" {
 				fmt.Fprintln(w)
 			}
-			fmt.Fprintln(w, util.Bold(c.Section))
+			fmt.Fprintln(w, ui.Bold(c.Section))
 			lastSection = c.Section
 		}
 		paint := color(c.Status)
 		glyph := paint(glyph[c.Status])
-		name := util.Bold(fmt.Sprintf("%-*s", width, c.Name))
+		name := ui.Bold(fmt.Sprintf("%-*s", width, c.Name))
 		if c.Detail != "" {
-			fmt.Fprintf(w, "  %s %s  %s\n", glyph, name, util.Dim(c.Detail))
+			fmt.Fprintf(w, "  %s %s  %s\n", glyph, name, ui.Dim(c.Detail))
 		} else {
 			fmt.Fprintf(w, "  %s %s\n", glyph, name)
 		}
@@ -107,10 +107,10 @@ func summarize(r Report) string {
 	line := fmt.Sprintf("Result: %d ok, %d warn, %d fail", ok, warn, fail)
 	switch {
 	case fail > 0:
-		return util.Red(line + " (run `nk doctor --fix` or `nk login`)")
+		return ui.Red(line + " (run `nk doctor --fix` or `nk login`)")
 	case warn > 0:
-		return util.Yellow(line + " (see warnings above)")
+		return ui.Yellow(line + " (see warnings above)")
 	default:
-		return util.Green(line + " (all good)")
+		return ui.Green(line + " (all good)")
 	}
 }

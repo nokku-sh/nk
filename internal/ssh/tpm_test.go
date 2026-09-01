@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/nokku-sh/nk/internal/paths"
 	"github.com/nokku-sh/nk/internal/tpm"
-	"github.com/nokku-sh/nk/internal/util"
 )
 
 // TestSetupTPMKey exercises the TPM identity lifecycle against a real TPM:
@@ -19,7 +19,7 @@ func TestSetupTPMKey(t *testing.T) {
 		t.Skip("manual test: NK_TPM_E2E=1 XDG_CONFIG_HOME=$(mktemp -d)")
 	}
 	if xdg := os.Getenv("XDG_CONFIG_HOME"); xdg == "" ||
-		!strings.HasPrefix(util.ConfigPath(), xdg) {
+		!strings.HasPrefix(paths.ConfigPath(), xdg) {
 		t.Fatal("XDG_CONFIG_HOME must be set to a scratch dir before the test binary starts")
 	}
 	probe, err := tpm.OpenKey(sshTPMSalt)
@@ -28,7 +28,7 @@ func TestSetupTPMKey(t *testing.T) {
 	}
 	_ = probe.Close()
 
-	if err = os.MkdirAll(util.SSHCertPath(), 0o700); err != nil {
+	if err = os.MkdirAll(paths.SSHCertPath(), 0o700); err != nil {
 		t.Fatal(err)
 	}
 
@@ -39,7 +39,7 @@ func TestSetupTPMKey(t *testing.T) {
 	if !TPMKeyActive() {
 		t.Fatal("expected a TPM identity: public key without a private key file")
 	}
-	pub, err := os.ReadFile(util.PubKeyFile())
+	pub, err := os.ReadFile(paths.PubKeyFile())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -51,7 +51,7 @@ func TestSetupTPMKey(t *testing.T) {
 	if err = SetupKey(true); err != nil {
 		t.Fatalf("SetupKey(true) again: %v", err)
 	}
-	pub2, err := os.ReadFile(util.PubKeyFile())
+	pub2, err := os.ReadFile(paths.PubKeyFile())
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -7,8 +7,6 @@ import (
 	"time"
 
 	"golang.org/x/crypto/ssh"
-
-	"github.com/nokku-sh/nk/internal/util"
 )
 
 // FuzzVerifyCertificate feeds arbitrary bytes into the certificate
@@ -67,8 +65,8 @@ func FuzzVerifyCertificate(f *testing.F) {
 		}
 		// The validator's own acceptance rule: now must fall inside the
 		// certificate's validity window.
-		if time.Now().Before(util.Uint64ToUnixTime(cert.ValidAfter)) ||
-			time.Now().After(util.Uint64ToUnixTime(cert.ValidBefore)) {
+		if time.Now().Before(unixTime(cert.ValidAfter)) ||
+			time.Now().After(unixTime(cert.ValidBefore)) {
 			t.Fatalf("VerifyCertificate accepted a certificate outside its validity window")
 		}
 	})

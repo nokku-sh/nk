@@ -1,4 +1,4 @@
-package util
+package paths
 
 import (
 	"bytes"
@@ -9,6 +9,8 @@ import (
 	"strings"
 
 	"github.com/adrg/xdg"
+
+	"github.com/nokku-sh/nk/internal/fsutil"
 )
 
 const (
@@ -57,7 +59,7 @@ func EnsureSSHConfigInclude() error {
 	var buf bytes.Buffer
 	fmt.Fprintf(&buf, "%s\n\n", include)
 	buf.Write(content)
-	return WriteFile(path, buf.Bytes(), 0o600)
+	return fsutil.WriteFile(path, buf.Bytes(), 0o600)
 }
 
 // Common Paths ---------------------------------------------------------------

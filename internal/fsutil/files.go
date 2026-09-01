@@ -1,5 +1,5 @@
-// Package util provides small helpers shared across the app.
-package util
+// Package fsutil provides safe file write helpers.
+package fsutil
 
 import (
 	"bytes"

@@ -12,7 +12,8 @@ import (
 
 	"golang.org/x/crypto/ssh"
 
-	"github.com/nokku-sh/nk/internal/util"
+	"github.com/nokku-sh/nk/internal/fsutil"
+	"github.com/nokku-sh/nk/internal/paths"
 )
 
 // SetupKey ensures the SSH identity exists: a TPM-resident key when a TPM is
@@ -27,7 +28,7 @@ func SetupKey(requireTPM bool) error {
 		return fmt.Errorf(
 			"TPM identity exists but the TPM is unavailable: %w; remove %s to start over",
 			err,
-			util.PubKeyFile(),
+			paths.PubKeyFile(),
 		)
 	}
 	if requireTPM {
@@ -39,7 +40,7 @@ func SetupKey(requireTPM bool) error {
 
 // setupFileKey ensures a software ed25519 keypair exists.
 func setupFileKey() error {
-	if util.FileExists(util.KeyFile()) && util.FileExists(util.PubKeyFile()) {
+	if fsutil.FileExists(paths.KeyFile()) && fsutil.FileExists(paths.PubKeyFile()) {
 		return nil
 	}
 
@@ -58,7 +59,7 @@ func setupFileKey() error {
 	if err != nil {
 		return err
 	}
-	if err = util.WriteFile(util.KeyFile(), pem.EncodeToMemory(block), 0o600); err != nil {
+	if err = fsutil.WriteFile(paths.KeyFile(), pem.EncodeToMemory(block), 0o600); err != nil {
 		return err
 	}
 
@@ -70,11 +71,11 @@ func setupFileKey() error {
 	pubData = bytes.TrimSpace(pubData)
 	pubData = append(pubData, []byte(" "+comment+"\n")...)
 
-	return util.WriteFile(util.PubKeyFile(), pubData, 0o600)
+	return fsutil.WriteFile(paths.PubKeyFile(), pubData, 0o600)
 }
 
 func GetPubKey() (string, error) {
-	pubKeyData, err := os.ReadFile(util.PubKeyFile())
+	pubKeyData, err := os.ReadFile(paths.PubKeyFile())
 	if err != nil {
 		return "", err
 	}

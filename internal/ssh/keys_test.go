@@ -7,7 +7,8 @@ import (
 
 	"github.com/adrg/xdg"
 
-	"github.com/nokku-sh/nk/internal/util"
+	"github.com/nokku-sh/nk/internal/fsutil"
+	"github.com/nokku-sh/nk/internal/paths"
 )
 
 // setTestConfigDir redirects the app's config dir into a fresh temp dir.
@@ -24,7 +25,7 @@ func setupSSHDir(t *testing.T) {
 	t.Helper()
 	setTestConfigDir(t)
 	for _, sub := range []string{"", "certs"} {
-		if err := os.MkdirAll(filepath.Join(util.ConfigPath(), sub), 0o700); err != nil {
+		if err := os.MkdirAll(filepath.Join(paths.ConfigPath(), sub), 0o700); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -38,7 +39,7 @@ func TestSetupKey(t *testing.T) {
 	if err := SetupKey(false); err != nil {
 		t.Fatalf("SetupKey() error = %v", err)
 	}
-	if !util.FileExists(util.PubKeyFile()) {
+	if !fsutil.FileExists(paths.PubKeyFile()) {
 		t.Error("public key not created")
 	}
 }
@@ -50,10 +51,10 @@ func TestSetupFileKey(t *testing.T) {
 	if err := setupFileKey(); err != nil {
 		t.Fatalf("setupFileKey() error = %v", err)
 	}
-	if !util.FileExists(util.KeyFile()) {
+	if !fsutil.FileExists(paths.KeyFile()) {
 		t.Error("private key not created")
 	}
-	if !util.FileExists(util.PubKeyFile()) {
+	if !fsutil.FileExists(paths.PubKeyFile()) {
 		t.Error("public key not created")
 	}
 

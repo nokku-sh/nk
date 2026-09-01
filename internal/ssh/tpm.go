@@ -7,8 +7,9 @@ import (
 
 	cryptossh "golang.org/x/crypto/ssh"
 
+	"github.com/nokku-sh/nk/internal/fsutil"
+	"github.com/nokku-sh/nk/internal/paths"
 	"github.com/nokku-sh/nk/internal/tpm"
-	"github.com/nokku-sh/nk/internal/util"
 )
 
 // sshTPMSalt namespaces the SSH identity key derivation. It must stay
@@ -39,9 +40,9 @@ func setupTPMKey() error {
 	pubData := bytes.TrimSpace(cryptossh.MarshalAuthorizedKey(sshPub))
 	pubData = append(pubData, []byte(" "+comment+"\n")...)
 
-	if old, readErr := os.ReadFile(util.PubKeyFile()); readErr != nil ||
+	if old, readErr := os.ReadFile(paths.PubKeyFile()); readErr != nil ||
 		!bytes.Equal(bytes.TrimSpace(old), bytes.TrimSpace(pubData)) {
-		if err = util.WriteFile(util.PubKeyFile(), pubData, 0o600); err != nil {
+		if err = fsutil.WriteFile(paths.PubKeyFile(), pubData, 0o600); err != nil {
 			return err
 		}
 		// The identity changed, so certs issued for the old key must
@@ -52,8 +53,8 @@ func setupTPMKey() error {
 	}
 
 	// Don't leave a stale software key behind.
-	if util.FileExists(util.KeyFile()) {
-		return os.Remove(util.KeyFile())
+	if fsutil.FileExists(paths.KeyFile()) {
+		return os.Remove(paths.KeyFile())
 	}
 	return nil
 }
@@ -61,7 +62,7 @@ func setupTPMKey() error {
 // TPMKeyActive reports whether the active SSH identity is TPM-backed: a
 // public key exists on disk, but no private key file does.
 func TPMKeyActive() bool {
-	return util.FileExists(util.PubKeyFile()) && !util.FileExists(util.KeyFile())
+	return fsutil.FileExists(paths.PubKeyFile()) && !fsutil.FileExists(paths.KeyFile())
 }
 
 // IdentityStatus describes the active SSH identity for diagnostics.
@@ -69,7 +70,7 @@ func IdentityStatus() string {
 	if TPMKeyActive() {
 		return "TPM 2.0 (ecdsa-p256), private key never touches disk"
 	}
-	if util.FileExists(util.KeyFile()) {
+	if fsutil.FileExists(paths.KeyFile()) {
 		return "software key (ed25519)"
 	}
 	return "not logged in yet"
