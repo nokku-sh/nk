@@ -379,16 +379,24 @@ func repair(s *state.State) []string {
 	return cleanStaleCerts(s, fixed)
 }
 
-// cleanStaleCerts removes local certificate files whose CA is not in cas.
+// cleanStaleCerts removes local certificate files whose CA is not in cas and
+// reports how many were removed.
 func cleanStaleCerts(s *state.State, fixed []string) []string {
 	certs, err := paths.SSHCertificates()
 	if err != nil || len(certs) == 0 {
 		return fixed
 	}
+	before := len(certs)
 	if err = ssh.CleanupCerts(s.CAs); err != nil {
 		return append(fixed, "clean stale certificates: "+err.Error())
 	}
-	return append(fixed, fmt.Sprintf("removed %d stale certificate(s)", len(certs)))
+	after, listErr := paths.SSHCertificates()
+	if listErr == nil {
+		if removed := before - len(after); removed > 0 {
+			fixed = append(fixed, fmt.Sprintf("removed %d stale certificate(s)", removed))
+		}
+	}
+	return fixed
 }
 
 func certID(path string) string {
