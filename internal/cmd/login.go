@@ -18,16 +18,12 @@ func loginCMD() *cli.Command {
 		Aliases: []string{"refresh"},
 		Action: func(ctx context.Context, cmd *cli.Command) error {
 			s := state.FromCommand(cmd)
-			client, err := client.New(ctx, s)
+			client, err := client.New(s)
 			if err != nil {
 				return err
 			}
 
-			// login is the explicit interactive path: it may run the device
-			// flow, then syncs access and prewarms certificates so the user
-			// can go offline right after.
-			err = client.Sync(ctx, true)
-			if err != nil {
+			if err = client.Sync(ctx, true); err != nil {
 				return err
 			}
 			client.PrewarmCerts(ctx)

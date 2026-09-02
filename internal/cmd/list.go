@@ -22,7 +22,7 @@ func listCMD() *cli.Command {
 		},
 		Action: func(ctx context.Context, cmd *cli.Command) error {
 			s := state.FromCommand(cmd)
-			client, err := client.New(ctx, s)
+			client, err := client.New(s)
 			if err != nil {
 				return err
 			}

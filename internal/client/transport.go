@@ -67,27 +67,21 @@ func Reachable(ctx context.Context, st *state.State) bool {
 	return true
 }
 
-// SetupClients constructs the connectrpc clients. Authentication is layered:
+// setupClients constructs the connectrpc clients. Authentication is layered:
 // the DPoP interceptor signs interactive device sessions, the identity
 // interceptor adds the service-account API key and client headers.
-func (c *Client) SetupClients(ctx context.Context) error {
+func (c *Client) setupClients() error {
 	httpc, err := newHTTPClient(c.State.Insecure)
 	if err != nil {
 		return err
 	}
 	c.httpc = httpc
 
-	interceptors := []connect.Interceptor{withRetry(), withUA()}
-	if c.proofer != nil {
-		nonce, serverURL, _ := FetchNonce(ctx, httpc, c.State.APIURL)
-		c.dpopAuth = &dpopAuth{
-			state:     c.State,
-			proofer:   c.proofer,
-			nonce:     nonce,
-			serverURL: serverURL,
-		}
-		interceptors = append(interceptors, c.dpopAuth)
+	c.dpop, err = withDPoP(c.State, httpc)
+	if err != nil {
+		return err
 	}
+	interceptors := []connect.Interceptor{withRetry(), withUA(), c.dpop}
 	opts := connect.WithInterceptors(interceptors...)
 
 	c.cc = nokkuv1connect.NewCertificateServiceClient(httpc, c.State.APIURL, opts)

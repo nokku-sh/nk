@@ -9,6 +9,7 @@ import (
 	"errors"
 	"net/http"
 	"testing"
+	"time"
 
 	"connectrpc.com/connect"
 	"github.com/go-jose/go-jose/v4"
@@ -46,7 +47,7 @@ func TestDPoPAuthInteractiveSignsRequest(t *testing.T) {
 		return connect.NewResponse(&nokkuv1.User{}), nil
 	}
 
-	auth := dpopAuth{state: st, proofer: proofer, nonce: "", serverURL: ""}
+	auth := dpopAuth{state: st, proofer: proofer, learnedAt: time.Now()}
 	wrapped := auth.WrapUnary(next)
 	req := connect.NewRequest(&nokkuv1.User{})
 	if _, err := wrapped(context.Background(), req); err != nil {

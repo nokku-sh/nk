@@ -185,7 +185,7 @@ func parseX509Usage(s string) (nokkuv1.SignX509CertificateRequest_X509Usage, err
 // to cached data when the backend is unreachable.
 func connectForJIT(ctx context.Context, cmd *cli.Command) (*client.Client, error) {
 	s := state.FromCommand(cmd)
-	client, err := client.New(ctx, s)
+	client, err := client.New(s)
 	if err != nil {
 		return nil, err
 	}

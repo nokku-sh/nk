@@ -13,10 +13,6 @@ import (
 
 	"golang.org/x/sync/errgroup"
 
-	"github.com/nokku-sh/mon/dpop"
-	"github.com/nokku-sh/mon/id"
-	"github.com/nokku-sh/mon/tpm"
-
 	"github.com/nokku-sh/nk/internal/fsutil"
 	nokkuv1 "github.com/nokku-sh/nk/internal/gen/nokku/v1"
 	"github.com/nokku-sh/nk/internal/gen/nokku/v1/nokkuv1connect"
@@ -30,50 +26,22 @@ const (
 	syncTimeout     = 5 * time.Second
 )
 
-var SignerSalt = []byte("nokku-cli")
-
 type Client struct {
-	State    *state.State
-	proofer  *dpop.Proofer
-	httpc    *http.Client
-	dpopAuth *dpopAuth
+	State *state.State
+	httpc *http.Client
+	dpop  *dpopAuth
 
 	cc nokkuv1connect.CertificateServiceClient
 	tc nokkuv1connect.TargetServiceClient
 }
 
-// New builds a client for s: it loads the machine signing identity, ensures
-// the SSH key exists, and constructs the connectrpc clients. It performs no
-// network I/O except the best-effort DPoP nonce bootstrap. Call Sync for
-// backend access; it fails fast and falls back to cached data.
-func New(ctx context.Context, s *state.State) (*Client, error) {
+func New(s *state.State) (*Client, error) {
 	c := &Client{State: s}
-
-	// Headless (service-account) mode has no signing identity: the API key
-	// is a plain bearer token with no DPoP binding. The CLI recovers from a
-	// changed machine identity (relogin re-registers the new key), unlike
-	// the daemon, whose enrollment is bound to its key.
-	if !s.IsServiceAccount() {
-		signer, err := tpm.NewSigner(tpm.SignerOptions{
-			Salt:            SignerSalt,
-			Store:           tpm.NewFileStore(paths.SignerStateFile()),
-			MachineID:       id.MachineID,
-			RequireTPM:      s.RequireTPM,
-			RecoverIdentity: true,
-		})
-		if err != nil {
-			return nil, err
-		}
-		c.proofer, err = dpop.NewProofer(signer, dpop.ProoferOptions{})
-		if err != nil {
-			return nil, err
-		}
-	}
 
 	if err := ssh.SetupKey(s.RequireTPM); err != nil {
 		return nil, err
 	}
-	if err := c.SetupClients(ctx); err != nil {
+	if err := c.setupClients(); err != nil {
 		return nil, err
 	}
 	return c, nil

@@ -33,7 +33,7 @@ func proxyCMD() *cli.Command {
 			// connection working offline. A missing or expired session never
 			// triggers a browser flow here; the user runs nk login instead.
 			s := state.FromCommand(cmd)
-			client, err := client.New(ctx, s)
+			client, err := client.New(s)
 			if err != nil {
 				return err
 			}

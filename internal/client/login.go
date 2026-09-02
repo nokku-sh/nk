@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strings"
@@ -36,32 +37,33 @@ func (c *Client) ensureSession(ctx context.Context, interactive bool) error {
 }
 
 // deviceLogin runs the RFC 8628 device flow and persists the returned
-// DPoP-bound session token.
+// session token.
 func (c *Client) deviceLogin(ctx context.Context) error {
-	// The device must prove its key at token issuance, and the proof needs
-	// the server nonce. Fetch it up front so the flow is a single poll; a
-	// failure is not fatal, the token endpoint advertises a fresh nonce on
-	// a use_dpop_nonce error and the loop retries (RFC 9449 section 8).
-	if c.dpopAuth != nil {
-		nonce, apiURL, _ := FetchNonce(ctx, c.httpc, c.State.APIURL)
-		c.dpopAuth.set(nonce, apiURL)
+	slog.Debug("starting device flow", "api", c.State.APIURL)
+
+	// Bootstrap the DPoP nonce and canonical URL up front, so the first
+	// approved poll already carries a valid proof.
+	// Best effort: a failure just costs one rejected poll, which self-heals.
+	if a := c.dpop; a != nil && a.proofer != nil {
+		if nonce, serverURL, err := FetchNonce(ctx, c.httpc, c.State.APIURL); err == nil {
+			a.learn(nonce, serverURL)
+		}
 	}
 
-	// Request a device code.
-	deviceCode, userCode, verificationURI, err := c.beginDeviceAuth(ctx)
+	d, err := c.beginDeviceAuth(ctx)
 	if err != nil {
 		return err
 	}
 
 	// Open the browser (the code is embedded in the complete URI).
-	if err = browser.OpenURL(verificationURI); err != nil {
-		fmt.Printf("\nOpen this URL to authenticate:\n%s\n", verificationURI)
+	if err = browser.OpenURL(d.verificationURI); err != nil {
+		fmt.Printf("\nOpen this URL to authenticate:\n%s\n", d.verificationURI)
 	} else {
-		fmt.Printf("\nWaiting for approval... (code: %s)\n", userCode)
+		fmt.Printf("\nWaiting for approval... (code: %s)\n", d.userCode)
 	}
 
 	// Poll for the session token.
-	token, expiresIn, err := c.pollDeviceToken(ctx, deviceCode)
+	token, expiresIn, err := c.pollDeviceToken(ctx, d.deviceCode, d.interval)
 	if err != nil {
 		return err
 	}
@@ -79,46 +81,69 @@ func (c *Client) deviceLogin(ctx context.Context) error {
 	return nil
 }
 
+// deviceAuth is the beginDeviceAuth response.
+type deviceAuth struct {
+	deviceCode      string
+	userCode        string
+	verificationURI string
+	interval        int
+}
+
 // beginDeviceAuth asks the authorization server for a device code.
 func (c *Client) beginDeviceAuth(
 	ctx context.Context,
-) (deviceCode, userCode, verificationURI string, err error) {
+) (deviceAuth, error) {
 	form := url.Values{}
 	resp, err := c.postForm(ctx, "/auth/device", form)
 	if err != nil {
-		return "", "", "", err
+		return deviceAuth{}, err
 	}
 	var out struct {
 		DeviceCode              string `json:"device_code"`
 		UserCode                string `json:"user_code"`
 		VerificationURI         string `json:"verification_uri"`
 		VerificationURIComplete string `json:"verification_uri_complete"`
+		Interval                int    `json:"interval"`
 	}
 	if err = json.Unmarshal(resp, &out); err != nil {
-		return "", "", "", fmt.Errorf("device authorization: %w", err)
+		return deviceAuth{}, fmt.Errorf("device authorization: %w", err)
 	}
 	if out.DeviceCode == "" || out.UserCode == "" {
-		return "", "", "", errors.New("device authorization: missing codes in response")
+		return deviceAuth{}, errors.New("device authorization: missing codes in response")
 	}
 	if out.VerificationURIComplete != "" {
 		out.VerificationURI = out.VerificationURIComplete
 	}
 	if out.VerificationURI == "" {
-		return "", "", "", errors.New("device authorization: missing verification URI")
+		return deviceAuth{}, errors.New("device authorization: missing verification URI")
 	}
-	return out.DeviceCode, out.UserCode, out.VerificationURI, nil
+	return deviceAuth{
+		deviceCode:      out.DeviceCode,
+		userCode:        out.UserCode,
+		verificationURI: out.VerificationURI,
+		interval:        out.Interval,
+	}, nil
 }
 
-// pollDeviceToken polls the token endpoint until the user approves.
+// pollDeviceToken polls the token endpoint until the user approves. interval
+// is the server's poll interval hint in seconds.
 func (c *Client) pollDeviceToken(
 	ctx context.Context,
 	deviceCode string,
+	interval int,
 ) (token string, expiresIn int, err error) {
-	// Poll interval defaults to 5s; cap the total wait at the grant TTL.
-	ticker := time.NewTicker(5 * time.Second)
-	defer ticker.Stop()
+	// Cap the total wait at the grant TTL.
 	timeout := time.NewTimer(15 * time.Minute)
 	defer timeout.Stop()
+
+	wait := time.Duration(interval) * time.Second
+	if wait <= 0 {
+		wait = 5 * time.Second
+	}
+	ticker := time.NewTicker(wait)
+	defer ticker.Stop()
+
+	bootstrapped := false
 
 	for {
 		form := url.Values{"device_code": {deviceCode}}
@@ -139,11 +164,31 @@ func (c *Client) pollDeviceToken(
 		case doErr == nil && tokenErr == nil && out.AccessToken != "":
 			return out.AccessToken, out.ExpiresIn, nil
 		case decodeErr == nil && authErr.Error != "":
+			slog.Debug("device flow poll", "api", c.State.APIURL, "response", authErr.Error)
 			switch authErr.Error {
-			case "authorization_pending", "invalid_dpop_proof", "slow_down", "use_dpop_nonce":
-				// keep polling (invalid_dpop_proof and use_dpop_nonce
-				// carry a fresh nonce, consumed above, so the next poll
-				// succeeds)
+			case "authorization_pending":
+				// keep polling
+			case "use_dpop_nonce":
+				// the fresh nonce was learned in postForm; re-sign
+				// and retry without waiting the poll interval
+				continue
+			case "invalid_dpop_proof":
+				// A proof can be rejected before the nonce check when
+				// the htu is wrong: the configured API URL differs from
+				// the canonical URL the server binds proofs to.
+				if !bootstrapped && c.dpop != nil {
+					bootstrapped = true
+					if nonce, serverURL, nerr := FetchNonce(ctx, c.httpc, c.State.APIURL); nerr == nil {
+						c.dpop.learn(nonce, serverURL)
+						continue
+					}
+				}
+			case "slow_down":
+				// RFC 8628 section 3.5: grow the interval by 5s. The
+				// server counts violations per grant and its required
+				// interval keeps growing, so this must be honored.
+				wait += 5 * time.Second
+				ticker.Reset(wait)
 			case "access_denied", "expired_token":
 				return "", 0, errors.New("device authorization: " + authErr.Error)
 			default:
@@ -154,8 +199,7 @@ func (c *Client) pollDeviceToken(
 			// RFC 8628 error code: retrying won't fix it.
 			return "", 0, doErr
 		default:
-			// 2xx whose body is neither a token nor an RFC 8628 error:
-			// don't spin until the timeout.
+			// 2xx whose body is neither a token nor an RFC 8628 error
 			return "", 0, fmt.Errorf(
 				"device authorization: unexpected response: %s",
 				strings.TrimSpace(string(body)),
@@ -190,11 +234,15 @@ func (c *Client) postForm(
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
-	if c.proofer != nil && c.dpopAuth != nil {
-		htu := c.dpopAuth.htuBase() + path
-		proof, serr := c.proofer.Sign(http.MethodPost, htu, "", c.dpopAuth.currentNonce())
-		if serr != nil {
-			return nil, serr
+	if a := c.dpop; a != nil && a.proofer != nil {
+		proof, perr := a.proofer.Sign(
+			http.MethodPost,
+			a.htuBase()+path,
+			"",
+			a.currentNonce(),
+		)
+		if perr != nil {
+			return nil, perr
 		}
 		req.Header.Set("DPoP", proof)
 	}
@@ -205,8 +253,10 @@ func (c *Client) postForm(
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	if c.dpopAuth != nil {
-		c.dpopAuth.learnResponse(resp.Header)
+	// Learn before the status check: the use_dpop_nonce rejection is the
+	// response that carries the nonce the retry needs.
+	if a := c.dpop; a != nil {
+		a.learnResponse(resp.Header)
 	}
 
 	data, err := io.ReadAll(resp.Body)
