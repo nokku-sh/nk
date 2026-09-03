@@ -12,9 +12,8 @@ import (
 )
 
 type Config struct {
-	APIURL   string        `json:"api_url,omitempty"`
-	TTL      time.Duration `json:"ttl,omitempty"`
-	Insecure bool          `json:"insecure,omitempty"`
+	APIURL string        `json:"api_url,omitempty"`
+	TTL    time.Duration `json:"ttl,omitempty"`
 	// SessionToken is the DPoP-bound session token obtained from the device
 	// flow. It is persisted (0600) so the CLI works across invocations;
 	// stealing it is useless without the bound signing key.

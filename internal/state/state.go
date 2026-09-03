@@ -65,6 +65,11 @@ type State struct {
 	// RequireTPM mirrors the --require-tpm flag: refuse the software key
 	// fallback. Like Token, it is ephemeral and never persisted.
 	RequireTPM bool
+
+	// Insecure mirrors the --insecure flag. Ephemeral on purpose: a TLS
+	// verification downgrade must never outlive the invocation that asked
+	// for it.
+	Insecure bool
 }
 
 func New() *State {
