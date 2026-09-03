@@ -81,8 +81,16 @@ func GenerateKnownHosts(st *state.State) error {
 	var buf strings.Builder
 	buf.WriteString("# Managed by Nokku\n")
 	buf.WriteString("# Do not edit manually. Changes will be overwritten.\n\n")
-	for _, ca := range st.CAs {
-		fmt.Fprintf(&buf, "@cert-authority * %s\n", strings.TrimSpace(ca.PublicKey))
+	// Trust is scoped per target
+	for _, t := range st.Targets {
+		if t.ID == "" || t.CAID == "" {
+			continue
+		}
+		ca := st.GetCAByID(t.CAID)
+		if ca == nil {
+			continue
+		}
+		fmt.Fprintf(&buf, "@cert-authority %s %s\n", t.ID, strings.TrimSpace(ca.PublicKey))
 	}
 	return fsutil.WriteIfChanged(paths.KnownHostsPath(), []byte(buf.String()), 0o600)
 }

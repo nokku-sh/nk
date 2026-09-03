@@ -192,6 +192,12 @@ func TestGenerateKnownHosts(t *testing.T) {
 			{ID: "ca-1", Name: "Production CA", PublicKey: "ssh-ed25519 AAAACa1== production"},
 			{ID: "ca-2", Name: "Staging CA", PublicKey: "  ssh-rsa AAAACa2== staging\n"},
 		},
+		Targets: []state.Target{
+			{ID: "t-1", Name: "prod", CAID: "ca-1"},
+			{ID: "t-2", Name: "stage", CAID: "ca-2"},
+			{ID: "t-3", Name: "no-ca"},
+			{ID: "t-4", Name: "orphan", CAID: "ca-missing"},
+		},
 	}
 
 	if err := GenerateKnownHosts(st); err != nil {
@@ -202,11 +208,22 @@ func TestGenerateKnownHosts(t *testing.T) {
 		t.Fatalf("read known_hosts: %v", err)
 	}
 	content := string(data)
-	if !strings.Contains(content, "@cert-authority * ssh-ed25519 AAAACa1== production\n") {
-		t.Errorf("known_hosts missing trimmed CA 1 line, got:\n%s", content)
+	// Trust is scoped to the target ID (the HostKeyAlias in the generated
+	// config), never a global "*".
+	if !strings.Contains(content, "@cert-authority t-1 ssh-ed25519 AAAACa1== production\n") {
+		t.Errorf("known_hosts missing scoped CA 1 line for t-1, got:\n%s", content)
 	}
-	if !strings.Contains(content, "@cert-authority * ssh-rsa AAAACa2== staging\n") {
-		t.Errorf("known_hosts missing trimmed CA 2 line, got:\n%s", content)
+	if !strings.Contains(content, "@cert-authority t-2 ssh-rsa AAAACa2== staging\n") {
+		t.Errorf("known_hosts missing scoped CA 2 line for t-2, got:\n%s", content)
+	}
+	if strings.Contains(content, "@cert-authority *") {
+		t.Errorf("known_hosts must not trust a CA for every host, got:\n%s", content)
+	}
+	if strings.Contains(content, "t-3") {
+		t.Errorf("target without a CA must not get a known_hosts line, got:\n%s", content)
+	}
+	if strings.Contains(content, "t-4") {
+		t.Errorf("target with an unknown CA must not get a known_hosts line, got:\n%s", content)
 	}
 }
 
