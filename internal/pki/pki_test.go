@@ -6,6 +6,8 @@ import (
 	"crypto/x509"
 	"encoding/pem"
 	"net"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -55,6 +57,39 @@ func TestNewCSRRejectsBadIP(t *testing.T) {
 	require.NoError(t, err)
 	_, err = NewCSR(priv, "svc", []string{"ip:not-an-ip"})
 	assert.Error(t, err, "expected error for invalid typed IP SAN")
+}
+
+func TestWriteKey(t *testing.T) {
+	_, priv, err := ed25519.GenerateKey(rand.Reader)
+	require.NoError(t, err)
+
+	path := filepath.Join(t.TempDir(), "service.key")
+	require.NoError(t, WriteKey(path, priv))
+
+	fi, err := os.Stat(path)
+	require.NoError(t, err)
+	assert.Equal(t, os.FileMode(0o600), fi.Mode().Perm(), "private keys must be 0600")
+
+	data, err := os.ReadFile(path)
+	require.NoError(t, err)
+	block, _ := pem.Decode(data)
+	require.NotNil(t, block)
+	assert.Equal(t, "PRIVATE KEY", block.Type)
+	_, err = x509.ParsePKCS8PrivateKey(block.Bytes)
+	require.NoError(t, err, "written key must parse back as PKCS#8")
+}
+
+func TestWriteCert(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "service.pem")
+	require.NoError(t, WriteCert(path, []byte("-----BEGIN CERTIFICATE-----\n")))
+
+	fi, err := os.Stat(path)
+	require.NoError(t, err)
+	assert.Equal(t, os.FileMode(0o644), fi.Mode().Perm())
+
+	data, err := os.ReadFile(path)
+	require.NoError(t, err)
+	assert.Equal(t, "-----BEGIN CERTIFICATE-----\n", string(data))
 }
 
 func TestGenerateKey(t *testing.T) {

@@ -45,6 +45,46 @@ func TestSSHPath(t *testing.T) {
 	assert.Equal(t, filepath.Join(home, ".ssh"), path)
 }
 
+func TestEnsureSSHConfigInclude(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	home, err := os.UserHomeDir()
+	require.NoError(t, err)
+	sshDir := filepath.Join(home, ".ssh")
+	require.NoError(t, os.MkdirAll(sshDir, 0o700))
+	configPath := filepath.Join(sshDir, "config")
+	include := "Include " + SSHConfigFile()
+
+	t.Run("creates the config when missing", func(t *testing.T) {
+		require.NoError(t, EnsureSSHConfigInclude())
+		content, rerr := os.ReadFile(configPath)
+		require.NoError(t, rerr)
+		assert.Contains(t, string(content), include)
+	})
+
+	t.Run("prepends include preserving existing content", func(t *testing.T) {
+		existing := "Host own\n    HostName example.com\n"
+		require.NoError(t, os.WriteFile(configPath, []byte(existing), 0o600))
+
+		require.NoError(t, EnsureSSHConfigInclude())
+		content, rerr := os.ReadFile(configPath)
+		require.NoError(t, rerr)
+		assert.Contains(t, string(content), include)
+		assert.Contains(t, string(content), existing,
+			"the user's own ssh config must be preserved")
+	})
+
+	t.Run("does not duplicate the include", func(t *testing.T) {
+		before, rerr := os.ReadFile(configPath)
+		require.NoError(t, rerr)
+
+		require.NoError(t, EnsureSSHConfigInclude())
+		after, aerr := os.ReadFile(configPath)
+		require.NoError(t, aerr)
+		assert.Equal(t, string(before), string(after),
+			"an existing include must be left untouched")
+	})
+}
+
 func TestCertificateFilenames(t *testing.T) {
 	assert.Equal(t, "ca-test-cert.pub", filepath.Base(SSHCertificate("ca-test")))
 	assert.Equal(t, "ca-123-cert.pub", filepath.Base(SSHCertificate("ca-123")))

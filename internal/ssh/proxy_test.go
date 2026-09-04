@@ -1,6 +1,7 @@
 package ssh
 
 import (
+	"context"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -68,6 +69,35 @@ func TestResolveTarget(t *testing.T) {
 		_, err := ResolveTarget(s, "unknown/db")
 		assert.Error(t, err, "expected unknown-workspace error")
 	})
+}
+
+func TestProxyRejectsNilTarget(t *testing.T) {
+	t.Parallel()
+	err := Proxy(context.Background(), nil, "22")
+	assert.ErrorContains(t, err, "nil target")
+}
+
+func TestProxyRejectsNoEndpoints(t *testing.T) {
+	t.Parallel()
+	target := &state.Target{ID: "t-1", Name: "prod"}
+	err := Proxy(context.Background(), target, "22")
+	assert.ErrorContains(t, err, "no endpoints configured")
+}
+
+func TestProxyReportsAllEndpointFailures(t *testing.T) {
+	t.Parallel()
+	target := &state.Target{
+		ID:   "t-1",
+		Name: "prod",
+		// Unreachable addresses fail fast instead of hanging the test.
+		Endpoints: []string{"127.0.0.1:1", "127.0.0.2:1"},
+	}
+	err := Proxy(context.Background(), target, "22")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "all endpoints failed")
+	assert.Contains(t, err.Error(), "127.0.0.1:1")
+	assert.Contains(t, err.Error(), "127.0.0.2:1",
+		"every endpoint failure must be reported")
 }
 
 func TestNormalizeEndpoint(t *testing.T) {
