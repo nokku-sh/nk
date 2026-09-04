@@ -83,8 +83,8 @@ func (c *Client) SyncOrCache(ctx context.Context, interactive bool) error {
 		return fmt.Errorf("backend unreachable and no cached data available: %w", err)
 	}
 
-	if err = c.State.Cache.Load(); err != nil {
-		slog.Warn("failed to reload cache", "err", err)
+	if loadErr := c.State.Cache.Load(); loadErr != nil {
+		slog.Warn("failed to reload cache", "err", loadErr)
 	}
 	slog.Warn("online sync failed, continuing with cached data", "err", err)
 	return nil
