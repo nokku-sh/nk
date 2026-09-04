@@ -20,6 +20,6 @@ plugins:
       - paths=source_relative
       - simple
 inputs:
-  # Local checkout of the protos repo (../protos) so schema changes are
-  # picked up without pushing to git first.
-  - directory: ../protos/nokku
+  - git_repo: https://github.com/nokku-sh/protos.git
+    branch: main
+    subdir: nokku
