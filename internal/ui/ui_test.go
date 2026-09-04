@@ -3,6 +3,8 @@ package ui
 import (
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestHumanizeDuration(t *testing.T) {
@@ -25,9 +27,7 @@ func TestHumanizeDuration(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := HumanizeDuration(tt.in); got != tt.want {
-				t.Fatalf("HumanizeDuration(%v) = %q, want %q", tt.in, got, tt.want)
-			}
+			assert.Equal(t, tt.want, HumanizeDuration(tt.in))
 		})
 	}
 }

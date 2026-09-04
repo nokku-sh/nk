@@ -5,6 +5,9 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"github.com/adrg/xdg"
 
 	"github.com/nokku-sh/nk/internal/fsutil"
@@ -25,9 +28,7 @@ func setupSSHDir(t *testing.T) {
 	t.Helper()
 	setTestConfigDir(t)
 	for _, sub := range []string{"", "certs"} {
-		if err := os.MkdirAll(filepath.Join(paths.ConfigPath(), sub), 0o700); err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, os.MkdirAll(filepath.Join(paths.ConfigPath(), sub), 0o700))
 	}
 }
 
@@ -36,46 +37,28 @@ func setupSSHDir(t *testing.T) {
 func TestSetupKey(t *testing.T) {
 	setupSSHDir(t)
 
-	if err := SetupKey(false); err != nil {
-		t.Fatalf("SetupKey() error = %v", err)
-	}
-	if !fsutil.FileExists(paths.PubKeyFile()) {
-		t.Error("public key not created")
-	}
+	require.NoError(t, SetupKey(false))
+	assert.True(t, fsutil.FileExists(paths.PubKeyFile()), "public key not created")
 }
 
 func TestSetupFileKey(t *testing.T) {
 	setupSSHDir(t)
 
 	// First call creates the keypair.
-	if err := setupFileKey(); err != nil {
-		t.Fatalf("setupFileKey() error = %v", err)
-	}
-	if !fsutil.FileExists(paths.KeyFile()) {
-		t.Error("private key not created")
-	}
-	if !fsutil.FileExists(paths.PubKeyFile()) {
-		t.Error("public key not created")
-	}
+	require.NoError(t, setupFileKey())
+	assert.True(t, fsutil.FileExists(paths.KeyFile()), "private key not created")
+	assert.True(t, fsutil.FileExists(paths.PubKeyFile()), "public key not created")
 
 	// Second call is a no-op.
-	if err := setupFileKey(); err != nil {
-		t.Fatalf("setupFileKey() second call error = %v", err)
-	}
+	require.NoError(t, setupFileKey())
 }
 
 func TestGetPubKey(t *testing.T) {
 	setupSSHDir(t)
 
-	if err := setupFileKey(); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, setupFileKey())
 
 	key, err := GetPubKey()
-	if err != nil {
-		t.Fatalf("GetPubKey() error = %v", err)
-	}
-	if key == "" {
-		t.Error("GetPubKey() returned empty")
-	}
+	require.NoError(t, err)
+	assert.NotEmpty(t, key)
 }

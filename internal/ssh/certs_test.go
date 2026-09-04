@@ -8,25 +8,37 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"golang.org/x/crypto/ssh"
 
 	"github.com/nokku-sh/nk/internal/paths"
 )
 
+func signCert(t *testing.T, signer ssh.Signer, validAfter, validBefore uint64) []byte {
+	t.Helper()
+	c := &ssh.Certificate{
+		Key:         signer.PublicKey(),
+		CertType:    ssh.UserCert,
+		ValidAfter:  validAfter,
+		ValidBefore: validBefore,
+	}
+	require.NoError(t, c.SignCert(rand.Reader, signer))
+	return ssh.MarshalAuthorizedKey(c)
+}
+
+func newSigner(t *testing.T) ssh.Signer {
+	t.Helper()
+	_, priv, err := ed25519.GenerateKey(rand.Reader)
+	require.NoError(t, err)
+	signer, err := ssh.NewSignerFromKey(priv)
+	require.NoError(t, err)
+	return signer
+}
+
 func TestVerifyCertificate(t *testing.T) {
 	t.Parallel()
-	_, priv, err := ed25519.GenerateKey(rand.Reader)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	signer, err := ssh.NewSignerFromKey(priv)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	sshPub := signer.PublicKey()
-
+	signer := newSigner(t)
 	now := time.Now()
 
 	tests := []struct {
@@ -35,62 +47,23 @@ func TestVerifyCertificate(t *testing.T) {
 		wantErr bool
 	}{
 		{
-			name: "valid certificate",
-			data: func() []byte {
-				c := &ssh.Certificate{
-					Key:      sshPub,
-					CertType: ssh.UserCert,
-
-					ValidAfter: uint64(now.Add(-1 * time.Hour).Unix()),
-
-					ValidBefore: uint64(now.Add(1 * time.Hour).Unix()),
-				}
-				if err = c.SignCert(rand.Reader, signer); err != nil {
-					panic(err)
-				}
-				return ssh.MarshalAuthorizedKey(c)
-			}(),
+			name:    "valid certificate",
+			data:    signCert(t, signer, uint64(now.Add(-time.Hour).Unix()), uint64(now.Add(time.Hour).Unix())),
 			wantErr: false,
 		},
 		{
-			name: "expired certificate",
-			data: func() []byte {
-				c := &ssh.Certificate{
-					Key:      sshPub,
-					CertType: ssh.UserCert,
-
-					ValidAfter: uint64(now.Add(-2 * time.Hour).Unix()),
-
-					ValidBefore: uint64(now.Add(-1 * time.Hour).Unix()),
-				}
-				if err = c.SignCert(rand.Reader, signer); err != nil {
-					panic(err)
-				}
-				return ssh.MarshalAuthorizedKey(c)
-			}(),
+			name:    "expired certificate",
+			data:    signCert(t, signer, uint64(now.Add(-2*time.Hour).Unix()), uint64(now.Add(-time.Hour).Unix())),
 			wantErr: true,
 		},
 		{
-			name: "valid until the last second",
-			data: func() []byte {
-				c := &ssh.Certificate{
-					Key:      sshPub,
-					CertType: ssh.UserCert,
-
-					ValidAfter: uint64(now.Add(-1 * time.Hour).Unix()),
-
-					ValidBefore: uint64(now.Add(5 * time.Minute).Unix()),
-				}
-				if err = c.SignCert(rand.Reader, signer); err != nil {
-					panic(err)
-				}
-				return ssh.MarshalAuthorizedKey(c)
-			}(),
+			name:    "valid until the last second",
+			data:    signCert(t, signer, uint64(now.Add(-time.Hour).Unix()), uint64(now.Add(5*time.Minute).Unix())),
 			wantErr: false,
 		},
 		{
 			name:    "not a certificate (plain key)",
-			data:    bytes.TrimSpace(ssh.MarshalAuthorizedKey(sshPub)),
+			data:    bytes.TrimSpace(ssh.MarshalAuthorizedKey(signer.PublicKey())),
 			wantErr: true,
 		},
 		{
@@ -107,9 +80,12 @@ func TestVerifyCertificate(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err = VerifyCertificate(tt.data)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("VerifyCertificate() error = %v, wantErr %v", err, tt.wantErr)
+			t.Parallel()
+			err := VerifyCertificate(tt.data)
+			if tt.wantErr {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
 			}
 		})
 	}
@@ -117,101 +93,64 @@ func TestVerifyCertificate(t *testing.T) {
 
 func TestCleanupCerts_NoMatches(t *testing.T) {
 	setupSSHDir(t)
-
-	if err := CleanupCerts(nil); err != nil {
-		t.Fatalf("CleanupCerts(nil) error = %v", err)
-	}
+	require.NoError(t, CleanupCerts(nil))
 }
 
 func TestCertificateFresh(t *testing.T) {
 	setupSSHDir(t)
 
 	certDir := paths.SSHCertPath()
-	if err := os.MkdirAll(certDir, 0o700); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.MkdirAll(certDir, 0o700))
 
-	_, priv, genErr := ed25519.GenerateKey(rand.Reader)
-	if genErr != nil {
-		t.Fatal(genErr)
-	}
-	signer, genErr := ssh.NewSignerFromKey(priv)
-	if genErr != nil {
-		t.Fatal(genErr)
-	}
+	signer := newSigner(t)
 	caPub := ssh.MarshalAuthorizedKey(signer.PublicKey())
-
-	signCert := func(s ssh.Signer, validFor time.Duration) []byte {
-		t.Helper()
-		c := &ssh.Certificate{
-			Key:         signer.PublicKey(),
-			CertType:    ssh.UserCert,
-			ValidAfter:  uint64(time.Now().Add(-time.Hour).Unix()),
-			ValidBefore: uint64(time.Now().Add(validFor).Unix()),
-		}
-		if signErr := c.SignCert(rand.Reader, s); signErr != nil {
-			t.Fatal(signErr)
-		}
-		return ssh.MarshalAuthorizedKey(c)
-	}
+	otherSigner := newSigner(t)
 
 	const margin = 15 * time.Minute
+	now := uint64(time.Now().Add(-time.Hour).Unix())
 
 	t.Run("file not found", func(t *testing.T) {
-		if CertificateFresh("nonexistent-ca", string(caPub), margin) {
-			t.Error("expected false for missing certificate file")
-		}
+		assert.False(t, CertificateFresh("nonexistent-ca", string(caPub), margin),
+			"expected false for missing certificate file")
 	})
 
 	t.Run("invalid cert file", func(t *testing.T) {
 		path := paths.SSHCertificate("bad-ca")
-		if writeErr := os.WriteFile(path, []byte("not-a-cert"), 0o600); writeErr != nil {
-			t.Fatal(writeErr)
-		}
-		if CertificateFresh("bad-ca", string(caPub), margin) {
-			t.Error("expected false for invalid certificate file")
-		}
+		require.NoError(t, os.WriteFile(path, []byte("not-a-cert"), 0o600))
+		assert.False(t, CertificateFresh("bad-ca", string(caPub), margin),
+			"expected false for invalid certificate file")
 	})
 
 	t.Run("cert signed by current CA is fresh", func(t *testing.T) {
 		path := paths.SSHCertificate("good-ca")
-		if writeErr := os.WriteFile(path, signCert(signer, time.Hour), 0o600); writeErr != nil {
-			t.Fatal(writeErr)
-		}
-		if !CertificateFresh("good-ca", string(caPub), margin) {
-			t.Error("expected true for cert signed by current CA")
-		}
+		require.NoError(t, os.WriteFile(
+			path,
+			signCert(t, signer, now, uint64(time.Now().Add(time.Hour).Unix())),
+			0o600,
+		))
+		assert.True(t, CertificateFresh("good-ca", string(caPub), margin),
+			"expected true for cert signed by current CA")
 	})
 
 	t.Run("cert within the renewal window is stale", func(t *testing.T) {
 		path := paths.SSHCertificate("soon-ca")
-		if writeErr := os.WriteFile(path, signCert(signer, 5*time.Minute), 0o600); writeErr != nil {
-			t.Fatal(writeErr)
-		}
-		if CertificateFresh("soon-ca", string(caPub), margin) {
-			t.Error("expected false for cert expiring within the margin")
-		}
+		require.NoError(t, os.WriteFile(
+			path,
+			signCert(t, signer, now, uint64(time.Now().Add(5*time.Minute).Unix())),
+			0o600,
+		))
+		assert.False(t, CertificateFresh("soon-ca", string(caPub), margin),
+			"expected false for cert expiring within the margin")
 	})
 
 	t.Run("cert signed by a retired CA is rejected", func(t *testing.T) {
-		_, otherPriv, err := ed25519.GenerateKey(rand.Reader)
-		if err != nil {
-			t.Fatal(err)
-		}
-		otherSigner, err := ssh.NewSignerFromKey(otherPriv)
-		if err != nil {
-			t.Fatal(err)
-		}
 		path := paths.SSHCertificate("rolled-ca")
-		if writeErr := os.WriteFile(
+		require.NoError(t, os.WriteFile(
 			path,
-			signCert(otherSigner, time.Hour),
+			signCert(t, otherSigner, now, uint64(time.Now().Add(time.Hour).Unix())),
 			0o600,
-		); writeErr != nil {
-			t.Fatal(writeErr)
-		}
-		if CertificateFresh("rolled-ca", string(caPub), margin) {
-			t.Error("expected false for cert signed by a different CA")
-		}
+		))
+		assert.False(t, CertificateFresh("rolled-ca", string(caPub), margin),
+			"expected false for cert signed by a different CA")
 	})
 }

@@ -15,6 +15,8 @@ import (
 	"time"
 
 	"github.com/google/go-tpm/tpm2/transport/simulator"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	cryptossh "golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/agent"
 
@@ -60,19 +62,13 @@ func TestAgentSSHDInterop(t *testing.T) {
 	defer func() { _ = key.Close() }()
 
 	sshPub, err := cryptossh.NewPublicKey(key.Public())
-	if err != nil {
-		t.Fatalf("public key: %v", err)
-	}
+	require.NoError(t, err, "public key")
 
 	// Sign the TPM public key with a throwaway CA, like the backend does.
 	_, caPriv, err := ed25519.GenerateKey(rand.Reader)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	caSigner, err := cryptossh.NewSignerFromKey(caPriv)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	cert := &cryptossh.Certificate{
 		Key:             sshPub,
 		Serial:          1,
@@ -82,40 +78,28 @@ func TestAgentSSHDInterop(t *testing.T) {
 		ValidAfter:      uint64(time.Now().Add(-time.Minute).Unix()),
 		ValidBefore:     uint64(time.Now().Add(time.Hour).Unix()),
 	}
-	if err = cert.SignCert(rand.Reader, caSigner); err != nil {
-		t.Fatalf("sign certificate: %v", err)
-	}
+	require.NoError(t, cert.SignCert(rand.Reader, caSigner), "sign certificate")
 
 	dir := t.TempDir()
 	pubFile := filepath.Join(dir, "nokku.pub")
 	certFile := filepath.Join(dir, "nokku-cert.pub")
 	sockFile := filepath.Join(dir, "agent.sock")
-	if err = os.WriteFile(pubFile, cryptossh.MarshalAuthorizedKey(sshPub), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if err = os.WriteFile(certFile, cryptossh.MarshalAuthorizedKey(cert), 0o600); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.WriteFile(pubFile, cryptossh.MarshalAuthorizedKey(sshPub), 0o600))
+	require.NoError(t, os.WriteFile(certFile, cryptossh.MarshalAuthorizedKey(cert), 0o600))
 	caFile := filepath.Join(dir, "ca.pub")
-	if err = os.WriteFile(
+	require.NoError(t, os.WriteFile(
 		caFile,
 		cryptossh.MarshalAuthorizedKey(caSigner.PublicKey()),
 		0o600,
-	); err != nil {
-		t.Fatal(err)
-	}
+	))
 
 	// Serve the TPM key on the agent socket, as ServeAgent does.
 	lc := net.ListenConfig{}
 	ln, err := lc.Listen(context.Background(), "unix", sockFile)
-	if err != nil {
-		t.Fatalf("listen: %v", err)
-	}
+	require.NoError(t, err, "listen")
 	defer func() { _ = ln.Close() }()
 	ring := agent.NewKeyring()
-	if err = ring.Add(agent.AddedKey{PrivateKey: key, Comment: "nokku (tpm)"}); err != nil {
-		t.Fatalf("agent add: %v", err)
-	}
+	require.NoError(t, ring.Add(agent.AddedKey{PrivateKey: key, Comment: "nokku (tpm)"}), "agent add")
 	go func() {
 		for {
 			conn, acceptErr := ln.Accept()
@@ -150,9 +134,7 @@ func TestAgentSSHDInterop(t *testing.T) {
 		"-o", "IdentityAgent="+sockFile,
 		current.Username+"@127.0.0.1", "true",
 	))
-	if err != nil {
-		t.Fatalf("ssh with TPM agent failed: %v\n%s", err, out)
-	}
+	require.NoError(t, err, "ssh with TPM agent failed:\n%s", out)
 
 	// Without the agent there is no usable private key on disk: auth must
 	// fail, proving the identity is not derivable from what is stored.
@@ -160,9 +142,7 @@ func TestAgentSSHDInterop(t *testing.T) {
 		"-o", "IdentityAgent=none",
 		current.Username+"@127.0.0.1", "true",
 	))
-	if err == nil {
-		t.Fatalf("ssh without agent unexpectedly succeeded\n%s", out)
-	}
+	assert.Error(t, err, "ssh without agent unexpectedly succeeded:\n%s", out)
 }
 
 func sshCmd(env, args []string) (string, error) {

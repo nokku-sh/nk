@@ -12,6 +12,7 @@ require (
 	github.com/mizuchilabs/kata v0.1.3
 	github.com/nokku-sh/mon v0.1.0
 	github.com/pkg/browser v0.0.0-20240102092130-5ac0b6a4141c
+	github.com/stretchr/testify v1.12.1
 	github.com/urfave/cli/v3 v3.11.0
 	golang.org/x/crypto v0.56.0
 	golang.org/x/sync v0.22.0
@@ -22,5 +23,6 @@ require (
 
 require (
 	github.com/google/go-tpm-tools v0.3.13-0.20230620182252-4639ecce2aba // indirect
+	go.yaml.in/yaml/v3 v3.0.5 // indirect
 	golang.org/x/sys v0.47.0 // indirect
 )

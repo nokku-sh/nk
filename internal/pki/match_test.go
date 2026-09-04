@@ -1,17 +1,18 @@
 package pki
 
 import (
-	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	nokkuv1 "github.com/nokku-sh/nk/internal/gen/nokku/v1"
 )
 
 func testCA(id, name string) *nokkuv1.CertificateAuthority {
-	idPtr, namePtr := id, name
 	return &nokkuv1.CertificateAuthority{
-		Id:   &idPtr,
-		Name: &namePtr,
+		Id:   new(id),
+		Name: new(name),
 	}
 }
 
@@ -83,17 +84,12 @@ func TestMatchCA(t *testing.T) {
 			t.Parallel()
 			got, err := MatchCA(tt.cas, tt.nameOrID)
 			if tt.wantErr != "" {
-				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
-					t.Fatalf("MatchCA() error = %v, want containing %q", err, tt.wantErr)
-				}
+				require.Error(t, err)
+				assert.ErrorContains(t, err, tt.wantErr)
 				return
 			}
-			if err != nil {
-				t.Fatalf("MatchCA() error = %v, want nil", err)
-			}
-			if got != tt.want {
-				t.Fatalf("MatchCA() = %v, want %v", got.GetId(), tt.want.GetId())
-			}
+			require.NoError(t, err)
+			assert.Same(t, tt.want, got)
 		})
 	}
 }

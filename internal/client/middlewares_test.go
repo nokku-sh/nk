@@ -13,6 +13,8 @@ import (
 
 	"connectrpc.com/connect"
 	"github.com/go-jose/go-jose/v4"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/nokku-sh/mon/dpop"
 
@@ -23,13 +25,9 @@ import (
 func newTestProofer(t *testing.T) *dpop.Proofer {
 	t.Helper()
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	if err != nil {
-		t.Fatalf("generate key: %v", err)
-	}
+	require.NoError(t, err)
 	p, err := dpop.NewProofer(key, dpop.ProoferOptions{})
-	if err != nil {
-		t.Fatalf("new proofer: %v", err)
-	}
+	require.NoError(t, err)
 	return p
 }
 
@@ -50,15 +48,10 @@ func TestDPoPAuthInteractiveSignsRequest(t *testing.T) {
 	auth := dpopAuth{state: st, proofer: proofer, learnedAt: time.Now()}
 	wrapped := auth.WrapUnary(next)
 	req := connect.NewRequest(&nokkuv1.User{})
-	if _, err := wrapped(context.Background(), req); err != nil {
-		t.Fatalf("wrap: %v", err)
-	}
-	if authz != "DPoP sess-token" {
-		t.Errorf("Authorization = %q, want DPoP sess-token", authz)
-	}
-	if proof == "" {
-		t.Error("expected a DPoP proof header")
-	}
+	_, err := wrapped(context.Background(), req)
+	require.NoError(t, err)
+	assert.Equal(t, "DPoP sess-token", authz)
+	assert.NotEmpty(t, proof, "expected a DPoP proof header")
 }
 
 func TestDPoPAuthHTUHasNoDoubleSlash(t *testing.T) {
@@ -73,23 +66,13 @@ func TestDPoPAuthHTUHasNoDoubleSlash(t *testing.T) {
 	a.sign(header, "/nokku.v1.UserService/Whoami")
 
 	proof := header.Get("DPoP")
-	if proof == "" {
-		t.Fatal("expected a DPoP proof header")
-	}
+	require.NotEmpty(t, proof, "expected a DPoP proof header")
 
-	parsed, err := jose.ParseSigned(proof, []jose.SignatureAlgorithm{jose.ES256})
-	if err != nil {
-		t.Fatalf("parse proof: %v", err)
-	}
 	var claims struct {
 		HTU string `json:"htu"`
 	}
-	if err = json.Unmarshal(parsed.UnsafePayloadWithoutVerification(), &claims); err != nil {
-		t.Fatalf("unmarshal claims: %v", err)
-	}
-	if claims.HTU != "https://app.example.com/nokku.v1.UserService/Whoami" {
-		t.Fatalf("proof htu = %q", claims.HTU)
-	}
+	parseProofClaims(t, proof, &claims)
+	assert.Equal(t, "https://app.example.com/nokku.v1.UserService/Whoami", claims.HTU)
 }
 
 func TestDPoPAuthSkipsServiceAccount(t *testing.T) {
@@ -109,12 +92,9 @@ func TestDPoPAuthSkipsServiceAccount(t *testing.T) {
 	auth := dpopAuth{state: st, proofer: proofer, nonce: "", serverURL: ""}
 	wrapped := auth.WrapUnary(next)
 	req := connect.NewRequest(&nokkuv1.User{})
-	if _, err := wrapped(context.Background(), req); err != nil {
-		t.Fatalf("wrap: %v", err)
-	}
-	if proof != "" {
-		t.Errorf("DPoP = %q, want empty for service accounts", proof)
-	}
+	_, err := wrapped(context.Background(), req)
+	require.NoError(t, err)
+	assert.Empty(t, proof, "want empty DPoP for service accounts")
 }
 
 func TestDPoPAuthNoSessionNoHeaders(t *testing.T) {
@@ -132,15 +112,11 @@ func TestDPoPAuthNoSessionNoHeaders(t *testing.T) {
 	auth := dpopAuth{state: st, proofer: proofer, nonce: "", serverURL: ""}
 	wrapped := auth.WrapUnary(next)
 	req := connect.NewRequest(&nokkuv1.User{})
-	if _, err := wrapped(context.Background(), req); err != nil {
-		t.Fatalf("wrap: %v", err)
-	}
-	if authz != "" || proof != "" {
-		t.Errorf("expected no auth headers, got Authorization=%q DPoP=%q", authz, proof)
-	}
+	_, err := wrapped(context.Background(), req)
+	require.NoError(t, err)
+	assert.Empty(t, authz, "expected no Authorization header")
+	assert.Empty(t, proof, "expected no DPoP proof header")
 }
-
-var _ = http.MethodPost
 
 func TestDPoPAuthHTUUsesCanonicalServerURL(t *testing.T) {
 	t.Parallel()
@@ -154,23 +130,13 @@ func TestDPoPAuthHTUUsesCanonicalServerURL(t *testing.T) {
 	}
 
 	header := http.Header{}
-	if err := a.sign(header, "/nokku.v1.UserService/Whoami"); err != nil {
-		t.Fatalf("sign: %v", err)
-	}
+	require.NoError(t, a.sign(header, "/nokku.v1.UserService/Whoami"))
 
-	parsed, err := jose.ParseSigned(header.Get("DPoP"), []jose.SignatureAlgorithm{jose.ES256})
-	if err != nil {
-		t.Fatalf("parse proof: %v", err)
-	}
 	var claims struct {
 		HTU string `json:"htu"`
 	}
-	if err = json.Unmarshal(parsed.UnsafePayloadWithoutVerification(), &claims); err != nil {
-		t.Fatalf("unmarshal claims: %v", err)
-	}
-	if claims.HTU != "https://app.example.com/nokku.v1.UserService/Whoami" {
-		t.Fatalf("proof htu = %q", claims.HTU)
-	}
+	parseProofClaims(t, header.Get("DPoP"), &claims)
+	assert.Equal(t, "https://app.example.com/nokku.v1.UserService/Whoami", claims.HTU)
 }
 
 func TestDPoPAuthLearnsNonceAndServerURL(t *testing.T) {
@@ -182,9 +148,7 @@ func TestDPoPAuthLearnsNonceAndServerURL(t *testing.T) {
 	cerr := connect.NewError(connect.CodeUnauthenticated, errors.New("stale DPoP nonce"))
 	cerr.Meta().Set("DPoP-Nonce", "nonce-2")
 	cerr.Meta().Set(urlHeader, "https://app.example.com")
-	if !a.learnNonce(cerr) {
-		t.Fatal("learnNonce() = false, want true")
-	}
+	require.True(t, a.learnNonce(cerr))
 
 	// Raw device-flow response (the login path).
 	h := http.Header{}
@@ -194,14 +158,15 @@ func TestDPoPAuthLearnsNonceAndServerURL(t *testing.T) {
 	a.mu.Lock()
 	nonce, serverURL := a.nonce, a.serverURL
 	a.mu.Unlock()
-	if nonce != "nonce-3" {
-		t.Errorf("nonce = %q, want nonce-3", nonce)
-	}
-	if serverURL != "https://app.example.com" {
-		t.Errorf("serverURL = %q, want https://app.example.com", serverURL)
-	}
+	assert.Equal(t, "nonce-3", nonce)
+	assert.Equal(t, "https://app.example.com", serverURL)
+	assert.Equal(t, "https://app.example.com", a.htuBase())
+}
 
-	if got := a.htuBase(); got != "https://app.example.com" {
-		t.Errorf("htuBase() = %q", got)
-	}
+// parseProofClaims decodes an unsigned DPoP proof's payload into claims.
+func parseProofClaims(t *testing.T, proof string, claims any) {
+	t.Helper()
+	parsed, err := jose.ParseSigned(proof, []jose.SignatureAlgorithm{jose.ES256})
+	require.NoError(t, err)
+	require.NoError(t, json.Unmarshal(parsed.UnsafePayloadWithoutVerification(), claims))
 }

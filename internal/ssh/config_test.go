@@ -2,8 +2,10 @@ package ssh
 
 import (
 	"os"
-	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/nokku-sh/nk/internal/paths"
 	"github.com/nokku-sh/nk/internal/state"
@@ -37,15 +39,10 @@ func TestGenerateSSHConfig(t *testing.T) {
 		},
 	}
 
-	if err := GenerateSSHConfig(st); err != nil {
-		t.Fatalf("GenerateSSHConfig: %v", err)
-	}
+	require.NoError(t, GenerateSSHConfig(st))
 
-	data, err := os.ReadFile(paths.SSHConfigFile())
-	if err != nil {
-		t.Fatalf("read generated config: %v", err)
-	}
-	content := string(data)
+	content, err := os.ReadFile(paths.SSHConfigFile())
+	require.NoError(t, err)
 
 	for _, want := range []string{
 		"# Managed by Nokku\n",
@@ -62,14 +59,10 @@ func TestGenerateSSHConfig(t *testing.T) {
 		"Host staging\n",
 		"    User bob\n",
 	} {
-		if !strings.Contains(content, want) {
-			t.Errorf("generated config missing %q", want)
-		}
+		assert.Contains(t, string(content), want)
 	}
 	for _, forbidden := range []string{"no-ca", "no-principals", "t-3", "t-4"} {
-		if strings.Contains(content, forbidden) {
-			t.Errorf("generated config contains skipped target %q", forbidden)
-		}
+		assert.NotContains(t, string(content), forbidden)
 	}
 }
 
@@ -77,9 +70,7 @@ func TestGenerateSSHConfigTPMIdentity(t *testing.T) {
 	setupSSHDir(t)
 	// A TPM identity is detected by the absence of a private key file while
 	// the public key exists. ssh then uses the agent for the private key.
-	if err := os.WriteFile(paths.PubKeyFile(), []byte("ssh-ed25519 AAAA\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.WriteFile(paths.PubKeyFile(), []byte("ssh-ed25519 AAAA\n"), 0o600))
 
 	st := &state.State{
 		Targets: []state.Target{
@@ -91,21 +82,14 @@ func TestGenerateSSHConfigTPMIdentity(t *testing.T) {
 			},
 		},
 	}
-	if err := GenerateSSHConfig(st); err != nil {
-		t.Fatalf("GenerateSSHConfig: %v", err)
-	}
+	require.NoError(t, GenerateSSHConfig(st))
 
-	data, err := os.ReadFile(paths.SSHConfigFile())
-	if err != nil {
-		t.Fatalf("read generated config: %v", err)
-	}
-	content := string(data)
-	if !strings.Contains(content, "    IdentityFile "+paths.PubKeyFile()+"\n") {
-		t.Errorf("TPM identity must point IdentityFile at the public key")
-	}
-	if !strings.Contains(content, "    IdentityAgent "+paths.AgentSocket()+"\n") {
-		t.Errorf("TPM identity must set IdentityAgent")
-	}
+	content, err := os.ReadFile(paths.SSHConfigFile())
+	require.NoError(t, err)
+	assert.Contains(t, string(content), "    IdentityFile "+paths.PubKeyFile()+"\n",
+		"TPM identity must point IdentityFile at the public key")
+	assert.Contains(t, string(content), "    IdentityAgent "+paths.AgentSocket()+"\n",
+		"TPM identity must set IdentityAgent")
 }
 
 func TestGenerateSSHConfigDisambiguatesDuplicateNames(t *testing.T) {
@@ -125,27 +109,18 @@ func TestGenerateSSHConfigDisambiguatesDuplicateNames(t *testing.T) {
 		},
 	}
 
-	if err := GenerateSSHConfig(st); err != nil {
-		t.Fatalf("GenerateSSHConfig: %v", err)
-	}
-	data, err := os.ReadFile(paths.SSHConfigFile())
-	if err != nil {
-		t.Fatalf("read generated config: %v", err)
-	}
-	content := string(data)
+	require.NoError(t, GenerateSSHConfig(st))
+	content, err := os.ReadFile(paths.SSHConfigFile())
+	require.NoError(t, err)
 
-	if !strings.Contains(content, "Host staging/db\n") {
-		t.Errorf("expected workspace-qualified host for duplicate name, got:\n%s", content)
-	}
-	if !strings.Contains(content, "Host production/db\n") {
-		t.Errorf("expected workspace-qualified host for duplicate name, got:\n%s", content)
-	}
-	if !strings.Contains(content, "Host unique\n") {
-		t.Errorf("expected bare host for unique name, got:\n%s", content)
-	}
-	if strings.Contains(content, "\nHost db\n") {
-		t.Errorf("duplicate bare name must not be emitted, got:\n%s", content)
-	}
+	assert.Contains(t, string(content), "Host staging/db\n",
+		"expected workspace-qualified host for duplicate name")
+	assert.Contains(t, string(content), "Host production/db\n",
+		"expected workspace-qualified host for duplicate name")
+	assert.Contains(t, string(content), "Host unique\n",
+		"expected bare host for unique name")
+	assert.NotContains(t, string(content), "\nHost db\n",
+		"duplicate bare name must not be emitted")
 }
 
 func TestGenerateSSHConfigRejectsControlCharacters(t *testing.T) {
@@ -169,19 +144,13 @@ func TestGenerateSSHConfigRejectsControlCharacters(t *testing.T) {
 		},
 	}
 
-	if err := GenerateSSHConfig(st); err != nil {
-		t.Fatalf("GenerateSSHConfig: %v", err)
-	}
-	data, err := os.ReadFile(paths.SSHConfigFile())
-	if err != nil {
-		t.Fatalf("read generated config: %v", err)
-	}
-	content := string(data)
+	require.NoError(t, GenerateSSHConfig(st))
+	content, err := os.ReadFile(paths.SSHConfigFile())
+	require.NoError(t, err)
 
 	for _, forbidden := range []string{"curl http://evil", "evil2", "ProxyCommand"} {
-		if strings.Contains(content, forbidden) {
-			t.Errorf("injected content reached the generated config: %q", forbidden)
-		}
+		assert.NotContains(t, string(content), forbidden,
+			"injected content reached the generated config")
 	}
 }
 
@@ -200,42 +169,27 @@ func TestGenerateKnownHosts(t *testing.T) {
 		},
 	}
 
-	if err := GenerateKnownHosts(st); err != nil {
-		t.Fatalf("GenerateKnownHosts: %v", err)
-	}
-	data, err := os.ReadFile(paths.KnownHostsPath())
-	if err != nil {
-		t.Fatalf("read known_hosts: %v", err)
-	}
-	content := string(data)
+	require.NoError(t, GenerateKnownHosts(st))
+	content, err := os.ReadFile(paths.KnownHostsPath())
+	require.NoError(t, err)
+
 	// Trust is scoped to the target ID (the HostKeyAlias in the generated
 	// config), never a global "*".
-	if !strings.Contains(content, "@cert-authority t-1 ssh-ed25519 AAAACa1== production\n") {
-		t.Errorf("known_hosts missing scoped CA 1 line for t-1, got:\n%s", content)
-	}
-	if !strings.Contains(content, "@cert-authority t-2 ssh-rsa AAAACa2== staging\n") {
-		t.Errorf("known_hosts missing scoped CA 2 line for t-2, got:\n%s", content)
-	}
-	if strings.Contains(content, "@cert-authority *") {
-		t.Errorf("known_hosts must not trust a CA for every host, got:\n%s", content)
-	}
-	if strings.Contains(content, "t-3") {
-		t.Errorf("target without a CA must not get a known_hosts line, got:\n%s", content)
-	}
-	if strings.Contains(content, "t-4") {
-		t.Errorf("target with an unknown CA must not get a known_hosts line, got:\n%s", content)
-	}
+	assert.Contains(t, string(content), "@cert-authority t-1 ssh-ed25519 AAAACa1== production\n")
+	assert.Contains(t, string(content), "@cert-authority t-2 ssh-rsa AAAACa2== staging\n")
+	assert.NotContains(t, string(content), "@cert-authority *",
+		"known_hosts must not trust a CA for every host")
+	assert.NotContains(t, string(content), "t-3",
+		"target without a CA must not get a known_hosts line")
+	assert.NotContains(t, string(content), "t-4",
+		"target with an unknown CA must not get a known_hosts line")
 }
 
 func TestSafeConfigToken(t *testing.T) {
 	for _, ok := range []string{"prod", "prod-us-1", "staging", "my host", "ünïcode"} {
-		if !safeConfigToken(ok) {
-			t.Errorf("safeConfigToken(%q) = false, want true", ok)
-		}
+		assert.True(t, safeConfigToken(ok), "safeConfigToken(%q) = false, want true", ok)
 	}
 	for _, bad := range []string{"a\nb", "a\rb", "a\tb", "a\x00b", "a\x1bb", "a\x7fb"} {
-		if safeConfigToken(bad) {
-			t.Errorf("safeConfigToken(%q) = true, want false", bad)
-		}
+		assert.False(t, safeConfigToken(bad), "safeConfigToken(%q) = true, want false", bad)
 	}
 }

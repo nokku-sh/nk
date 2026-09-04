@@ -3,6 +3,8 @@ package state
 import (
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestState_GetTargetsByName(t *testing.T) {
@@ -60,16 +62,9 @@ func TestState_GetTargetsByName(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			got := tt.s.GetTargetsByName(tt.target)
-			if len(got) != tt.want {
-				t.Errorf("GetTargetsByName(%q) = %d results, want %d", tt.target, len(got), tt.want)
-			}
-			if tt.want == 1 && len(got) == 1 && got[0].ID != tt.wantID {
-				t.Errorf(
-					"GetTargetsByName(%q)[0].ID = %q, want %q",
-					tt.target,
-					got[0].ID,
-					tt.wantID,
-				)
+			assert.Len(t, got, tt.want)
+			if tt.want == 1 {
+				assert.Equal(t, tt.wantID, got[0].ID)
 			}
 		})
 	}
@@ -118,9 +113,7 @@ func TestState_SessionValid(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			if got := tt.s.SessionValid(); got != tt.want {
-				t.Errorf("SessionValid() = %v, want %v", got, tt.want)
-			}
+			assert.Equal(t, tt.want, tt.s.SessionValid())
 		})
 	}
 }
@@ -145,9 +138,7 @@ func TestStateHasCachedData(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			if got := tt.s.HasCachedData(); got != tt.want {
-				t.Errorf("HasCachedData() = %v, want %v", got, tt.want)
-			}
+			assert.Equal(t, tt.want, tt.s.HasCachedData())
 		})
 	}
 }
@@ -188,15 +179,7 @@ func TestState_GetCAByID(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			got := tt.s.GetCAByID(tt.caID)
-			switch {
-			case got == nil && tt.expected != nil:
-				t.Errorf("State.GetCAByID(%q) = nil, want non-nil", tt.caID)
-			case got != nil && tt.expected == nil:
-				t.Errorf("State.GetCAByID(%q) = non-nil, want nil", tt.caID)
-			case got != nil && tt.expected != nil && (got.ID != tt.expected.ID || got.Name != tt.expected.Name):
-				t.Errorf("State.GetCAByID(%q) = %+v, want %+v", tt.caID, got, tt.expected)
-			}
+			assert.Equal(t, tt.expected, tt.s.GetCAByID(tt.caID))
 		})
 	}
 }

@@ -12,6 +12,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"github.com/nokku-sh/nk/internal/state"
 )
 
@@ -188,9 +191,7 @@ func writeJSON(w http.ResponseWriter, v any) {
 func runDeviceLogin(t *testing.T, c *Client, f *fakeDeviceFlow) (string, error) {
 	t.Helper()
 	d, err := c.beginDeviceAuth(context.Background())
-	if err != nil {
-		return "", err
-	}
+	require.NoError(t, err)
 
 	go func() {
 		time.Sleep(1500 * time.Millisecond)
@@ -209,11 +210,7 @@ func TestDeviceFlowTwoConsecutiveLogins(t *testing.T) {
 
 	for i := range 2 {
 		token, err := runDeviceLogin(t, c, f)
-		if err != nil {
-			t.Fatalf("login %d: %v", i+1, err)
-		}
-		if token == "" {
-			t.Fatalf("login %d: empty token", i+1)
-		}
+		require.NoError(t, err, "login %d", i+1)
+		assert.NotEmpty(t, token, "login %d: empty token", i+1)
 	}
 }

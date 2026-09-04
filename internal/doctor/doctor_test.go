@@ -1,6 +1,10 @@
 package doctor
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+)
 
 func TestExitCode(t *testing.T) {
 	tests := []struct {
@@ -17,15 +21,11 @@ func TestExitCode(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			r := Report{Checks: tt.checks}
-			if got := r.ExitCode(); got != tt.want {
-				t.Fatalf("ExitCode() = %d, want %d", got, tt.want)
-			}
+			assert.Equal(t, tt.want, r.ExitCode())
 		})
 	}
 }
 
 func TestCertID(t *testing.T) {
-	if got := certID("/tmp/nk/certs/abc123-cert.pub"); got != "abc123" {
-		t.Fatalf("certID() = %q, want %q", got, "abc123")
-	}
+	assert.Equal(t, "abc123", certID("/tmp/nk/certs/abc123-cert.pub"))
 }

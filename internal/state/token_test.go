@@ -1,6 +1,10 @@
 package state
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+)
 
 func TestIsServiceAccount(t *testing.T) {
 	t.Parallel()
@@ -19,10 +23,9 @@ func TestIsServiceAccount(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			s := &State{Token: tt.token}
-			if got := s.IsServiceAccount(); got != tt.want {
-				t.Errorf("IsServiceAccount() = %v, want %v", got, tt.want)
-			}
+			assert.Equal(t, tt.want, s.IsServiceAccount())
 		})
 	}
 }

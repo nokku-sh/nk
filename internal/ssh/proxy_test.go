@@ -3,6 +3,9 @@ package ssh
 import (
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"github.com/nokku-sh/nk/internal/state"
 )
 
@@ -22,51 +25,48 @@ func TestResolveTarget(t *testing.T) {
 	}
 
 	t.Run("finds a unique target by name", func(t *testing.T) {
-		s := makeState(
-			[]state.Target{{ID: "1", Name: "prod"}},
-			nil,
-		)
+		t.Parallel()
+		s := makeState([]state.Target{{ID: "1", Name: "prod"}}, nil)
 		got, err := ResolveTarget(s, "prod")
-		if err != nil || got.ID != "1" {
-			t.Errorf("ResolveTarget = %+v, %v", got, err)
-		}
+		require.NoError(t, err)
+		assert.Equal(t, "1", got.ID)
 	})
 
 	t.Run("disambiguates by workspace name", func(t *testing.T) {
+		t.Parallel()
 		s := makeState(dupTargets, dupWorkspaces)
 		got, err := ResolveTarget(s, "staging/db")
-		if err != nil || got.ID != "1" {
-			t.Errorf("ResolveTarget = %+v, %v", got, err)
-		}
+		require.NoError(t, err)
+		assert.Equal(t, "1", got.ID)
 	})
 
 	t.Run("disambiguates by workspace id", func(t *testing.T) {
+		t.Parallel()
 		s := makeState(dupTargets, dupWorkspaces)
 		got, err := ResolveTarget(s, "ws-2/db")
-		if err != nil || got.ID != "2" {
-			t.Errorf("ResolveTarget = %+v, %v", got, err)
-		}
+		require.NoError(t, err)
+		assert.Equal(t, "2", got.ID)
 	})
 
 	t.Run("rejects an ambiguous bare name", func(t *testing.T) {
+		t.Parallel()
 		s := makeState(dupTargets, dupWorkspaces)
-		if _, err := ResolveTarget(s, "db"); err == nil {
-			t.Error("expected ambiguity error")
-		}
+		_, err := ResolveTarget(s, "db")
+		assert.Error(t, err, "expected ambiguity error")
 	})
 
 	t.Run("reports not found", func(t *testing.T) {
+		t.Parallel()
 		s := makeState(nil, nil)
-		if _, err := ResolveTarget(s, "missing"); err == nil {
-			t.Error("expected not-found error")
-		}
+		_, err := ResolveTarget(s, "missing")
+		assert.Error(t, err, "expected not-found error")
 	})
 
 	t.Run("reports unknown workspace", func(t *testing.T) {
+		t.Parallel()
 		s := makeState(dupTargets, dupWorkspaces)
-		if _, err := ResolveTarget(s, "unknown/db"); err == nil {
-			t.Error("expected unknown-workspace error")
-		}
+		_, err := ResolveTarget(s, "unknown/db")
+		assert.Error(t, err, "expected unknown-workspace error")
 	})
 }
 
@@ -79,67 +79,25 @@ func TestNormalizeEndpoint(t *testing.T) {
 		want     string
 		wantErr  bool
 	}{
-		{
-			name:     "empty endpoint",
-			endpoint: "",
-			sshPort:  "22",
-			want:     "",
-			wantErr:  true,
-		},
-		{
-			name:     "hostname without port",
-			endpoint: "example.com",
-			sshPort:  "22",
-			want:     "example.com:22",
-			wantErr:  false,
-		},
-		{
-			name:     "hostname with port",
-			endpoint: "example.com:2222",
-			sshPort:  "22",
-			want:     "example.com:2222",
-			wantErr:  false,
-		},
-		{
-			name:     "IPv4 without port",
-			endpoint: "192.168.1.1",
-			sshPort:  "22",
-			want:     "192.168.1.1:22",
-			wantErr:  false,
-		},
-		{
-			name:     "IPv4 with port",
-			endpoint: "192.168.1.1:2222",
-			sshPort:  "22",
-			want:     "192.168.1.1:2222",
-			wantErr:  false,
-		},
-		{
-			name:     "IPv6 without port",
-			endpoint: "2001:db8::1",
-			sshPort:  "22",
-			want:     "[2001:db8::1]:22",
-			wantErr:  false,
-		},
-		{
-			name:     "IPv6 with port",
-			endpoint: "[2001:db8::1]:2222",
-			sshPort:  "22",
-			want:     "[2001:db8::1]:2222",
-			wantErr:  false,
-		},
+		{"empty endpoint", "", "22", "", true},
+		{"hostname without port", "example.com", "22", "example.com:22", false},
+		{"hostname with port", "example.com:2222", "22", "example.com:2222", false},
+		{"IPv4 without port", "192.168.1.1", "22", "192.168.1.1:22", false},
+		{"IPv4 with port", "192.168.1.1:2222", "22", "192.168.1.1:2222", false},
+		{"IPv6 without port", "2001:db8::1", "22", "[2001:db8::1]:22", false},
+		{"IPv6 with port", "[2001:db8::1]:2222", "22", "[2001:db8::1]:2222", false},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			got, err := normalizeEndpoint(tt.endpoint, tt.sshPort)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("normalizeEndpoint() error = %v, wantErr %v", err, tt.wantErr)
+			if tt.wantErr {
+				assert.Error(t, err)
 				return
 			}
-			if got != tt.want {
-				t.Errorf("normalizeEndpoint() = %v, want %v", got, tt.want)
-			}
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, got)
 		})
 	}
 }
