@@ -4,7 +4,7 @@ go 1.27
 
 require (
 	buf.build/gen/go/bufbuild/protovalidate/protocolbuffers/go v1.36.12-20260825204119-511051f7f437.2
-	connectrpc.com/connect v1.20.0
+	connectrpc.com/connect v1.21.0
 	github.com/adrg/xdg v0.5.3
 	github.com/cenkalti/backoff/v7 v7.0.0
 	github.com/go-jose/go-jose/v4 v4.1.5
@@ -14,15 +14,15 @@ require (
 	github.com/pkg/browser v0.0.0-20240102092130-5ac0b6a4141c
 	github.com/stretchr/testify v1.12.1
 	github.com/urfave/cli/v3 v3.11.0
-	golang.org/x/crypto v0.56.0
-	golang.org/x/sync v0.22.0
-	golang.org/x/term v0.45.0
-	google.golang.org/genproto/googleapis/api v0.0.0-20260904194346-d0f1323225a4
+	golang.org/x/crypto v0.57.0
+	golang.org/x/sync v0.23.0
+	golang.org/x/term v0.46.0
+	google.golang.org/genproto/googleapis/api v0.0.0-20260908043556-f8649ddbbfe6
 	google.golang.org/protobuf v1.36.12
 )
 
 require (
 	github.com/google/go-tpm-tools v0.3.13-0.20230620182252-4639ecce2aba // indirect
 	go.yaml.in/yaml/v3 v3.0.5 // indirect
-	golang.org/x/sys v0.47.0 // indirect
+	golang.org/x/sys v0.48.0 // indirect
 )
