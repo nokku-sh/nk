@@ -17,6 +17,12 @@ func proxyCMD() *cli.Command {
 		Name:      "proxy",
 		Usage:     "Proxy an SSH connection (internal use by SSH)",
 		ArgsUsage: "[host] [port]",
+		Flags: []cli.Flag{
+			&cli.BoolFlag{
+				Name:  "relay",
+				Usage: "route the connection through the nokku relay, skipping direct connection",
+			},
+		},
 		Action: func(ctx context.Context, cmd *cli.Command) error {
 			host := cmd.Args().Get(0)
 			if host == "" {
@@ -66,7 +72,13 @@ func proxyCMD() *cli.Command {
 			}
 			defer func() { _ = stopAgent() }()
 
-			return ssh.Proxy(ctx, target, port)
+			// Direct endpoints first, relay as automatic fallback. With
+			// --relay the connection always goes through the backend.
+			relay := ssh.RelayDialer(client.Relay)
+			if cmd.Bool("relay") {
+				return ssh.ProxyRelay(ctx, target, relay)
+			}
+			return ssh.Proxy(ctx, target, port, relay)
 		},
 	}
 }
