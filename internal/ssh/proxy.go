@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"math/rand/v2"
 	"net"
 	"os"
@@ -17,13 +18,16 @@ import (
 	"github.com/nokku-sh/nk/internal/state"
 )
 
-// Proxy handles native ssh ProxyCommand connections.
-func Proxy(ctx context.Context, target *state.Target, port string) error {
+// RelayDialer opens a relayed connection to the target through the nokku
+// backend, for when the target's endpoints are unreachable.
+type RelayDialer func(ctx context.Context, target *state.Target) (io.ReadWriteCloser, error)
+
+// Proxy pipes an ssh ProxyCommand connection to the target. Direct
+// endpoints are tried first. When every dial fails, the connection falls
+// back to the relay. relay may be nil.
+func Proxy(ctx context.Context, target *state.Target, port string, relay RelayDialer) error {
 	if target == nil {
 		return fmt.Errorf("internal error: nil target")
-	}
-	if len(target.Endpoints) == 0 {
-		return fmt.Errorf("target %s has no endpoints configured", target.Name)
 	}
 
 	// Shuffle to avoid hotspotting
@@ -51,11 +55,52 @@ func Proxy(ctx context.Context, target *state.Target, port string) error {
 		return proxyIO(ctx, conn)
 	}
 
-	// If we get here, all endpoints failed. Return a combined error.
-	return fmt.Errorf("all endpoints failed:\n%w", errors.Join(dialErrs...))
+	if len(dialErrs) > 0 {
+		return useRelay(ctx, target, relay, fmt.Errorf("all endpoints failed:\n%w", errors.Join(dialErrs...)))
+	}
+	return useRelay(ctx, target, relay)
 }
 
-func proxyIO(ctx context.Context, conn net.Conn) error {
+// ProxyRelay pipes the connection through the relay unconditionally,
+// skipping the direct dial entirely.
+func ProxyRelay(ctx context.Context, target *state.Target, relay RelayDialer) error {
+	if target == nil {
+		return fmt.Errorf("internal error: nil target")
+	}
+	if relay == nil {
+		return errors.New("relay is not available")
+	}
+	rc, err := relay(ctx, target)
+	if err != nil {
+		return fmt.Errorf("relay connection failed: %w", err)
+	}
+	return proxyIO(ctx, rc)
+}
+
+func useRelay(ctx context.Context, target *state.Target, relay RelayDialer, directErrs ...error) error {
+	if relay == nil {
+		if len(directErrs) > 0 {
+			return directErrs[0]
+		}
+		return fmt.Errorf("target %s has no endpoints configured", target.Name)
+	}
+	if len(directErrs) > 0 {
+		slog.Info("direct connection failed, using relay", "target", target.Name)
+	} else {
+		slog.Info("no direct endpoints, using relay", "target", target.Name)
+	}
+	rc, err := relay(ctx, target)
+	if err != nil {
+		return fmt.Errorf("relay connection failed: %w", err)
+	}
+	return proxyIO(ctx, rc)
+}
+
+// halfCloseWriter lets proxyIO signal end-of-stdin without ending the
+// connection: [*net.TCPConn] and the relay stream both support it.
+type halfCloseWriter interface{ CloseWrite() error }
+
+func proxyIO(ctx context.Context, conn io.ReadWriteCloser) error {
 	defer func() { _ = conn.Close() }()
 
 	// Closing the connection is the only way to unblock the io.Copy calls
@@ -77,8 +122,8 @@ func proxyIO(ctx context.Context, conn net.Conn) error {
 
 	eg.Go(func() error {
 		_, err := io.Copy(conn, os.Stdin)
-		if tcp, ok := conn.(*net.TCPConn); ok {
-			_ = tcp.CloseWrite()
+		if hc, ok := conn.(halfCloseWriter); ok {
+			_ = hc.CloseWrite()
 		}
 		if err != nil && !errors.Is(err, io.EOF) {
 			return err
