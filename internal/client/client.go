@@ -33,6 +33,7 @@ type Client struct {
 
 	cc nokkuv1connect.CertificateServiceClient
 	tc nokkuv1connect.TargetServiceClient
+	dc nokkuv1connect.DaemonServiceClient
 }
 
 func New(s *state.State) (*Client, error) {

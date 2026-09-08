@@ -86,5 +86,6 @@ func (c *Client) setupClients() error {
 
 	c.cc = nokkuv1connect.NewCertificateServiceClient(httpc, c.State.APIURL, opts)
 	c.tc = nokkuv1connect.NewTargetServiceClient(httpc, c.State.APIURL, opts)
+	c.dc = nokkuv1connect.NewDaemonServiceClient(httpc, c.State.APIURL, opts)
 	return nil
 }
