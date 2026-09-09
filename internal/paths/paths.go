@@ -8,8 +8,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/adrg/xdg"
-
 	"github.com/nokku-sh/nk/internal/fsutil"
 )
 
@@ -65,7 +63,16 @@ func EnsureSSHConfigInclude() error {
 // Common Paths ---------------------------------------------------------------
 
 func ConfigPath() string {
-	return filepath.Join(xdg.ConfigHome, ConfigDirname)
+	if dir, err := os.UserConfigDir(); err == nil && dir != "" {
+		return filepath.Join(dir, ConfigDirname)
+	}
+	if home, err := os.UserHomeDir(); err == nil && home != "" {
+		return filepath.Join(home, ".config", ConfigDirname)
+	}
+	if exe, err := os.Executable(); err == nil {
+		return filepath.Join(filepath.Dir(exe), "data", ConfigDirname)
+	}
+	return filepath.Join(os.TempDir(), ConfigDirname)
 }
 
 // SSHCertPath returns the directory holding the signed SSH certificates.

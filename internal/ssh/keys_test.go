@@ -8,20 +8,15 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/adrg/xdg"
-
 	"github.com/nokku-sh/nk/internal/fsutil"
 	"github.com/nokku-sh/nk/internal/paths"
 )
 
-// setTestConfigDir redirects the app's config dir into a fresh temp dir.
-// xdg paths resolve at init, so the exported var is swapped instead
-// (nolint:reassign // test isolation).
+// setTestConfigDir redirects the app's config dir into a fresh temp dir
+// so tests never touch the real config.
 func setTestConfigDir(t *testing.T) {
 	t.Helper()
-	old := xdg.ConfigHome
-	xdg.ConfigHome = t.TempDir()               //nolint:reassign // test isolation
-	t.Cleanup(func() { xdg.ConfigHome = old }) //nolint:reassign // test isolation
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 }
 
 func setupSSHDir(t *testing.T) {

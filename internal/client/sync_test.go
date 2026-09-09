@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
-	"github.com/adrg/xdg"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	cryptossh "golang.org/x/crypto/ssh"
@@ -95,13 +94,11 @@ func (f *fakeCA) signRequest(t *testing.T, req *nokkuv1.SignSSHCertificateReques
 	return f.signCert(t, pub, time.Hour)
 }
 
-// setTestDirs redirects xdg and $HOME into fresh temp dirs and creates the
-// directories VerifyPaths would create at startup.
+// setTestDirs redirects the config dir and $HOME into fresh temp dirs and
+// creates the directories VerifyPaths would create at startup.
 func setTestDirs(t *testing.T) {
 	t.Helper()
-	old := xdg.ConfigHome
-	xdg.ConfigHome = t.TempDir()               //nolint:reassign // test isolation
-	t.Cleanup(func() { xdg.ConfigHome = old }) //nolint:reassign // test isolation
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	t.Setenv("HOME", t.TempDir())
 
 	home, err := os.UserHomeDir()
