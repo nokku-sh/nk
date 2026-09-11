@@ -74,10 +74,7 @@ type TargetServiceClient interface {
 	GetSubjectAccess(context.Context, *v1.GetSubjectAccessRequest) (*v1.GetSubjectAccessResponse, error)
 	GetMyAccess(context.Context, *v1.GetMyAccessRequest) (*v1.GetMyAccessResponse, error)
 	GetTargetFilters(context.Context, *v1.GetTargetFiltersRequest) (*v1.GetTargetFiltersResponse, error)
-	// The per-account subject list a target's guest sshd needs, with teams
-	// expanded. Same shape the daemon receives on sync.
 	GetTargetPrincipals(context.Context, *v1.GetTargetPrincipalsRequest) (*v1.GetTargetPrincipalsResponse, error)
-	// Reports the local accounts a target has, for hosts without a daemon.
 	SyncTargetUsers(context.Context, *v1.SyncTargetUsersRequest) (*v1.SyncTargetUsersResponse, error)
 }
 
@@ -275,10 +272,7 @@ type TargetServiceHandler interface {
 	GetSubjectAccess(context.Context, *v1.GetSubjectAccessRequest) (*v1.GetSubjectAccessResponse, error)
 	GetMyAccess(context.Context, *v1.GetMyAccessRequest) (*v1.GetMyAccessResponse, error)
 	GetTargetFilters(context.Context, *v1.GetTargetFiltersRequest) (*v1.GetTargetFiltersResponse, error)
-	// The per-account subject list a target's guest sshd needs, with teams
-	// expanded. Same shape the daemon receives on sync.
 	GetTargetPrincipals(context.Context, *v1.GetTargetPrincipalsRequest) (*v1.GetTargetPrincipalsResponse, error)
-	// Reports the local accounts a target has, for hosts without a daemon.
 	SyncTargetUsers(context.Context, *v1.SyncTargetUsersRequest) (*v1.SyncTargetUsersResponse, error)
 }
 

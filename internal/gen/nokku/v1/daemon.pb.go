@@ -195,15 +195,19 @@ type DaemonConfig struct {
 	MaxSessions          *int32                 `protobuf:"varint,6,opt,name=max_sessions,json=maxSessions" json:"max_sessions,omitempty"`
 	MaxSessionsPerUser   *int32                 `protobuf:"varint,7,opt,name=max_sessions_per_user,json=maxSessionsPerUser" json:"max_sessions_per_user,omitempty"`
 	MaxConnections       *int32                 `protobuf:"varint,8,opt,name=max_connections,json=maxConnections" json:"max_connections,omitempty"`
-	// Concurrent connections still in the pre-auth handshake (OpenSSH's
-	// MaxStartups). Bounds half-open floods without counting authenticated
-	// connections.
-	MaxStartups         *int32               `protobuf:"varint,12,opt,name=max_startups,json=maxStartups" json:"max_startups,omitempty"`
-	ConnRate            *int32               `protobuf:"varint,9,opt,name=conn_rate,json=connRate" json:"conn_rate,omitempty"`
-	ConnRateBurst       *int32               `protobuf:"varint,10,opt,name=conn_rate_burst,json=connRateBurst" json:"conn_rate_burst,omitempty"`
-	ClientAliveInterval *durationpb.Duration `protobuf:"bytes,11,opt,name=client_alive_interval,json=clientAliveInterval" json:"client_alive_interval,omitempty"`
-	unknownFields       protoimpl.UnknownFields
-	sizeCache           protoimpl.SizeCache
+	MaxStartups          *int32                 `protobuf:"varint,9,opt,name=max_startups,json=maxStartups" json:"max_startups,omitempty"`
+	ConnRate             *int32                 `protobuf:"varint,10,opt,name=conn_rate,json=connRate" json:"conn_rate,omitempty"`
+	ConnRateBurst        *int32                 `protobuf:"varint,11,opt,name=conn_rate_burst,json=connRateBurst" json:"conn_rate_burst,omitempty"`
+	ClientAliveInterval  *durationpb.Duration   `protobuf:"bytes,12,opt,name=client_alive_interval,json=clientAliveInterval" json:"client_alive_interval,omitempty"`
+	// Channels a single connection may hold open across all types (sessions,
+	// port forwards, agent forwards). Bounds resource use per authenticated
+	// connection. Zero disables the cap.
+	MaxChannels *int32 `protobuf:"varint,13,opt,name=max_channels,json=maxChannels" json:"max_channels,omitempty"`
+	// Stop trusting a rotated-out CA immediately instead of keeping it valid
+	// for the daemon's grace window.
+	DropRetiredCa *bool `protobuf:"varint,14,opt,name=drop_retired_ca,json=dropRetiredCa" json:"drop_retired_ca,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *DaemonConfig) Reset() {
@@ -318,6 +322,20 @@ func (x *DaemonConfig) GetClientAliveInterval() *durationpb.Duration {
 		return x.ClientAliveInterval
 	}
 	return nil
+}
+
+func (x *DaemonConfig) GetMaxChannels() int32 {
+	if x != nil && x.MaxChannels != nil {
+		return *x.MaxChannels
+	}
+	return 0
+}
+
+func (x *DaemonConfig) GetDropRetiredCa() bool {
+	if x != nil && x.DropRetiredCa != nil {
+		return *x.DropRetiredCa
+	}
+	return false
 }
 
 type GetDaemonRequest struct {
@@ -1480,8 +1498,6 @@ func (x *SyncDaemonRequest) GetMetadata() map[string]string {
 	return nil
 }
 
-// RevokedPrincipal invalidates every certificate issued for the principal
-// before revoked_before (unix seconds), without tracking serials.
 type RevokedPrincipal struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Principal     *string                `protobuf:"bytes,1,opt,name=principal" json:"principal,omitempty"`
@@ -1974,9 +1990,6 @@ func (x *DaemonSession) GetUserId() string {
 	return ""
 }
 
-// RelayOpen asks the daemon to open a DaemonRelay stream for relay_id. The
-// relay carries an opaque byte stream between a user's ssh client and the
-// daemon's own sshd.
 type RelayOpen struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	RelayId       *string                `protobuf:"bytes,1,opt,name=relay_id,json=relayId" json:"relay_id,omitempty"`
@@ -2628,7 +2641,7 @@ const file_nokku_v1_daemon_proto_rawDesc = "" +
 	"created_at\x18\t \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x1a;\n" +
 	"\rMetadataEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xc1\x04\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\x95\x05\n" +
 	"\fDaemonConfig\x12'\n" +
 	"\x0frecord_sessions\x18\x01 \x01(\bR\x0erecordSessions\x12)\n" +
 	"\x10allow_forwarding\x18\x02 \x01(\bR\x0fallowForwarding\x124\n" +
@@ -2638,11 +2651,13 @@ const file_nokku_v1_daemon_proto_rawDesc = "" +
 	"\fmax_sessions\x18\x06 \x01(\x05B\a\xbaH\x04\x1a\x02(\x00R\vmaxSessions\x12:\n" +
 	"\x15max_sessions_per_user\x18\a \x01(\x05B\a\xbaH\x04\x1a\x02(\x00R\x12maxSessionsPerUser\x120\n" +
 	"\x0fmax_connections\x18\b \x01(\x05B\a\xbaH\x04\x1a\x02(\x00R\x0emaxConnections\x12*\n" +
-	"\fmax_startups\x18\f \x01(\x05B\a\xbaH\x04\x1a\x02(\x00R\vmaxStartups\x12$\n" +
-	"\tconn_rate\x18\t \x01(\x05B\a\xbaH\x04\x1a\x02(\x00R\bconnRate\x12/\n" +
-	"\x0fconn_rate_burst\x18\n" +
-	" \x01(\x05B\a\xbaH\x04\x1a\x02(\x00R\rconnRateBurst\x12M\n" +
-	"\x15client_alive_interval\x18\v \x01(\v2\x19.google.protobuf.DurationR\x13clientAliveInterval\"Y\n" +
+	"\fmax_startups\x18\t \x01(\x05B\a\xbaH\x04\x1a\x02(\x00R\vmaxStartups\x12$\n" +
+	"\tconn_rate\x18\n" +
+	" \x01(\x05B\a\xbaH\x04\x1a\x02(\x00R\bconnRate\x12/\n" +
+	"\x0fconn_rate_burst\x18\v \x01(\x05B\a\xbaH\x04\x1a\x02(\x00R\rconnRateBurst\x12M\n" +
+	"\x15client_alive_interval\x18\f \x01(\v2\x19.google.protobuf.DurationR\x13clientAliveInterval\x12*\n" +
+	"\fmax_channels\x18\r \x01(\x05B\a\xbaH\x04\x1a\x02(\x00R\vmaxChannels\x12&\n" +
+	"\x0fdrop_retired_ca\x18\x0e \x01(\bR\rdropRetiredCa\"Y\n" +
 	"\x10GetDaemonRequest\x12+\n" +
 	"\fworkspace_id\x18\x01 \x01(\tB\b\xbaH\x05r\x03\xb0\x01\x01R\vworkspaceId\x12\x18\n" +
 	"\x02id\x18\x02 \x01(\tB\b\xbaH\x05r\x03\xb0\x01\x01R\x02id\"=\n" +

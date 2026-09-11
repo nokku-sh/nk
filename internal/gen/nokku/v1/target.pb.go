@@ -121,15 +121,12 @@ func (x *GetTargetPrincipalsResponse) GetPrincipals() []*PrincipalUsers {
 }
 
 type SyncTargetUsersRequest struct {
-	state       protoimpl.MessageState `protogen:"open.v1"`
-	WorkspaceId *string                `protobuf:"bytes,1,opt,name=workspace_id,json=workspaceId" json:"workspace_id,omitempty"`
-	TargetId    *string                `protobuf:"bytes,2,opt,name=target_id,json=targetId" json:"target_id,omitempty"`
-	Usernames   []string               `protobuf:"bytes,3,rep,name=usernames" json:"usernames,omitempty"`
-	// The host's public key, pinned so the CLI can verify it directly. A
-	// daemonless host presents a raw key, not a CA-signed host certificate.
-	HostPublicKey *string `protobuf:"bytes,4,opt,name=host_public_key,json=hostPublicKey" json:"host_public_key,omitempty"`
-	// Reachable addresses, host:port.
-	Endpoints     []string `protobuf:"bytes,5,rep,name=endpoints" json:"endpoints,omitempty"`
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	WorkspaceId   *string                `protobuf:"bytes,1,opt,name=workspace_id,json=workspaceId" json:"workspace_id,omitempty"`
+	TargetId      *string                `protobuf:"bytes,2,opt,name=target_id,json=targetId" json:"target_id,omitempty"`
+	HostPublicKey *string                `protobuf:"bytes,3,opt,name=host_public_key,json=hostPublicKey" json:"host_public_key,omitempty"`
+	Usernames     []string               `protobuf:"bytes,4,rep,name=usernames" json:"usernames,omitempty"`
+	Endpoints     []string               `protobuf:"bytes,5,rep,name=endpoints" json:"endpoints,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -178,18 +175,18 @@ func (x *SyncTargetUsersRequest) GetTargetId() string {
 	return ""
 }
 
-func (x *SyncTargetUsersRequest) GetUsernames() []string {
-	if x != nil {
-		return x.Usernames
-	}
-	return nil
-}
-
 func (x *SyncTargetUsersRequest) GetHostPublicKey() string {
 	if x != nil && x.HostPublicKey != nil {
 		return *x.HostPublicKey
 	}
 	return ""
+}
+
+func (x *SyncTargetUsersRequest) GetUsernames() []string {
+	if x != nil {
+		return x.Usernames
+	}
+	return nil
 }
 
 func (x *SyncTargetUsersRequest) GetEndpoints() []string {
@@ -250,14 +247,8 @@ type Target struct {
 	Metadata      map[string]string      `protobuf:"bytes,11,rep,name=metadata" json:"metadata,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	CreatedAt     *timestamppb.Timestamp `protobuf:"bytes,12,opt,name=created_at,json=createdAt" json:"created_at,omitempty"`
 	UpdatedAt     *timestamppb.Timestamp `protobuf:"bytes,13,opt,name=updated_at,json=updatedAt" json:"updated_at,omitempty"`
-	// The local accounts the requesting subject may log in as. Filled only by
-	// GetMyAccess, which resolves the grants for one subject so the CLI never
-	// sees the rest of the target's assignment graph.
-	Usernames []string `protobuf:"bytes,14,rep,name=usernames" json:"usernames,omitempty"`
-	// The local accounts the daemon last reported. Advisory: a host that cannot
-	// enumerate users does not change access.
-	ReportedUsers []string `protobuf:"bytes,15,rep,name=reported_users,json=reportedUsers" json:"reported_users,omitempty"`
-	// When the account list was last reported by a daemon or a manual sync.
+	Usernames     []string               `protobuf:"bytes,14,rep,name=usernames" json:"usernames,omitempty"`
+	ReportedUsers []string               `protobuf:"bytes,15,rep,name=reported_users,json=reportedUsers" json:"reported_users,omitempty"`
 	ReportedAt    *timestamppb.Timestamp `protobuf:"bytes,16,opt,name=reported_at,json=reportedAt" json:"reported_at,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -502,16 +493,14 @@ func (x *GetTargetResponse) GetTarget() *Target {
 }
 
 type CreateTargetRequest struct {
-	state       protoimpl.MessageState `protogen:"open.v1"`
-	WorkspaceId *string                `protobuf:"bytes,1,opt,name=workspace_id,json=workspaceId" json:"workspace_id,omitempty"`
-	CaId        *string                `protobuf:"bytes,2,opt,name=ca_id,json=caId" json:"ca_id,omitempty"`
-	// An empty name lets the server generate a friendly unique one, which is
-	// what a manual sync sends. A supplied name stays slug-shaped.
-	Name          *string  `protobuf:"bytes,3,opt,name=name" json:"name,omitempty"`
-	Description   *string  `protobuf:"bytes,4,opt,name=description" json:"description,omitempty"`
-	HostPublicKey *string  `protobuf:"bytes,5,opt,name=host_public_key,json=hostPublicKey" json:"host_public_key,omitempty"`
-	Endpoints     []string `protobuf:"bytes,6,rep,name=endpoints" json:"endpoints,omitempty"`
-	Tags          []string `protobuf:"bytes,7,rep,name=tags" json:"tags,omitempty"`
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	WorkspaceId   *string                `protobuf:"bytes,1,opt,name=workspace_id,json=workspaceId" json:"workspace_id,omitempty"`
+	CaId          *string                `protobuf:"bytes,2,opt,name=ca_id,json=caId" json:"ca_id,omitempty"`
+	Name          *string                `protobuf:"bytes,3,opt,name=name" json:"name,omitempty"` // can be empty
+	Description   *string                `protobuf:"bytes,4,opt,name=description" json:"description,omitempty"`
+	HostPublicKey *string                `protobuf:"bytes,5,opt,name=host_public_key,json=hostPublicKey" json:"host_public_key,omitempty"`
+	Endpoints     []string               `protobuf:"bytes,6,rep,name=endpoints" json:"endpoints,omitempty"`
+	Tags          []string               `protobuf:"bytes,7,rep,name=tags" json:"tags,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1439,9 +1428,9 @@ const file_nokku_v1_target_proto_rawDesc = "" +
 	"principals\"\xd0\x01\n" +
 	"\x16SyncTargetUsersRequest\x12+\n" +
 	"\fworkspace_id\x18\x01 \x01(\tB\b\xbaH\x05r\x03\xb0\x01\x01R\vworkspaceId\x12%\n" +
-	"\ttarget_id\x18\x02 \x01(\tB\b\xbaH\x05r\x03\xb0\x01\x01R\btargetId\x12\x1c\n" +
-	"\tusernames\x18\x03 \x03(\tR\tusernames\x12&\n" +
-	"\x0fhost_public_key\x18\x04 \x01(\tR\rhostPublicKey\x12\x1c\n" +
+	"\ttarget_id\x18\x02 \x01(\tB\b\xbaH\x05r\x03\xb0\x01\x01R\btargetId\x12&\n" +
+	"\x0fhost_public_key\x18\x03 \x01(\tR\rhostPublicKey\x12\x1c\n" +
+	"\tusernames\x18\x04 \x03(\tR\tusernames\x12\x1c\n" +
 	"\tendpoints\x18\x05 \x03(\tR\tendpoints\"\x19\n" +
 	"\x17SyncTargetUsersResponse\"\xa3\x05\n" +
 	"\x06Target\x12\x0e\n" +

@@ -60,10 +60,7 @@ const (
 type PrincipalServiceClient interface {
 	SetPrincipals(context.Context, *v1.SetPrincipalsRequest) (*v1.SetPrincipalsResponse, error)
 	ListPrincipals(context.Context, *v1.ListPrincipalsRequest) (*v1.ListPrincipalsResponse, error)
-	// Adds one local account. Used for manual targets, where no daemon reports
-	// the account list. Never removes anything.
 	AddPrincipal(context.Context, *v1.AddPrincipalRequest) (*v1.AddPrincipalResponse, error)
-	// Removes one local account and its grants.
 	RemovePrincipal(context.Context, *v1.RemovePrincipalRequest) (*v1.RemovePrincipalResponse, error)
 	AddSubjectsToPrincipal(context.Context, *v1.AddSubjectsToPrincipalRequest) (*v1.AddSubjectsToPrincipalResponse, error)
 	RemoveSubjectsFromPrincipal(context.Context, *v1.RemoveSubjectsFromPrincipalRequest) (*v1.RemoveSubjectsFromPrincipalResponse, error)
@@ -205,10 +202,7 @@ func (c *principalServiceClient) RevokeAllAccess(ctx context.Context, req *v1.Re
 type PrincipalServiceHandler interface {
 	SetPrincipals(context.Context, *v1.SetPrincipalsRequest) (*v1.SetPrincipalsResponse, error)
 	ListPrincipals(context.Context, *v1.ListPrincipalsRequest) (*v1.ListPrincipalsResponse, error)
-	// Adds one local account. Used for manual targets, where no daemon reports
-	// the account list. Never removes anything.
 	AddPrincipal(context.Context, *v1.AddPrincipalRequest) (*v1.AddPrincipalResponse, error)
-	// Removes one local account and its grants.
 	RemovePrincipal(context.Context, *v1.RemovePrincipalRequest) (*v1.RemovePrincipalResponse, error)
 	AddSubjectsToPrincipal(context.Context, *v1.AddSubjectsToPrincipalRequest) (*v1.AddSubjectsToPrincipalResponse, error)
 	RemoveSubjectsFromPrincipal(context.Context, *v1.RemoveSubjectsFromPrincipalRequest) (*v1.RemoveSubjectsFromPrincipalResponse, error)

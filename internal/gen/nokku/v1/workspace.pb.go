@@ -268,14 +268,10 @@ type WorkspaceSettings struct {
 	state               protoimpl.MessageState `protogen:"open.v1"`
 	EnrollAutoApprove   *bool                  `protobuf:"varint,1,opt,name=enroll_auto_approve,json=enrollAutoApprove" json:"enroll_auto_approve,omitempty"`
 	DefaultDaemonConfig *DaemonConfig          `protobuf:"bytes,2,opt,name=default_daemon_config,json=defaultDaemonConfig" json:"default_daemon_config,omitempty"`
-	// Every audit event of this workspace is POSTed here as JSON, one event per
-	// request. Empty turns streaming off. Requires the audit_streaming feature.
-	AuditWebhookUrl *string `protobuf:"bytes,3,opt,name=audit_webhook_url,json=auditWebhookUrl" json:"audit_webhook_url,omitempty"`
-	// Signs the payload with HMAC-SHA256. The signature header is
-	// sha256=hex(hmac(secret, timestamp + "." + body)). Empty sends unsigned.
-	AuditWebhookSecret *string `protobuf:"bytes,4,opt,name=audit_webhook_secret,json=auditWebhookSecret" json:"audit_webhook_secret,omitempty"`
-	unknownFields      protoimpl.UnknownFields
-	sizeCache          protoimpl.SizeCache
+	AuditWebhookUrl     *string                `protobuf:"bytes,3,opt,name=audit_webhook_url,json=auditWebhookUrl" json:"audit_webhook_url,omitempty"`
+	AuditWebhookSecret  *string                `protobuf:"bytes,4,opt,name=audit_webhook_secret,json=auditWebhookSecret" json:"audit_webhook_secret,omitempty"`
+	unknownFields       protoimpl.UnknownFields
+	sizeCache           protoimpl.SizeCache
 }
 
 func (x *WorkspaceSettings) Reset() {
