@@ -4,20 +4,18 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/nokku-sh/nk/internal/fsutil"
+	"github.com/nokku-sh/mon/fsutil"
+
 	"github.com/nokku-sh/nk/internal/paths"
 	"github.com/nokku-sh/nk/internal/state"
 )
 
 func GenerateSSHConfig(st *state.State) error {
-	// Workspace ID -> name, for qualifying targets whose name collides
-	// across workspaces.
 	wsNames := make(map[string]string, len(st.Workspaces))
 	for _, w := range st.Workspaces {
 		wsNames[w.ID] = w.Name
 	}
 
-	// Count valid targets per name so duplicated names get a qualified host.
 	nameCount := make(map[string]int, len(st.Targets))
 	for _, t := range st.Targets {
 		if validTarget(t) {
@@ -34,71 +32,120 @@ func GenerateSSHConfig(st *state.State) error {
 			continue
 		}
 
+		certPath, err := paths.SSHCertificate(t.CAID)
+		if err != nil {
+			continue
+		}
+
 		host := t.Name
 		if nameCount[t.Name] > 1 {
 			ws := wsNames[t.WorkspaceID]
 			if ws == "" || !safeConfigToken(ws) || strings.Contains(ws, "/") {
 				ws = t.WorkspaceID
 			}
+			// The workspace id lands in the Host line, so it is held to the
+			// same rule as the target name.
+			if ws == "" || !safeConfigToken(ws) || strings.Contains(ws, "/") {
+				continue
+			}
 			host = ws + "/" + t.Name
 		}
 
-		fmt.Fprintf(&buf, "Host %s\n", host)
-		fmt.Fprintf(&buf, "    User %s\n", t.Principals[0].Username)
-		fmt.Fprintf(&buf, "    ProxyCommand nk proxy %%h %%p\n")
-		fmt.Fprintf(&buf, "    CertificateFile %s\n", paths.SSHCertificate(t.CAID))
-		if TPMKeyActive() {
-			// The private key lives in the TPM: point IdentityFile at the
-			// public key so ssh looks the private key up in the agent.
-			fmt.Fprintf(&buf, "    IdentityFile %s\n", paths.PubKeyFile())
-			fmt.Fprintf(&buf, "    IdentityAgent %s\n", paths.AgentSocket())
-		} else {
-			fmt.Fprintf(&buf, "    IdentityFile %s\n", paths.KeyFile())
-		}
-		fmt.Fprintf(&buf, "    UserKnownHostsFile %s\n", paths.KnownHostsPath())
-		fmt.Fprintf(&buf, "    HostKeyAlias %s\n", t.ID)
-		buf.WriteString("    IdentitiesOnly yes\n")
-		buf.WriteString("    PubkeyAuthentication yes\n")
-		buf.WriteString("    PasswordAuthentication no\n")
-		buf.WriteString("    StrictHostKeyChecking yes\n")
-		buf.WriteString("    ConnectTimeout 30\n")
-		buf.WriteString("    ServerAliveInterval 60\n")
-		buf.WriteString("    ServerAliveCountMax 3\n")
-		buf.WriteString("    LogLevel ERROR\n")
-		buf.WriteString("\n")
+		// The private key lives in the TPM or in the wrapped signer state,
+		// so IdentityFile points at the public half and the agent supplies
+		// the signature. Only the first granted account is emitted, others
+		// still work with `ssh <user>@<host>`.
+		fmt.Fprintf(&buf, `Host %s
+    User %s
+    ProxyCommand nk proxy %%h %%p
+    CertificateFile %s
+    IdentityFile %s
+    IdentityAgent %s
+    UserKnownHostsFile %s
+    HostKeyAlias %s
+    IdentitiesOnly yes
+    PubkeyAuthentication yes
+    PasswordAuthentication no
+    StrictHostKeyChecking yes
+    ConnectTimeout 30
+    ServerAliveInterval 60
+    ServerAliveCountMax 3
+    LogLevel ERROR
+
+`, host, t.Usernames[0], certPath, paths.PubKeyFile(),
+			paths.AgentSocket(), paths.KnownHostsPath(), t.ID)
 	}
 
 	return fsutil.WriteIfChanged(paths.SSHConfigFile(), []byte(buf.String()), 0o600)
-}
-
-// validTarget reports whether t is complete and safe to emit as an SSH host.
-func validTarget(t state.Target) bool {
-	return t.ID != "" && t.Name != "" && t.CAID != "" && len(t.Principals) > 0 &&
-		safeConfigToken(t.Name) && safeConfigToken(t.Principals[0].Username)
 }
 
 func GenerateKnownHosts(st *state.State) error {
 	var buf strings.Builder
 	buf.WriteString("# Managed by Nokku\n")
 	buf.WriteString("# Do not edit manually. Changes will be overwritten.\n\n")
-	// Trust is scoped per target
+	// Scope trust to the target ID, which is the HostKeyAlias in the generated
+	// ssh config, never a global "*".
 	for _, t := range st.Targets {
-		if t.ID == "" || t.CAID == "" {
+		if t.ID == "" || !safeConfigToken(t.ID) {
 			continue
 		}
-		ca := st.GetCAByID(t.CAID)
+		if t.DaemonID == "" {
+			// A manual target presents its own host key, not one signed by the
+			// CA, so an @cert-authority line can never match it. Pin the raw
+			// key instead.
+			key := strings.TrimSpace(t.HostPublicKey)
+			if key == "" || !safeKeyLine(key) {
+				continue
+			}
+			fmt.Fprintf(&buf, "%s %s\n", t.ID, key)
+			continue
+		}
+		if t.CAID == "" {
+			continue
+		}
+		ca := st.CAByID(t.CAID)
 		if ca == nil {
 			continue
 		}
-		fmt.Fprintf(&buf, "@cert-authority %s %s\n", t.ID, strings.TrimSpace(ca.PublicKey))
+		key := strings.TrimSpace(ca.PublicKey)
+		if key == "" || !safeKeyLine(key) {
+			continue
+		}
+		fmt.Fprintf(&buf, "@cert-authority %s %s\n", t.ID, key)
 	}
 	return fsutil.WriteIfChanged(paths.KnownHostsPath(), []byte(buf.String()), 0o600)
 }
 
-// safeConfigToken reports whether s is safe to embed in a generated SSH
-// config line: control characters are line-structure breaking and must
-// never reach the file.
+// validTarCAByIDts whether t is complete and safe to emit as an SSH host.
+func validTarget(t state.Target) bool {
+	return t.ID != "" && t.Name != "" && t.CAID != "" && len(t.Usernames) > 0 &&
+		safeConfigToken(t.Name) && safeConfigToken(t.Usernames[0]) &&
+		safeConfigToken(t.ID) && safeConfigToken(t.CAID)
+}
+
+// unsafeConfigChars lists characters that may not appear in a value emitted into
+// a generated ssh config or known_hosts line. The wildcard characters would
+// widen a Host or known_hosts pattern to hosts the target does not own, the rest
+// are shell metacharacters in files that ssh and other tools read.
+const unsafeConfigChars = " #\"'`$&|;<>(){}[]*?!~\\"
+
+// safeConfigToken reports whether s is safe as a single token in a generated
+// SSH config or known_hosts line.
 func safeConfigToken(s string) bool {
+	if s == "" || strings.ContainsAny(s, unsafeConfigChars) {
+		return false
+	}
+	for _, r := range s {
+		if r < 0x20 || r == 0x7f {
+			return false
+		}
+	}
+	return true
+}
+
+// safeKeyLine reports whether s is safe as a key field, where spaces are part of
+// the format. Only control characters can break the line.
+func safeKeyLine(s string) bool {
 	for _, r := range s {
 		if r < 0x20 || r == 0x7f {
 			return false

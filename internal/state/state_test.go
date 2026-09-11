@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestState_GetTargetsByName(t *testing.T) {
+func TestState_TargetsByName(t *testing.T) {
 	t.Parallel()
 	targets := []Target{
 		{ID: "1", Name: "prod"},
@@ -61,7 +61,7 @@ func TestState_GetTargetsByName(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			got := tt.s.GetTargetsByName(tt.target)
+			got := tt.s.TargetsByName(tt.target)
 			assert.Len(t, got, tt.want)
 			if tt.want == 1 {
 				assert.Equal(t, tt.wantID, got[0].ID)
@@ -143,7 +143,7 @@ func TestStateHasCachedData(t *testing.T) {
 	}
 }
 
-func TestState_GetCAByID(t *testing.T) {
+func TestState_CAByID(t *testing.T) {
 	t.Parallel()
 	cas := []CA{
 		{ID: "ca-1", Name: "Production CA", PublicKey: "key1"},
@@ -179,7 +179,7 @@ func TestState_GetCAByID(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			assert.Equal(t, tt.expected, tt.s.GetCAByID(tt.caID))
+			assert.Equal(t, tt.expected, tt.s.CAByID(tt.caID))
 		})
 	}
 }

@@ -8,8 +8,7 @@ import (
 	"golang.org/x/term"
 )
 
-// colorEnabled is resolved once per process: colors are on only when stdout
-// is a terminal and the user has not opted out via NO_COLOR.
+// colorEnabled resolves once at startup, honoring NO_COLOR.
 var colorEnabled = func() bool {
 	if os.Getenv("NO_COLOR") != "" {
 		return false
@@ -17,8 +16,8 @@ var colorEnabled = func() bool {
 	return IsTerminal(os.Stdout)
 }()
 
-// Color wraps s in the given SGR attribute code when colors are enabled.
-// The code must not include the leading ESC[ or trailing "m".
+// Color wraps s in an SGR code when colors are enabled. The code must exclude
+// the leading ESC[ and trailing m.
 func Color(code, s string) string {
 	if !colorEnabled {
 		return s
@@ -37,8 +36,7 @@ func IsTerminal(f *os.File) bool {
 	return term.IsTerminal(int(f.Fd()))
 }
 
-// HumanizeDuration formats a non-negative duration as a compact,
-// human-friendly string such as "3h 12m", "45s", or "900ms".
+// HumanizeDuration formats a non-negative duration like "3h12m", "45s", or "900ms".
 func HumanizeDuration(d time.Duration) string {
 	if d < 0 {
 		d = 0

@@ -18,15 +18,14 @@ func loginCMD() *cli.Command {
 		Aliases: []string{"refresh"},
 		Action: func(ctx context.Context, cmd *cli.Command) error {
 			s := state.FromCommand(cmd)
-			client, err := client.New(s)
+			c, err := client.New(s)
 			if err != nil {
 				return err
 			}
-
-			if err = client.Sync(ctx, true); err != nil {
+			if err = c.Sync(ctx, true); err != nil {
 				return err
 			}
-			client.PrewarmCerts(ctx)
+			c.PrewarmCerts(ctx)
 			fmt.Println("Signed in and synced")
 			return nil
 		},
@@ -36,10 +35,15 @@ func loginCMD() *cli.Command {
 func logoutCMD() *cli.Command {
 	return &cli.Command{
 		Name:  "logout",
-		Usage: "Logout and remove credentials",
+		Usage: "Logout and remove local credentials and cached state",
 		Action: func(_ context.Context, _ *cli.Command) error {
-			paths.CleanupPaths()
-			fmt.Println("Cleaned up credentials")
+			if err := paths.RemoveConfigDir(); err != nil {
+				return err
+			}
+			if err := paths.RemoveSSHConfigInclude(); err != nil {
+				return err
+			}
+			fmt.Println("Logged out. Removed credentials, certificates, and cached state")
 			return nil
 		},
 	}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
+	"errors"
 	"fmt"
 	"net"
 	"os"
@@ -14,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/go-tpm/tpm2/transport"
 	"github.com/google/go-tpm/tpm2/transport/simulator"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -21,28 +23,42 @@ import (
 	"golang.org/x/crypto/ssh/agent"
 
 	"github.com/nokku-sh/mon/tpm"
+
+	"github.com/nokku-sh/nk/internal/paths"
 )
 
-// e2eKey opens the TPM identity key: the real device when available, the
-// in-process simulator otherwise.
-func e2eKey(t *testing.T) *tpm.Key {
+// nopCloser hands the signer a transport whose Close does nothing, so the
+// test that created the simulator keeps ownership of it.
+type nopCloser struct{ transport.TPMCloser }
+
+func (nopCloser) Close() error { return nil }
+
+// e2eSigner builds a TPM-backed signer for the interop test: the real device
+// when available, the in-process simulator otherwise.
+func e2eSigner(t *testing.T) tpm.Signer {
 	t.Helper()
-	if key, err := tpm.OpenKey(sshTPMSalt); err == nil {
+
+	opts := tpm.SignerOptions{
+		Salt:      sshSalt,
+		StatePath: filepath.Join(t.TempDir(), "ssh-signer.json"),
+	}
+	if err := tpm.Available(); err == nil {
 		t.Log("using real TPM device")
-		return key
+	} else {
+		sim, simErr := simulator.OpenSimulator()
+		if simErr != nil {
+			t.Skipf("no TPM device and simulator unavailable: %v", simErr)
+		}
+		t.Cleanup(func() { _ = sim.Close() })
+		opts.OpenTPM = func() (transport.TPMCloser, error) { return nopCloser{sim}, nil }
+		t.Log("using TPM simulator")
 	}
-	sim, err := simulator.OpenSimulator()
-	if err != nil {
-		t.Skipf("no TPM device and simulator unavailable: %v", err)
-	}
-	key, err := tpm.NewKey(sim, sshTPMSalt)
-	if err != nil {
-		_ = sim.Close()
-		t.Fatalf("NewKey: %v", err)
-	}
-	t.Log("using TPM simulator")
-	t.Cleanup(func() { _ = sim.Close() })
-	return key
+
+	signer, err := tpm.NewSigner(opts)
+	require.NoError(t, err, "NewSigner")
+	t.Cleanup(func() { _ = signer.Close() })
+	require.Equal(t, tpm.MethodTPM, signer.Method(), "interop needs a TPM-backed signer")
+	return signer
 }
 
 // TestAgentSSHDInterop proves the TPM identity flow end to end against a real
@@ -58,8 +74,7 @@ func TestAgentSSHDInterop(t *testing.T) {
 		t.Skip("cannot determine current user")
 	}
 
-	key := e2eKey(t)
-	defer func() { _ = key.Close() }()
+	key := e2eSigner(t)
 
 	sshPub, err := cryptossh.NewPublicKey(key.Public())
 	require.NoError(t, err, "public key")
@@ -143,6 +158,90 @@ func TestAgentSSHDInterop(t *testing.T) {
 		current.Username+"@127.0.0.1", "true",
 	))
 	assert.Error(t, err, "ssh without agent unexpectedly succeeded:\n%s", out)
+}
+
+// TestAgentSSHDInteropSoftwareKey proves the machine-wrapped software key
+// works end to end against a real sshd through the production agent and the
+// exact IdentityFile/IdentityAgent shape GenerateSSHConfig emits: the private
+// key never appears in an IdentityFile, only the public key and the agent.
+func TestAgentSSHDInteropSoftwareKey(t *testing.T) {
+	sshd, err := exec.LookPath("sshd")
+	if err != nil {
+		t.Skip("sshd not available")
+	}
+	current, err := user.Current()
+	if err != nil || current.Username == "" {
+		t.Skip("cannot determine current user")
+	}
+
+	setupSSHDir(t)
+
+	// Force the software path: create the identity with an unusable TPM, so
+	// the signer never touches the real device.
+	soft, err := tpm.NewSigner(tpm.SignerOptions{
+		Salt:      sshSalt,
+		StatePath: paths.SSHSignerFile(),
+		OpenTPM: func() (transport.TPMCloser, error) {
+			return nil, errors.New("no TPM in this test")
+		},
+	})
+	require.NoError(t, err, "create software identity")
+	require.Equal(t, tpm.MethodSoft, soft.Method(), "expected the software fallback")
+	require.NoError(t, soft.Close())
+
+	// SetupKey loads the soft state and never consults the TPM.
+	require.NoError(t, SetupKey(false))
+
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	stop, err := ServeAgent(ctx)
+	require.NoError(t, err, "serve agent")
+	t.Cleanup(func() { _ = stop() })
+
+	pubLine, err := os.ReadFile(paths.PubKeyFile())
+	require.NoError(t, err, "read public key")
+	pub, _, _, _, err := cryptossh.ParseAuthorizedKey(pubLine)
+	require.NoError(t, err, "parse public key")
+
+	// Sign the software public key with a throwaway CA, like the backend does.
+	_, caPriv, err := ed25519.GenerateKey(rand.Reader)
+	require.NoError(t, err)
+	caSigner, err := cryptossh.NewSignerFromKey(caPriv)
+	require.NoError(t, err)
+	cert := &cryptossh.Certificate{
+		Key:             pub,
+		Serial:          1,
+		CertType:        cryptossh.UserCert,
+		KeyId:           "e2e-soft",
+		ValidPrincipals: []string{current.Username},
+		ValidAfter:      uint64(time.Now().Add(-time.Minute).Unix()),
+		ValidBefore:     uint64(time.Now().Add(time.Hour).Unix()),
+	}
+	require.NoError(t, cert.SignCert(rand.Reader, caSigner), "sign certificate")
+
+	dir := t.TempDir()
+	certFile := filepath.Join(dir, "nokku-cert.pub")
+	caFile := filepath.Join(dir, "ca.pub")
+	require.NoError(t, os.WriteFile(certFile, cryptossh.MarshalAuthorizedKey(cert), 0o600))
+	require.NoError(t, os.WriteFile(caFile, cryptossh.MarshalAuthorizedKey(caSigner.PublicKey()), 0o600))
+
+	port := startSSHD(t, sshd, dir, caFile)
+
+	out, err := sshCmd([]string{"SSH_AUTH_SOCK="}, []string{
+		"-p", port,
+		"-o", "BatchMode=yes",
+		"-o", "IdentitiesOnly=yes",
+		"-o", "PubkeyAuthentication=yes",
+		"-o", "PasswordAuthentication=no",
+		"-o", "StrictHostKeyChecking=no",
+		"-o", "UserKnownHostsFile=" + filepath.Join(dir, "known_hosts"),
+		"-o", "CertificateFile=" + certFile,
+		"-o", "IdentityFile=" + paths.PubKeyFile(),
+		"-o", "IdentityAgent=" + paths.AgentSocket(),
+		"-o", "LogLevel=DEBUG1",
+		current.Username + "@127.0.0.1", "true",
+	})
+	require.NoError(t, err, "ssh with the machine-wrapped software key failed:\n%s", out)
 }
 
 func sshCmd(env, args []string) (string, error) {

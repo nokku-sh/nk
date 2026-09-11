@@ -16,7 +16,8 @@ import (
 	"github.com/stretchr/testify/require"
 	cryptossh "golang.org/x/crypto/ssh"
 
-	"github.com/nokku-sh/nk/internal/fsutil"
+	"github.com/nokku-sh/mon/fsutil"
+
 	nokkuv1 "github.com/nokku-sh/nk/internal/gen/nokku/v1"
 	"github.com/nokku-sh/nk/internal/gen/nokku/v1/nokkuv1connect"
 	"github.com/nokku-sh/nk/internal/paths"
@@ -95,7 +96,7 @@ func (f *fakeCA) signRequest(t *testing.T, req *nokkuv1.SignSSHCertificateReques
 }
 
 // setTestDirs redirects the config dir and $HOME into fresh temp dirs and
-// creates the directories VerifyPaths would create at startup.
+// creates the directories EnsurePaths would create at startup.
 func setTestDirs(t *testing.T) {
 	t.Helper()
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
@@ -138,7 +139,7 @@ func accessResponse(caPubKey string) *nokkuv1.GetMyAccessResponse {
 				Name:        new("prod"),
 				WorkspaceId: new("ws-1"),
 				CaId:        new("ca-1"),
-				Principals:  []*nokkuv1.Principal{{Id: new("p-1"), Username: new("alice")}},
+				Usernames:   []string{"alice"},
 			}},
 			CertificateAuthorities: []*nokkuv1.CertificateAuthority{{
 				Id:          new("ca-1"),
@@ -226,7 +227,9 @@ func TestEnsureCertFreshIsNoOp(t *testing.T) {
 	pub, _, _, _, err := cryptossh.ParseAuthorizedKey([]byte(cliPub))
 	require.NoError(t, err)
 	fresh := ca.signCert(t, pub, time.Hour)
-	require.NoError(t, os.WriteFile(paths.SSHCertificate("ca-1"), []byte(fresh), 0o600))
+	certPath, err := paths.SSHCertificate("ca-1")
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(certPath, []byte(fresh), 0o600))
 
 	c := &Client{State: &state.State{APIURL: "http://127.0.0.1:1", SessionToken: "sess-token"}}
 	err = c.EnsureCert(context.Background(), state.CA{
@@ -257,7 +260,9 @@ func TestEnsureCertSignsAndWritesCert(t *testing.T) {
 	}, false)
 	require.NoError(t, err)
 
-	signed, err := os.ReadFile(paths.SSHCertificate("ca-1"))
+	certPath, err := paths.SSHCertificate("ca-1")
+	require.NoError(t, err)
+	signed, err := os.ReadFile(certPath)
 	require.NoError(t, err)
 	require.NoError(t, ssh.VerifyCertificate(signed),
 		"the written certificate must pass local validation")
@@ -282,6 +287,8 @@ func TestPrewarmCertsSignsMissingCerts(t *testing.T) {
 
 	c.PrewarmCerts(context.Background())
 
-	assert.True(t, fsutil.FileExists(paths.SSHCertificate("ca-1")),
+	certPath, err := paths.SSHCertificate("ca-1")
+	require.NoError(t, err)
+	assert.True(t, fsutil.FileExists(certPath),
 		"prewarm must sign a certificate for the target's CA")
 }

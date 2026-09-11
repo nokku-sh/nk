@@ -7,9 +7,7 @@ import (
 
 	"github.com/urfave/cli/v3"
 
-	"github.com/nokku-sh/nk/internal/client"
 	"github.com/nokku-sh/nk/internal/ssh"
-	"github.com/nokku-sh/nk/internal/state"
 )
 
 func proxyCMD() *cli.Command {
@@ -17,6 +15,7 @@ func proxyCMD() *cli.Command {
 		Name:      "proxy",
 		Usage:     "Proxy an SSH connection (internal use by SSH)",
 		ArgsUsage: "[host] [port]",
+		Hidden:    true,
 		Flags: []cli.Flag{
 			&cli.BoolFlag{
 				Name:  "relay",
@@ -33,17 +32,8 @@ func proxyCMD() *cli.Command {
 				port = "22"
 			}
 
-			// Access is synced just in time: permissions may have changed
-			// since the last login. The sync is non-interactive and fails
-			// fast (5s bound); when it fails, the cached snapshot keeps the
-			// connection working offline. A missing or expired session never
-			// triggers a browser flow here; the user runs nk login instead.
-			s := state.FromCommand(cmd)
-			client, err := client.New(s)
-			if err != nil {
-				return err
-			}
-			err = client.SyncOrCache(ctx, false)
+			// A missing session never opens a browser, the user runs nk login.
+			c, s, err := connect(ctx, cmd, false)
 			if err != nil {
 				return err
 			}
@@ -53,10 +43,8 @@ func proxyCMD() *cli.Command {
 				return err
 			}
 
-			// Sign only this target's certificate, and only when it is
-			// missing or close to expiry. With a stale or missing session
-			// this fails fast; a cached certificate on disk is still used.
-			if err = client.EnsureTargetCert(ctx, target, false); err != nil {
+			// Keep using the cached certificate when signing fails offline.
+			if err = c.EnsureTargetCert(ctx, target, false); err != nil {
 				if !ssh.CertificateOnDisk(target.CAID) {
 					return err
 				}
@@ -64,17 +52,15 @@ func proxyCMD() *cli.Command {
 					"target", target.Name, "err", err)
 			}
 
-			// Serve the TPM key over the agent socket before ssh starts the
-			// authentication phase.
+			// Serve the machine identity before ssh starts authenticating.
 			stopAgent, err := ssh.ServeAgent(ctx)
 			if err != nil {
 				return err
 			}
 			defer func() { _ = stopAgent() }()
 
-			// Direct endpoints first, relay as automatic fallback. With
-			// --relay the connection always goes through the backend.
-			relay := ssh.RelayDialer(client.Relay)
+			// Direct endpoints first with the relay as fallback. --relay forces it.
+			relay := ssh.RelayDialer(c.Relay)
 			if cmd.Bool("relay") {
 				return ssh.ProxyRelay(ctx, target, relay)
 			}

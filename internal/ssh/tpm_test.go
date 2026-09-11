@@ -25,17 +25,16 @@ func TestSetupTPMKey(t *testing.T) {
 	xdg := os.Getenv("XDG_CONFIG_HOME")
 	require.True(t, xdg != "" && strings.HasPrefix(paths.ConfigPath(), xdg),
 		"XDG_CONFIG_HOME must be set to a scratch dir before the test binary starts")
-	probe, err := tpm.OpenKey(sshTPMSalt)
-	if err != nil {
-		t.Skipf("no TPM available: %v", err)
+	probe := tpm.Available()
+	if probe != nil {
+		t.Skipf("no TPM available: %v", probe)
 	}
-	_ = probe.Close()
 
 	require.NoError(t, os.MkdirAll(paths.SSHCertPath(), 0o700))
 
 	// Login: only the public key may touch disk.
 	require.NoError(t, SetupKey(true), "SetupKey(true)")
-	assert.True(t, TPMKeyActive(),
+	assert.Equal(t, tpm.MethodTPM, IdentityMethod(),
 		"expected a TPM identity: public key without a private key file")
 	pub, err := os.ReadFile(paths.PubKeyFile())
 	require.NoError(t, err)

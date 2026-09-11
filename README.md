@@ -23,7 +23,9 @@ curl -fsSL https://get.nokku.sh/nk | sh
 ```
 
 The installer prefers your distro's package (deb/rpm/apk) via the Cloudsmith
-repository and falls back to the GitHub release binary.
+repository and falls back to the GitHub release binary. Pass `--version <x.y.z>`
+or `NK_VERSION=<x.y.z>` to pin a version, and `--system` to install into
+`/usr/local/bin` instead of `~/.local/bin`.
 
 Prefer manual packages? See the [package repository](https://broadcasts.cloudsmith.com/nokku/nk) for apt/dnf/apk install instructions.
 
@@ -40,7 +42,7 @@ ssh user@target   # Connect using standard OpenSSH!
 
 ## Hardware Security (TPM 2.0)
 
-On Linux and Windows, `nk` automatically uses a TPM 2.0 when one is available. Your SSH private key becomes a deterministic primary key that never leaves the TPM; signing happens via an embedded SSH agent (`agent.sock`). Without a TPM, `nk` falls back to a software key transparently. Pass `--require-tpm` to refuse that fallback.
+On Linux and Windows, `nk` automatically uses a TPM 2.0 when one is available. Your SSH private key becomes a deterministic primary key that never leaves the TPM; signing happens via an embedded SSH agent (`agent.sock`). Without a TPM, `nk` falls back to a software ECDSA P-256 key wrapped with a key derived from the machine fingerprint: the state file is useless on another machine, and ssh reads the key only through the agent socket, never directly. Pass `--require-tpm` to refuse that fallback.
 
 _(Check `nk doctor` to see if a TPM is available and in use.)_
 
@@ -52,10 +54,13 @@ _(Check `nk doctor` to see if a TPM is available and in use.)_
 Use a service-account API key in CI or other headless environments:
 
 ```bash
-export NK_TOKEN=<KEY_ID>.<SECRET>
+export NK_TOKEN=nokku_sa_<KEY_ID>.<SECRET>
 nk login
 ssh user@target
 ```
+
+The `nokku_sa_` prefix is required. Without it the value is treated as a device
+session and `nk login` tries the browser flow.
 
 ## X.509 certificates (experimental)
 
@@ -70,28 +75,41 @@ The command generates a key pair, requests a signed certificate, and saves the c
 
 ## Commands
 
-| Command             | Purpose                                    |
-| ------------------- | ------------------------------------------ |
-| `nk login`          | Authenticate and synchronize local state   |
-| `nk refresh`        | Re-authenticate and refresh state          |
-| `nk ls` / `nk list` | List targets and principals                |
-| `nk doctor`         | Check API reachability and local SSH setup |
-| `nk pki list`       | List active X.509 certificate authorities  |
-| `nk pki issue <cn>` | Issue an X.509 certificate                 |
-| `nk logout`         | Remove local credentials and cached state  |
-| `nk proxy`          | Internal OpenSSH `ProxyCommand` (internal) |
+| Command                      | Purpose                                                           |
+| ---------------------------- | ----------------------------------------------------------------- |
+| `nk login` (alias `refresh`) | Authenticate and synchronize local state                          |
+| `nk ls` / `nk list`          | List available machines across all workspaces                     |
+| `nk doctor`                  | Check API reachability, TPM availability, and local SSH setup     |
+| `nk pki list`                | List active X.509 certificate authorities                         |
+| `nk pki issue <cn>`          | Issue an X.509 certificate                                        |
+| `nk sync <host>`             | Create a daemonless target for a host, then write its trust files |
+| `nk target sync <host>`      | Same as `nk sync`                                                 |
+| `nk logout`                  | Remove local credentials and cached state                         |
+
+### Command flags
+
+| Command        | Flags                                                                     |
+| -------------- | ------------------------------------------------------------------------- |
+| `nk ls`        | `--json` for machine-readable output                                      |
+| `nk doctor`    | `--fix` to repair permissions and regenerate files, `--json` for output   |
+| `nk pki list`  | `--json` for machine-readable output                                      |
+| `nk pki issue` | `--san dns:name`, `--usage client\|server\|both`, `--ca`, `--output`/`-o` |
+| `nk sync`      | `--name`, `--workspace`, `--ca`, `--user`, `--port`, `--dry-run`          |
 
 ## Configuration
 
-| Flag            | Environment      | Purpose                                                                 |
-| --------------- | ---------------- | ----------------------------------------------------------------------- |
-| `--api`         | `NK_API_URL`     | Backend URL                                                             |
-| `--token`       | `NK_TOKEN`       | Service-account API key (`keyID.secret`); skips browser login for CI/CD |
-| `--ttl`         | `NK_TTL`         | Requested SSH certificate lifetime                                      |
-| `--require-tpm` | `NK_REQUIRE_TPM` | Require a TPM 2.0; refuse the software key fallback                     |
-| `--insecure`    | `NK_INSECURE`    | Disable TLS verification; testing only                                  |
+| Flag            | Environment      | Purpose                                                                          |
+| --------------- | ---------------- | -------------------------------------------------------------------------------- |
+| `--api`         | `NK_API_URL`     | Backend URL                                                                      |
+| `--token`       | `NK_TOKEN`       | Service-account API key (`nokku_sa_keyID.secret`); skips browser login for CI/CD |
+| `--ttl`         | `NK_TTL`         | Requested SSH certificate lifetime                                               |
+| `--require-tpm` | `NK_REQUIRE_TPM` | Require a TPM 2.0; refuse the software key fallback                              |
+| `--insecure`    | `NK_INSECURE`    | Disable TLS verification; testing only                                           |
+| `--debug`       | `NK_DEBUG`       | Enable debug logging                                                             |
 
-Local state lives under `~/.config/nk/`. Your private key and tokens are credentials. Keep service-account tokens out of source control.
+Local state lives under `~/.config/nk/` on Linux, `~/Library/Application
+Support/nk/` on macOS, and `%AppData%\nk\` on Windows. Your private key and
+tokens are credentials. Keep service-account tokens out of source control.
 
 ## Uninstall
 
@@ -99,7 +117,7 @@ Local state lives under `~/.config/nk/`. Your private key and tokens are credent
 nk logout # Removes credentials and config
 
 # Manual uninstall
-rm -f /usr/local/bin/nk   # or wherever nk was installed
+rm -f ~/.local/bin/nk      # or /usr/local/bin/nk after a --system install
 rm -rf ~/.config/nk
 ```
 

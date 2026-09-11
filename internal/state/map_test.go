@@ -137,9 +137,7 @@ func TestMapTarget(t *testing.T) {
 			DaemonId:    new("d-1"),
 			Name:        new("web-server"),
 			Endpoints:   []string{"10.0.0.1:22"},
-			Principals: []*nokkuv1.Principal{
-				{Id: new("p-1"), Username: new("ubuntu")},
-			},
+			Usernames:   []string{"ubuntu"},
 		}
 		got := MapTarget(target)
 		require.NotNil(t, got)
@@ -147,16 +145,15 @@ func TestMapTarget(t *testing.T) {
 		assert.Equal(t, "ca-1", got.CAID)
 		assert.Equal(t, "web-server", got.Name)
 		assert.Equal(t, []string{"10.0.0.1:22"}, got.Endpoints)
-		assert.Equal(t, []Principal{{ID: "p-1", Username: "ubuntu"}}, got.Principals)
+		assert.Equal(t, []string{"ubuntu"}, got.Usernames)
 	})
 
-	t.Run("nil principals become empty slice", func(t *testing.T) {
+	t.Run("no usernames stays empty", func(t *testing.T) {
 		got := MapTarget(&nokkuv1.Target{
 			Id:   new("t-2"),
 			Name: new("empty-target"),
 		})
-		assert.Empty(t, got.Principals)
-		assert.NotNil(t, got.Principals)
+		assert.Empty(t, got.Usernames)
 	})
 }
 
@@ -172,41 +169,6 @@ func TestMapTargets(t *testing.T) {
 			{Id: new("t-1"), Name: new("target-a")},
 			nil,
 			{Id: new("t-2"), Name: new("target-b")},
-		})
-		assert.Len(t, got, 2)
-	})
-}
-
-func TestMapPrincipal(t *testing.T) {
-	t.Parallel()
-
-	t.Run("nil input returns nil", func(t *testing.T) {
-		assert.Nil(t, MapPrincipal(nil))
-	})
-
-	t.Run("maps all fields correctly", func(t *testing.T) {
-		p := &nokkuv1.Principal{
-			Id:       new("p-1"),
-			Username: new("admin"),
-		}
-		got := MapPrincipal(p)
-		require.NotNil(t, got)
-		assert.Equal(t, &Principal{ID: "p-1", Username: "admin"}, got)
-	})
-}
-
-func TestMapPrincipals(t *testing.T) {
-	t.Parallel()
-
-	t.Run("nil slice returns empty", func(t *testing.T) {
-		assert.Empty(t, MapPrincipals(nil))
-	})
-
-	t.Run("skips nil entries", func(t *testing.T) {
-		got := MapPrincipals([]*nokkuv1.Principal{
-			{Id: new("p-1"), Username: new("user-a")},
-			nil,
-			{Id: new("p-2"), Username: new("user-b")},
 		})
 		assert.Len(t, got, 2)
 	})

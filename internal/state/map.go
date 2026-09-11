@@ -57,8 +57,7 @@ func MapCA(ca *nokkuv1.CertificateAuthority) *CA {
 func MapCAs(cas []*nokkuv1.CertificateAuthority) []CA {
 	res := make([]CA, 0, len(cas))
 	for _, ca := range cas {
-		// Only SSH authorities belong in the client snapshot: X.509 CAs are
-		// fetched separately and must never reach known_hosts.
+		// X.509 CAs are fetched separately and must never reach known_hosts.
 		if ca != nil && ca.GetAuthorityType() != nokkuv1.AuthorityType_AUTHORITY_TYPE_X509 {
 			res = append(res, *MapCA(ca))
 		}
@@ -71,23 +70,14 @@ func MapTarget(t *nokkuv1.Target) *Target {
 		return nil
 	}
 	return &Target{
-		ID:          t.GetId(),
-		WorkspaceID: t.GetWorkspaceId(),
-		CAID:        t.GetCaId(),
-		DaemonID:    t.GetDaemonId(),
-		Name:        t.GetName(),
-		Endpoints:   t.GetEndpoints(),
-		Principals:  MapPrincipals(t.GetPrincipals()),
-	}
-}
-
-func MapPrincipal(p *nokkuv1.Principal) *Principal {
-	if p == nil {
-		return nil
-	}
-	return &Principal{
-		ID:       p.GetId(),
-		Username: p.GetUsername(),
+		ID:            t.GetId(),
+		WorkspaceID:   t.GetWorkspaceId(),
+		CAID:          t.GetCaId(),
+		DaemonID:      t.GetDaemonId(),
+		Name:          t.GetName(),
+		Endpoints:     t.GetEndpoints(),
+		Usernames:     t.GetUsernames(),
+		HostPublicKey: t.GetHostPublicKey(),
 	}
 }
 
@@ -96,16 +86,6 @@ func MapTargets(targets []*nokkuv1.Target) []Target {
 	for _, t := range targets {
 		if t != nil {
 			res = append(res, *MapTarget(t))
-		}
-	}
-	return res
-}
-
-func MapPrincipals(principals []*nokkuv1.Principal) []Principal {
-	res := make([]Principal, 0, len(principals))
-	for _, p := range principals {
-		if p != nil {
-			res = append(res, *MapPrincipal(p))
 		}
 	}
 	return res

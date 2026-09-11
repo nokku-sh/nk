@@ -54,12 +54,12 @@ jobs:
       - uses: taiki-e/install-action@git-cliff
 
       - name: Generate release notes
-        run: git-cliff --latest --strip header --config cliff.toml -o "$RUNNER_TEMP/CHANGELOG.md"
+        run: git-cliff --latest --strip header --config cliff.toml -o "$RUNNER_TEMP/release-notes.md"
 
       - uses: goreleaser/goreleaser-action@v7
         with:
           version: latest
-          args: release --clean --release-notes=${{ runner.temp }}/CHANGELOG.md
+          args: release --clean --release-notes=${{ runner.temp }}/release-notes.md
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           COSIGN_YES: "true"

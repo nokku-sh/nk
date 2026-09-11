@@ -8,7 +8,6 @@ import (
 	"github.com/nokku-sh/nk/internal/ui"
 )
 
-// glyph maps a check status to its terminal symbol.
 var glyph = map[Status]string{
 	StatusOK:   "✔",
 	StatusWarn: "⚠",
@@ -16,7 +15,6 @@ var glyph = map[Status]string{
 	StatusInfo: "ℹ",
 }
 
-// color maps a status to its colorizer.
 func color(status Status) func(string) string {
 	switch status {
 	case StatusOK:
@@ -32,9 +30,8 @@ func color(status Status) func(string) string {
 	}
 }
 
-// PrintReport writes the report to w as human-readable text (or JSON when
-// jsonOut is set).
-func PrintReport(w io.Writer, r Report, jsonOut bool) error {
+// Print writes the report to w, as JSON when jsonOut is set.
+func Print(w io.Writer, r Report, jsonOut bool) error {
 	if jsonOut {
 		return printJSON(w, r)
 	}

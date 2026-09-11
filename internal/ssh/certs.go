@@ -15,12 +15,16 @@ import (
 	"github.com/nokku-sh/nk/internal/state"
 )
 
-// CertificateFresh reports whether the cached cert for caID is present,
-// valid, signed by the CA's current key, and remains valid for at least
-// margin longer. A cert close to expiry is treated as stale so it is
-// re-signed while the backend is still reachable.
+// CertificateFresh reports whether the cached cert for caID is valid, signed by
+// the CA's current key, and stays valid for at least margin longer. A cert
+// inside the margin counts as stale so it is re-signed while the backend is
+// still reachable.
 func CertificateFresh(caID, caPublicKey string, margin time.Duration) bool {
-	data, err := os.ReadFile(paths.SSHCertificate(caID))
+	path, err := paths.SSHCertificate(caID)
+	if err != nil {
+		return false
+	}
+	data, err := os.ReadFile(path)
 	if err != nil {
 		return false
 	}
@@ -38,16 +42,20 @@ func CertificateFresh(caID, caPublicKey string, margin time.Duration) bool {
 	return time.Until(validBefore) > margin
 }
 
-// CertificateOnDisk reports whether a cached certificate file exists for
-// caID, regardless of freshness. Used to decide whether a failed signing
-// attempt can fall back to the last cached certificate.
+// CertificateOnDisk reports whether a cached certificate file exists for caID,
+// fresh or not. Used to fall back to the last cached certificate when signing
+// fails.
 func CertificateOnDisk(caID string) bool {
-	_, err := os.Stat(paths.SSHCertificate(caID))
+	path, err := paths.SSHCertificate(caID)
+	if err != nil {
+		return false
+	}
+	_, err = os.Stat(path)
 	return err == nil
 }
 
-// VerifyCertificateForCA validates data's validity window and that it was
-// signed by caPub.
+// VerifyCertificateForCA checks that data is a certificate valid now and that
+// caPub signed it.
 func VerifyCertificateForCA(data []byte, caPub ssh.PublicKey) error {
 	if err := VerifyCertificate(data); err != nil {
 		return err
@@ -66,8 +74,22 @@ func VerifyCertificateForCA(data []byte, caPub ssh.PublicKey) error {
 	return nil
 }
 
-// CertificateValidity parses a signed SSH certificate and returns its
-// validity window.
+// VerifyCertificate checks that data is an SSH certificate valid at the current
+// time.
+func VerifyCertificate(data []byte) error {
+	validAfter, validBefore, err := CertificateValidity(data)
+	if err != nil {
+		return err
+	}
+	now := time.Now()
+	if now.Before(validAfter) || now.After(validBefore) {
+		return errors.New("certificate expired or not yet valid")
+	}
+	return nil
+}
+
+// CertificateValidity parses a signed SSH certificate and returns its validity
+// window.
 func CertificateValidity(data []byte) (validAfter, validBefore time.Time, err error) {
 	pub, _, _, _, err := ssh.ParseAuthorizedKey(data)
 	if err != nil {
@@ -80,25 +102,13 @@ func CertificateValidity(data []byte) (validAfter, validBefore time.Time, err er
 	return unixTime(cert.ValidAfter), unixTime(cert.ValidBefore), nil
 }
 
-// unixTime converts an SSH certificate validity timestamp (uint64 seconds
-// since the epoch) to a Go timestamp, clamping overflow.
+// unixTime converts an SSH certificate validity timestamp to a Go time,
+// clamping uint64 overflow.
 func unixTime(t uint64) time.Time {
 	if t > math.MaxInt64 {
 		return time.Unix(math.MaxInt64, 0)
 	}
 	return time.Unix(int64(t), 0)
-}
-
-func VerifyCertificate(data []byte) error {
-	validAfter, validBefore, err := CertificateValidity(data)
-	if err != nil {
-		return err
-	}
-	now := time.Now()
-	if now.Before(validAfter) || now.After(validBefore) {
-		return errors.New("certificate expired or not yet valid")
-	}
-	return nil
 }
 
 // CleanupCerts removes certificate files for CA IDs no longer in the provided set.
@@ -127,8 +137,6 @@ func CleanupCerts(cas []state.CA) error {
 	return nil
 }
 
-// removeCerts deletes all locally cached SSH certificates, forcing the CA to
-// re-sign them for the current key.
 func removeCerts() error {
 	certs, err := paths.SSHCertificates()
 	if err != nil {

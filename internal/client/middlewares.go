@@ -2,6 +2,7 @@ package client
 
 import (
 	"context"
+	"net/http"
 	"time"
 
 	"connectrpc.com/connect"
@@ -9,37 +10,48 @@ import (
 	"github.com/mizuchilabs/kata/buildinfo"
 )
 
-type uaInterceptor struct {
-	ua string
+// bearerAuth attaches the service-account API key and the client User-Agent.
+type bearerAuth struct {
+	token string
+	ua    string
 }
 
-func withUA() connect.Interceptor {
-	return &uaInterceptor{ua: buildinfo.UserAgent("nk")}
+func newBearerAuth(token string) *bearerAuth {
+	return &bearerAuth{token: token, ua: buildinfo.UserAgent("nk")}
 }
 
-func (a *uaInterceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
+func (a *bearerAuth) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
 	return func(ctx context.Context, req connect.AnyRequest) (connect.AnyResponse, error) {
-		req.Header().Set("User-Agent", a.ua)
+		a.set(req.Header())
 		return next(ctx, req)
 	}
 }
 
-func (a *uaInterceptor) WrapStreamingClient(
+func (a *bearerAuth) WrapStreamingClient(
 	next connect.StreamingClientFunc,
 ) connect.StreamingClientFunc {
 	return func(ctx context.Context, spec connect.Spec) connect.StreamingClientConn {
 		conn := next(ctx, spec)
-		conn.RequestHeader().Set("User-Agent", a.ua)
+		a.set(conn.RequestHeader())
 		return conn
 	}
 }
 
-func (a *uaInterceptor) WrapStreamingHandler(
+func (a *bearerAuth) WrapStreamingHandler(
 	next connect.StreamingHandlerFunc,
 ) connect.StreamingHandlerFunc {
 	return next
 }
 
+func (a *bearerAuth) set(header http.Header) {
+	header.Set("Authorization", "Bearer "+a.token)
+	if a.ua != "" {
+		header.Set("User-Agent", a.ua)
+	}
+}
+
+// withRetry retries transient connect errors briefly. Permanent codes pass
+// through so the CLI falls back to cached data fast.
 func withRetry() connect.UnaryInterceptorFunc {
 	return func(next connect.UnaryFunc) connect.UnaryFunc {
 		return func(ctx context.Context, req connect.AnyRequest) (connect.AnyResponse, error) {
@@ -62,8 +74,8 @@ func withRetry() connect.UnaryInterceptorFunc {
 			return backoff.Retry(
 				ctx, ops,
 				backoff.WithBackOff(b),
-				// Keep the retry budget small: a down backend must fail
-				// fast so commands fall back to cached data quickly.
+				// A down backend must fail fast so commands fall back to
+				// cached data.
 				backoff.WithMaxElapsedTime(3*time.Second),
 			)
 		}

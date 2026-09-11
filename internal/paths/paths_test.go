@@ -3,6 +3,7 @@ package paths
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -85,9 +86,83 @@ func TestEnsureSSHConfigInclude(t *testing.T) {
 	})
 }
 
+func TestRemoveSSHConfigInclude(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	home, err := os.UserHomeDir()
+	require.NoError(t, err)
+	sshDir := filepath.Join(home, ".ssh")
+	require.NoError(t, os.MkdirAll(sshDir, 0o700))
+	configPath := filepath.Join(sshDir, "config")
+
+	t.Run("missing config is a no-op", func(t *testing.T) {
+		require.NoError(t, RemoveSSHConfigInclude())
+	})
+
+	t.Run("round trips to the original content", func(t *testing.T) {
+		original := "Host own\n    HostName example.com\n"
+		require.NoError(t, os.WriteFile(configPath, []byte(original), 0o600))
+
+		require.NoError(t, EnsureSSHConfigInclude())
+		require.NoError(t, RemoveSSHConfigInclude())
+
+		content, rerr := os.ReadFile(configPath)
+		require.NoError(t, rerr)
+		assert.Equal(t, original, string(content))
+	})
+
+	t.Run("leaves a config without the include untouched", func(t *testing.T) {
+		require.NoError(t, os.WriteFile(configPath, []byte("Host own\n"), 0o600))
+		require.NoError(t, RemoveSSHConfigInclude())
+
+		content, rerr := os.ReadFile(configPath)
+		require.NoError(t, rerr)
+		assert.Equal(t, "Host own\n", string(content))
+	})
+}
+
 func TestCertificateFilenames(t *testing.T) {
-	assert.Equal(t, "ca-test-cert.pub", filepath.Base(SSHCertificate("ca-test")))
-	assert.Equal(t, "ca-123-cert.pub", filepath.Base(SSHCertificate("ca-123")))
+	path, err := SSHCertificate("ca-test")
+	require.NoError(t, err)
+	assert.Equal(t, "ca-test-cert.pub", filepath.Base(path))
+
+	path, err = SSHCertificate("ca-123")
+	require.NoError(t, err)
+	assert.Equal(t, "ca-123-cert.pub", filepath.Base(path))
+}
+
+// TestSSHCertificateRejectsUnsafeIDs covers a backend supplied id reaching the
+// filesystem: anything that is not a plain path segment would escape the certs
+// directory.
+func TestSSHCertificateRejectsUnsafeIDs(t *testing.T) {
+	for _, id := range []string{
+		"",
+		".",
+		"..",
+		"../../../../tmp/pwned",
+		"nested/id",
+		`nested\id`,
+		"ca id",
+		"ca\nid",
+		"ca\x00id",
+	} {
+		path, err := SSHCertificate(id)
+		require.Error(t, err, "SSHCertificate(%q) must be refused", id)
+		assert.Empty(t, path)
+	}
+}
+
+// TestPathDerivationWithoutHome pins the no-home behaviour: startup stops and
+// state is never steered into the shared temp dir.
+func TestPathDerivationWithoutHome(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("UserConfigDir does not derive from HOME on windows")
+	}
+	t.Setenv("XDG_CONFIG_HOME", "")
+	t.Setenv("HOME", "")
+
+	assert.Equal(t, ConfigDirname, ConfigPath(),
+		"state must degrade instead of falling back to a shared temp dir")
+	assert.Error(t, EnsurePaths(), "startup must stop when no config dir resolves")
 }
 
 func TestKnownHostsPathConsistency(t *testing.T) {

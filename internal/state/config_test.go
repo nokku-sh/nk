@@ -11,8 +11,7 @@ import (
 	"github.com/nokku-sh/nk/internal/paths"
 )
 
-// setTestConfigDir redirects the app's config dir into a fresh temp dir
-// so tests never touch the real config.
+// setTestConfigDir points the app config dir at a fresh temp dir.
 func setTestConfigDir(t *testing.T) {
 	t.Helper()
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
@@ -53,9 +52,12 @@ func TestConfigLoadCorrupt(t *testing.T) {
 	require.NoError(t, os.MkdirAll(paths.ConfigPath(), 0o700))
 	require.NoError(t, os.WriteFile(paths.ConfigFile(), []byte("{not json"), 0o600))
 
-	var c Config
-	err := c.Load()
-	assert.ErrorContains(t, err, "parsing config")
+	c := &Config{APIURL: "https://stale.example.com"}
+	require.NoError(t, c.Load(), "a corrupt config is discarded, not surfaced")
+	assert.Empty(t, c.APIURL, "the receiver must reset to a clean state")
+
+	_, err := os.Stat(paths.ConfigFile())
+	assert.True(t, os.IsNotExist(err), "the corrupt file must be removed")
 }
 
 func TestConfigSavePerms(t *testing.T) {
@@ -95,8 +97,7 @@ func TestStateSaveCorruptCacheFails(t *testing.T) {
 	setTestConfigDir(t)
 	require.NoError(t, os.MkdirAll(paths.ConfigPath(), 0o700))
 
-	// A directory where the cache file belongs makes the cache save fail
-	// while the config save succeeds.
+	// A directory where the cache file belongs makes the cache save fail.
 	require.NoError(t, os.Mkdir(paths.CacheFile(), 0o700))
 
 	s := &State{APIURL: "https://app.example.com"}
@@ -127,9 +128,12 @@ func TestCacheLoadCorrupt(t *testing.T) {
 	require.NoError(t, os.MkdirAll(paths.ConfigPath(), 0o700))
 	require.NoError(t, os.WriteFile(paths.CacheFile(), []byte("]]]"), 0o600))
 
-	var c Cache
-	err := c.Load()
-	assert.ErrorContains(t, err, "parsing cache")
+	c := &Cache{User: &User{ID: "stale"}}
+	require.NoError(t, c.Load(), "a corrupt cache is discarded, not surfaced")
+	assert.Nil(t, c.User, "the receiver must reset to a clean state")
+
+	_, err := os.Stat(paths.CacheFile())
+	assert.True(t, os.IsNotExist(err), "the corrupt file must be removed")
 }
 
 func TestNewLoadsWithoutConfigDir(t *testing.T) {

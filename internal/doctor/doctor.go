@@ -13,11 +13,10 @@ import (
 
 	"github.com/mizuchilabs/kata/buildinfo"
 
-	"github.com/nokku-sh/mon/id"
+	"github.com/nokku-sh/mon/fsutil"
 	"github.com/nokku-sh/mon/tpm"
 
 	"github.com/nokku-sh/nk/internal/client"
-	"github.com/nokku-sh/nk/internal/fsutil"
 	"github.com/nokku-sh/nk/internal/paths"
 	"github.com/nokku-sh/nk/internal/ssh"
 	"github.com/nokku-sh/nk/internal/state"
@@ -50,9 +49,8 @@ type Report struct {
 	Checks []Check  `json:"checks"`
 }
 
-// RunDoctor collects all checks without triggering a login or mutating state
-// (except when fix is set, which explicitly asks for repairs).
-func RunDoctor(ctx context.Context, s *state.State, fix bool) Report {
+// Run collects all checks without logging in or mutating state unless fix is set.
+func Run(ctx context.Context, s *state.State, fix bool) Report {
 	var rep Report
 	add := func(section, name string, status Status, detail string) {
 		rep.Checks = append(rep.Checks, Check{
@@ -78,8 +76,7 @@ func RunDoctor(ctx context.Context, s *state.State, fix bool) Report {
 	return rep
 }
 
-// ExitCode returns 0 when healthy, 1 when there are warnings, and 2 when
-// any check failed.
+// ExitCode returns 0 when healthy, 1 with warnings, and 2 on any failure.
 func (r Report) ExitCode() int {
 	code := 0
 	for _, c := range r.Checks {
@@ -92,35 +89,6 @@ func (r Report) ExitCode() int {
 		}
 	}
 	return code
-}
-
-func hostname() string {
-	if h, err := os.Hostname(); err == nil {
-		return h
-	}
-	return "unknown"
-}
-
-// openSigner loads the existing signing identity without creating one.
-// Returns errNotLoggedIn when none exists yet. Headless (service-account)
-// mode has no signing identity; it returns errNotLoggedIn too, which
-// checkIdentity reports as "not logged in" for headless runs.
-func openSigner(s *state.State) error {
-	store := tpm.NewFileStore(paths.SignerStateFile())
-	if s.Token != "" {
-		return errors.New("no signing identity exists (run nk login)")
-	}
-	if tpm.IdentityMethod(store) == "" {
-		return errors.New("no signing identity exists (run nk login)")
-	}
-	_, err := tpm.NewSigner(tpm.SignerOptions{
-		Salt:            client.SignerSalt,
-		Store:           store,
-		MachineID:       id.MachineID,
-		RequireTPM:      s.RequireTPM,
-		RecoverIdentity: true,
-	})
-	return err
 }
 
 func checkSystem(ctx context.Context, add func(string, string, Status, string)) {
@@ -155,6 +123,13 @@ func checkSystem(ctx context.Context, add func(string, string, Status, string)) 
 	}
 }
 
+func hostname() string {
+	if h, err := os.Hostname(); err == nil {
+		return h
+	}
+	return "unknown"
+}
+
 func checkConfig(add func(string, string, Status, string), s *state.State) {
 	if !fsutil.FileExists(paths.ConfigFile()) {
 		add("Configuration", "config.json", StatusInfo, "no config yet (run nk login)")
@@ -177,7 +152,12 @@ func checkConfig(add func(string, string, Status, string), s *state.State) {
 		add("Configuration", "data directory", StatusOK, dir)
 	}
 
-	checkFilePerms(add, "private key", paths.KeyFile(), 0o600)
+	checkFilePerms(add, "config", paths.ConfigFile())
+	checkFilePerms(add, "cache", paths.CacheFile())
+	checkFilePerms(add, "DPoP identity", paths.SignerStateFile())
+	checkFilePerms(add, "SSH identity", paths.SSHSignerFile())
+	checkFilePerms(add, "sealed key", paths.SoftKeyFile())
+	checkFilePerms(add, "legacy key", paths.KeyFile())
 }
 
 func effectiveConfig(s *state.State) string {
@@ -188,7 +168,8 @@ func effectiveConfig(s *state.State) string {
 	return fmt.Sprintf("ttl=%s, insecure=%v, require-tpm=%v", ttl, s.Insecure, s.RequireTPM)
 }
 
-func checkFilePerms(add func(string, string, Status, string), name, path string, want os.FileMode) {
+// checkFilePerms warns when a secret file is readable by anyone but its owner.
+func checkFilePerms(add func(string, string, Status, string), name, path string) {
 	if runtime.GOOS == goosWindows || !fsutil.FileExists(path) {
 		return
 	}
@@ -197,10 +178,32 @@ func checkFilePerms(add func(string, string, Status, string), name, path string,
 		add("Configuration", name, StatusWarn, err.Error())
 		return
 	}
+	const want = 0o600
 	if info.Mode().Perm() != want {
 		add("Configuration", name, StatusWarn,
 			fmt.Sprintf("%s has mode %04o (want %04o)", path, info.Mode().Perm(), want))
 	}
+}
+
+// openSigner loads the existing signing identity without creating one.
+// A headless run has none, so it reports the same as not logged in.
+// Service accounts authenticate with a bearer token and use no signer.
+func openSigner(s *state.State) error {
+	if s.IsServiceAccount() {
+		return nil
+	}
+
+	statePath := paths.SignerStateFile()
+	if tpm.IdentityMethod(statePath) == "" {
+		return errors.New("no signing identity exists (run nk login)")
+	}
+	_, err := tpm.NewSigner(tpm.SignerOptions{
+		Salt:             client.SignerSalt,
+		StatePath:        statePath,
+		RequireTPM:       s.RequireTPM,
+		OnIdentityChange: tpm.FailOnIdentityChange,
+	})
+	return err
 }
 
 func checkIdentity(add func(string, string, Status, string), s *state.State, signerErr error) {
@@ -226,18 +229,22 @@ func checkIdentity(add func(string, string, Status, string), s *state.State, sig
 		),
 	)
 
-	switch method := tpm.IdentityMethod(tpm.NewFileStore(paths.SignerStateFile())); {
-	case method == "":
-		add("Identity", "signing identity", StatusInfo, "not logged in (run nk login)")
-	case signerErr != nil:
-		add("Identity", "signing identity", StatusFail, signerErr.Error())
-	case method == tpm.MethodTPM:
-		add("Identity", "signing identity", StatusOK, "tpm (machine-bound)")
-	default:
-		add("Identity", "signing identity", StatusOK, "soft (encrypted at rest)")
+	if s.IsServiceAccount() {
+		add("Identity", "signing identity", StatusInfo, "not used with a service account token")
+	} else {
+		switch method := tpm.IdentityMethod(paths.SignerStateFile()); {
+		case method == "":
+			add("Identity", "signing identity", StatusInfo, "not logged in (run nk login)")
+		case signerErr != nil:
+			add("Identity", "signing identity", StatusFail, signerErr.Error())
+		case method == tpm.MethodTPM:
+			add("Identity", "signing identity", StatusOK, "tpm (machine-bound)")
+		default:
+			add("Identity", "signing identity", StatusOK, "soft (machine-wrapped, copying the file is useless)")
+		}
 	}
 
-	if ssh.TPMKeyActive() || fsutil.FileExists(paths.KeyFile()) {
+	if ssh.IdentityMethod() != "" {
 		add("Identity", "ssh identity", StatusOK, ssh.IdentityStatus())
 	} else {
 		add("Identity", "ssh identity", StatusInfo, ssh.IdentityStatus())
@@ -302,12 +309,11 @@ func checkCerts(add func(string, string, Status, string), s *state.State) {
 	const warnWindow = time.Hour
 	for _, path := range certs {
 		name := certID(path)
-		ca := s.GetCAByID(name)
+		ca := s.CAByID(name)
 		if ca != nil {
 			name = ca.Name
 		}
 
-		// A local cert for a CA that is no longer configured is stale clutter.
 		if ca == nil {
 			add("Certificates", name, StatusWarn,
 				"stale file, no matching CA (run nk doctor --fix to remove)")
@@ -342,11 +348,10 @@ func checkCerts(add func(string, string, Status, string), s *state.State) {
 	}
 }
 
-// repair fixes common issues and returns a human-readable list of what changed.
 func repair(s *state.State) []string {
 	var fixed []string
 
-	if err := paths.VerifyPaths(); err != nil {
+	if err := paths.EnsurePaths(); err != nil {
 		return append(fixed, "ensure paths: "+err.Error())
 	}
 	if err := ssh.GenerateSSHConfig(s); err != nil {
@@ -365,7 +370,9 @@ func repair(s *state.State) []string {
 			fixed = append(fixed, "chmod 0700 "+paths.ConfigPath())
 		}
 		for _, f := range []string{
-			paths.ConfigFile(), paths.CacheFile(), paths.KeyFile(),
+			paths.ConfigFile(), paths.CacheFile(),
+			paths.SignerStateFile(), paths.SSHSignerFile(),
+			paths.SoftKeyFile(), paths.KeyFile(),
 			paths.PubKeyFile(), paths.SSHConfigFile(), paths.KnownHostsPath(),
 		} {
 			if fsutil.FileExists(f) {
@@ -379,9 +386,12 @@ func repair(s *state.State) []string {
 	return cleanStaleCerts(s, fixed)
 }
 
-// cleanStaleCerts removes local certificate files whose CA is not in cas and
-// reports how many were removed.
 func cleanStaleCerts(s *state.State, fixed []string) []string {
+	// Without a synced cache the CA list is empty for a reason that has nothing
+	// to do with the certificates on disk, so never prune from it.
+	if !s.HasCachedData() {
+		return fixed
+	}
 	certs, err := paths.SSHCertificates()
 	if err != nil || len(certs) == 0 {
 		return fixed

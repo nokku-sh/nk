@@ -15,7 +15,7 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/nokku-sh/nk/internal/fsutil"
+	"github.com/nokku-sh/mon/fsutil"
 )
 
 // GenerateKey creates a new ed25519 private key. X.509 issuance writes the

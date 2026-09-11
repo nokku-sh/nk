@@ -13,22 +13,28 @@ import (
 	"time"
 
 	"github.com/pkg/browser"
+
+	"github.com/nokku-sh/mon/dpopclient"
 )
 
+type deviceAuth struct {
+	deviceCode      string
+	userCode        string
+	verificationURI string
+	interval        int
+}
+
 // ensureSession guarantees a usable session before a request. Service
-// accounts authenticate with their injected API key (no session).
-// Interactive callers may run the RFC 8628 device flow; non-interactive
-// callers fail fast with ErrNotLoggedIn instead of blocking on a browser.
-//
-// The persisted expiry time is trusted locally: no probe request is spent on
-// validation, and a server-side rejection surfaces as CodeUnauthenticated,
-// which Sync turns into a single re-login and retry.
+// accounts use their injected API key, non-interactive callers fail fast
+// instead of blocking on a browser. The persisted expiry is trusted locally,
+// so a server-side rejection only surfaces later as CodeUnauthenticated,
+// which Sync turns into one re-login.
 func (c *Client) ensureSession(ctx context.Context, interactive bool) error {
 	if c.State.IsServiceAccount() {
-		return nil // Skip login; the API key is injected via --token.
+		return nil
 	}
 	if c.State.SessionValid() {
-		return nil // Skip login; the session is still valid.
+		return nil
 	}
 	if !interactive {
 		return errors.New("not logged in (run nk login)")
@@ -36,17 +42,15 @@ func (c *Client) ensureSession(ctx context.Context, interactive bool) error {
 	return c.deviceLogin(ctx)
 }
 
-// deviceLogin runs the RFC 8628 device flow and persists the returned
-// session token.
 func (c *Client) deviceLogin(ctx context.Context) error {
 	slog.Debug("starting device flow", "api", c.State.APIURL)
 
-	// Bootstrap the DPoP nonce and canonical URL up front, so the first
-	// approved poll already carries a valid proof.
-	// Best effort: a failure just costs one rejected poll, which self-heals.
-	if a := c.dpop; a != nil && a.proofer != nil {
-		if nonce, serverURL, err := FetchNonce(ctx, c.httpc, c.State.APIURL); err == nil {
-			a.learn(nonce, serverURL)
+	// Bootstrap the nonce and canonical URL up front, so the first approved
+	// poll already carries a valid proof. Best effort, a failure only costs
+	// one rejected poll.
+	if c.dpop != nil {
+		if nonce, serverURL, err := dpopclient.FetchNonce(ctx, c.httpc, c.State.APIURL); err == nil {
+			c.dpop.Learn(nonce, serverURL)
 		}
 	}
 
@@ -55,14 +59,13 @@ func (c *Client) deviceLogin(ctx context.Context) error {
 		return err
 	}
 
-	// Open the browser (the code is embedded in the complete URI).
+	// The verification URI already carries the code.
 	if err = browser.OpenURL(d.verificationURI); err != nil {
 		fmt.Printf("\nOpen this URL to authenticate:\n%s\n", d.verificationURI)
 	} else {
 		fmt.Printf("\nWaiting for approval... (code: %s)\n", d.userCode)
 	}
 
-	// Poll for the session token.
 	token, expiresIn, err := c.pollDeviceToken(ctx, d.deviceCode, d.interval)
 	if err != nil {
 		return err
@@ -76,20 +79,10 @@ func (c *Client) deviceLogin(ctx context.Context) error {
 		return err
 	}
 
-	// The identity itself is resolved by the following access sync; the
-	// device flow only needs to establish the session.
+	// Identity comes from the access sync that runs after login.
 	return nil
 }
 
-// deviceAuth is the beginDeviceAuth response.
-type deviceAuth struct {
-	deviceCode      string
-	userCode        string
-	verificationURI string
-	interval        int
-}
-
-// beginDeviceAuth asks the authorization server for a device code.
 func (c *Client) beginDeviceAuth(
 	ctx context.Context,
 ) (deviceAuth, error) {
@@ -125,8 +118,6 @@ func (c *Client) beginDeviceAuth(
 	}, nil
 }
 
-// pollDeviceToken polls the token endpoint until the user approves. interval
-// is the server's poll interval hint in seconds.
 func (c *Client) pollDeviceToken(
 	ctx context.Context,
 	deviceCode string,
@@ -169,24 +160,24 @@ func (c *Client) pollDeviceToken(
 			case "authorization_pending":
 				// keep polling
 			case "use_dpop_nonce":
-				// the fresh nonce was learned in postForm; re-sign
-				// and retry without waiting the poll interval
+				// postForm learned the fresh nonce, retry without waiting
+				// for the next tick
 				continue
 			case "invalid_dpop_proof":
-				// A proof can be rejected before the nonce check when
-				// the htu is wrong: the configured API URL differs from
-				// the canonical URL the server binds proofs to.
+				// The configured API URL can differ from the canonical URL
+				// proofs bind to. The first rejection is not fatal, learn
+				// the real one and retry.
 				if !bootstrapped && c.dpop != nil {
 					bootstrapped = true
-					if nonce, serverURL, nerr := FetchNonce(ctx, c.httpc, c.State.APIURL); nerr == nil {
-						c.dpop.learn(nonce, serverURL)
+					if nonce, serverURL, nerr := dpopclient.FetchNonce(ctx, c.httpc, c.State.APIURL); nerr == nil {
+						c.dpop.Learn(nonce, serverURL)
 						continue
 					}
 				}
 			case "slow_down":
-				// RFC 8628 section 3.5: grow the interval by 5s. The
-				// server counts violations per grant and its required
-				// interval keeps growing, so this must be honored.
+				// RFC 8628 section 3.5. The server counts violations per
+				// grant and its required interval keeps growing, so this
+				// must be honored.
 				wait += 5 * time.Second
 				ticker.Reset(wait)
 			case "access_denied", "expired_token":
@@ -195,15 +186,12 @@ func (c *Client) pollDeviceToken(
 				return "", 0, errors.New("device authorization failed: " + authErr.Error)
 			}
 		case doErr != nil:
-			// Transport error, or an HTTP error whose body carries no
-			// RFC 8628 error code: retrying won't fix it.
+			// A transport error or an HTTP error without an RFC 8628 code
+			// won't fix itself on retry.
 			return "", 0, doErr
 		default:
-			// 2xx whose body is neither a token nor an RFC 8628 error
-			return "", 0, fmt.Errorf(
-				"device authorization: unexpected response: %s",
-				strings.TrimSpace(string(body)),
-			)
+			// Never echo the body, a malformed response can still carry a token.
+			return "", 0, errors.New("device authorization: unexpected response")
 		}
 
 		select {
@@ -216,11 +204,9 @@ func (c *Client) pollDeviceToken(
 	}
 }
 
-// postForm sends an application/x-www-form-urlencoded POST to path, signing a
-// DPoP proof over the request URL (no access token yet, so no ath claim). The
-// proof binds to the canonical API URL the server advertises, which may
-// differ from the configured one the request goes to. Any nonce and canonical
-// URL the response advertises are learned, so the next proof succeeds.
+// postForm POSTs an x-www-form-urlencoded body with a DPoP proof. The proof
+// binds to the canonical API URL the server advertises, which can differ from
+// the configured one the request goes to.
 func (c *Client) postForm(
 	ctx context.Context,
 	path string,
@@ -234,13 +220,8 @@ func (c *Client) postForm(
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
-	if a := c.dpop; a != nil && a.proofer != nil {
-		proof, perr := a.proofer.Sign(
-			http.MethodPost,
-			a.htuBase()+path,
-			"",
-			a.currentNonce(),
-		)
+	if c.dpop != nil {
+		proof, perr := c.dpop.Proof(http.MethodPost, c.dpop.HtuBase()+path)
 		if perr != nil {
 			return nil, perr
 		}
@@ -253,10 +234,10 @@ func (c *Client) postForm(
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	// Learn before the status check: the use_dpop_nonce rejection is the
-	// response that carries the nonce the retry needs.
-	if a := c.dpop; a != nil {
-		a.learnResponse(resp.Header)
+	// Learn before the status check, the rejection carries the nonce the
+	// retry needs.
+	if c.dpop != nil {
+		c.dpop.LearnHeaders(resp.Header)
 	}
 
 	data, err := io.ReadAll(resp.Body)

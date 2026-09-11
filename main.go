@@ -23,7 +23,7 @@ func main() {
 		Version:               buildinfo.String(),
 		Before: func(ctx context.Context, cmd *cli.Command) (context.Context, error) {
 			logx.Init(cmd.Bool("debug"))
-			if err := paths.VerifyPaths(); err != nil {
+			if err := paths.EnsurePaths(); err != nil {
 				return nil, err
 			}
 			return ctx, nil

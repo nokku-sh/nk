@@ -6,14 +6,16 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"connectrpc.com/connect"
+	"github.com/mizuchilabs/kata/buildinfo"
+	"github.com/nokku-sh/mon/dpopclient"
+	"github.com/nokku-sh/mon/fsutil"
+	"golang.org/x/sync/errgroup"
 	"google.golang.org/protobuf/types/known/durationpb"
 
-	"golang.org/x/sync/errgroup"
-
-	"github.com/nokku-sh/nk/internal/fsutil"
 	nokkuv1 "github.com/nokku-sh/nk/internal/gen/nokku/v1"
 	"github.com/nokku-sh/nk/internal/gen/nokku/v1/nokkuv1connect"
 	"github.com/nokku-sh/nk/internal/paths"
@@ -24,12 +26,13 @@ import (
 const (
 	certRenewWindow = 15 * time.Minute
 	syncTimeout     = 5 * time.Second
+	dialTimeout     = 3 * time.Second
 )
 
 type Client struct {
 	State *state.State
 	httpc *http.Client
-	dpop  *dpopAuth
+	dpop  *dpopclient.Client
 
 	cc nokkuv1connect.CertificateServiceClient
 	tc nokkuv1connect.TargetServiceClient
@@ -48,11 +51,69 @@ func New(s *state.State) (*Client, error) {
 	return c, nil
 }
 
+// setupClients builds the shared HTTP client and the connect service clients.
+func (c *Client) setupClients() error {
+	httpc, err := dpopclient.NewHTTPClient(c.State.Insecure, dialTimeout)
+	if err != nil {
+		return err
+	}
+	c.httpc = httpc
+
+	interceptors := []connect.Interceptor{withRetry()}
+	if c.State.IsServiceAccount() {
+		interceptors = append(interceptors, newBearerAuth(c.State.Token))
+	} else {
+		proofer, perr := newProofer(c.State)
+		if perr != nil {
+			return perr
+		}
+		c.dpop = dpopclient.New(
+			proofer,
+			httpc,
+			func() string { return c.State.SessionToken },
+			dpopclient.Options{
+				BaseURL:   c.State.APIURL,
+				UserAgent: buildinfo.UserAgent("nk"),
+			},
+		)
+		interceptors = append(interceptors, c.dpop)
+	}
+	opts := connect.WithInterceptors(interceptors...)
+
+	c.cc = nokkuv1connect.NewCertificateServiceClient(httpc, c.State.APIURL, opts)
+	c.tc = nokkuv1connect.NewTargetServiceClient(httpc, c.State.APIURL, opts)
+	c.dc = nokkuv1connect.NewDaemonServiceClient(httpc, c.State.APIURL, opts)
+	return nil
+}
+
+// Reachable reports whether the backend answers a plain HTTP request within a
+// short timeout. It is a diagnostic signal only, commands never probe before
+// acting.
+func Reachable(ctx context.Context, st *state.State) bool {
+	httpc, err := dpopclient.NewHTTPClient(st.Insecure, dialTimeout)
+	if err != nil {
+		return false
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+
+	u := strings.TrimRight(st.APIURL, "/") + "/auth/device/nonce"
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	if err != nil {
+		return false
+	}
+	resp, err := httpc.Do(req)
+	if err != nil {
+		return false
+	}
+	_ = resp.Body.Close()
+	return true
+}
+
 // Sync refreshes the access snapshot from the backend and regenerates the
-// derived SSH configuration. When interactive is false (used on paths that
-// must never block, such as the SSH proxy), an expired or missing session is
-// an error instead of a browser login flow. A server-side session rejection
-// triggers exactly one re-login and retry when interactive.
+// derived SSH configuration. When interactive is false, an expired or missing
+// session is an error instead of a browser login flow.
 func (c *Client) Sync(ctx context.Context, interactive bool) error {
 	err := c.sync(ctx, interactive)
 	if err == nil {
@@ -62,9 +123,8 @@ func (c *Client) Sync(ctx context.Context, interactive bool) error {
 		return err
 	}
 
-	// The persisted session was rejected (revoked or expired early).
-	// Re-authenticate once and retry; the retry is non-interactive so a
-	// second rejection surfaces immediately.
+	// The persisted session was rejected, so re-authenticate once. The retry
+	// is non-interactive so a second rejection surfaces immediately.
 	c.State.SessionToken = ""
 	c.State.SessionExpiresAt = time.Time{}
 	if err = c.ensureSession(ctx, true); err != nil {
@@ -159,7 +219,7 @@ func (c *Client) PrewarmCerts(ctx context.Context) {
 	g, ctx := errgroup.WithContext(ctx)
 	g.SetLimit(4)
 	for _, target := range c.State.Targets {
-		ca := c.State.GetCAByID(target.CAID)
+		ca := c.State.CAByID(target.CAID)
 		if ca == nil {
 			continue
 		}
@@ -173,14 +233,11 @@ func (c *Client) PrewarmCerts(ctx context.Context) {
 	_ = g.Wait()
 }
 
-// EnsureCert fetches a fresh SSH certificate for ca and writes it to disk.
-// A valid (still-fresh) certificate is a no-op, so the proxy path stays
-// offline-friendly. When re-signing is necessary it uses the existing
-// session; with interactive set it will run the device login flow, otherwise
-// it fails fast with ErrNotLoggedIn.
+// EnsureCert fetches a fresh SSH certificate for ca and writes it to disk. A
+// valid certificate is a no-op, so the proxy path stays offline-friendly.
 func (c *Client) EnsureCert(ctx context.Context, ca state.CA, interactive bool) error {
 	if ssh.CertificateFresh(ca.ID, ca.PublicKey, certRenewWindow) {
-		return nil // already signed, valid and under the current CA
+		return nil
 	}
 	if err := c.ensureSession(ctx, interactive); err != nil {
 		return err
@@ -213,25 +270,83 @@ func (c *Client) EnsureCert(ctx context.Context, ca state.CA, interactive bool) 
 		return err
 	}
 
-	return fsutil.WriteFile(paths.SSHCertificate(res.GetCaId()), signedCert, 0o600)
+	// Trust the id we requested, not the one echoed back.
+	certPath, err := paths.SSHCertificate(ca.ID)
+	if err != nil {
+		return err
+	}
+	return fsutil.WriteFile(certPath, signedCert, 0o600)
 }
 
-// EnsureTargetCert signs the SSH certificate for a target's CA when needed.
 func (c *Client) EnsureTargetCert(
 	ctx context.Context,
 	target *state.Target,
 	interactive bool,
 ) error {
-	ca := c.State.GetCAByID(target.CAID)
+	ca := c.State.CAByID(target.CAID)
 	if ca == nil {
 		return fmt.Errorf("CA %q not found", target.CAID)
 	}
 	return c.EnsureCert(ctx, *ca, interactive)
 }
 
-// ListX509CAs returns all active X.509 CAs across the subject's
-// workspaces. X.509 CAs are not linked to targets, so they are
-// fetched separately from the access sync.
+// GetTargetPrincipals returns the principals a daemonless target's sshd
+// authorizes, with team memberships expanded.
+func (c *Client) GetTargetPrincipals(
+	ctx context.Context,
+	workspaceID, targetID string,
+) ([]*nokkuv1.PrincipalUsers, error) {
+	res, err := c.tc.GetTargetPrincipals(ctx, &nokkuv1.GetTargetPrincipalsRequest{
+		WorkspaceId: new(workspaceID),
+		TargetId:    new(targetID),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return res.GetPrincipals(), nil
+}
+
+// SyncTargetUsers reports a daemonless target's local accounts, host key, and
+// endpoints to the backend.
+func (c *Client) SyncTargetUsers(
+	ctx context.Context,
+	workspaceID, targetID string,
+	usernames []string,
+	hostPublicKey string,
+	endpoints []string,
+) error {
+	_, err := c.tc.SyncTargetUsers(ctx, &nokkuv1.SyncTargetUsersRequest{
+		WorkspaceId:   new(workspaceID),
+		TargetId:      new(targetID),
+		Usernames:     usernames,
+		HostPublicKey: new(hostPublicKey),
+		Endpoints:     endpoints,
+	})
+	return err
+}
+
+// CreateTarget registers a target. An empty name asks the server to generate
+// one.
+func (c *Client) CreateTarget(
+	ctx context.Context,
+	workspaceID, caID, name, hostPublicKey string,
+	endpoints []string,
+) (*nokkuv1.Target, error) {
+	res, err := c.tc.CreateTarget(ctx, &nokkuv1.CreateTargetRequest{
+		WorkspaceId:   new(workspaceID),
+		CaId:          new(caID),
+		Name:          new(name),
+		HostPublicKey: new(hostPublicKey),
+		Endpoints:     endpoints,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return res.GetTarget(), nil
+}
+
+// ListX509CAs returns the active X.509 CAs across the workspaces. They are
+// not linked to targets, so they are fetched separately from the access sync.
 func (c *Client) ListX509CAs(ctx context.Context) ([]*nokkuv1.CertificateAuthority, error) {
 	var out []*nokkuv1.CertificateAuthority
 	for _, w := range c.State.Workspaces {
@@ -251,8 +366,6 @@ func (c *Client) ListX509CAs(ctx context.Context) ([]*nokkuv1.CertificateAuthori
 	return out, nil
 }
 
-// SignX509Certificate signs a PEM-encoded PKCS#10 CSR with an X.509 CA
-// and returns the signed certificate with its CA chain.
 func (c *Client) SignX509Certificate(
 	ctx context.Context,
 	ca *nokkuv1.CertificateAuthority,

@@ -22,6 +22,10 @@ import (
 // backend, for when the target's endpoints are unreachable.
 type RelayDialer func(ctx context.Context, target *state.Target) (io.ReadWriteCloser, error)
 
+// halfCloseWriter lets proxyIO signal end-of-stdin without ending the
+// connection. Implemented by TCP connections and the relay stream.
+type halfCloseWriter interface{ CloseWrite() error }
+
 // Proxy pipes an ssh ProxyCommand connection to the target. Direct
 // endpoints are tried first. When every dial fails, the connection falls
 // back to the relay. relay may be nil.
@@ -96,10 +100,6 @@ func useRelay(ctx context.Context, target *state.Target, relay RelayDialer, dire
 	return proxyIO(ctx, rc)
 }
 
-// halfCloseWriter lets proxyIO signal end-of-stdin without ending the
-// connection: [*net.TCPConn] and the relay stream both support it.
-type halfCloseWriter interface{ CloseWrite() error }
-
 func proxyIO(ctx context.Context, conn io.ReadWriteCloser) error {
 	defer func() { _ = conn.Close() }()
 
@@ -143,7 +143,7 @@ func ResolveTarget(s *state.State, host string) (*state.Target, error) {
 		workspace, name = before, after
 	}
 
-	targets := s.GetTargetsByName(name)
+	targets := s.TargetsByName(name)
 	if workspace != "" {
 		for _, t := range targets {
 			if t.WorkspaceID == workspace {
@@ -179,7 +179,6 @@ func normalizeEndpoint(endpoint, sshPort string) (string, error) {
 		return "", errors.New("empty endpoint")
 	}
 
-	// If endpoint already contains port
 	host, port, err := net.SplitHostPort(endpoint)
 	if err == nil {
 		if port == "" {
@@ -188,6 +187,5 @@ func normalizeEndpoint(endpoint, sshPort string) (string, error) {
 		return net.JoinHostPort(host, port), nil
 	}
 
-	// No port, treat whole string as host
 	return net.JoinHostPort(endpoint, sshPort), nil
 }

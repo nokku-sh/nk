@@ -115,14 +115,16 @@ func TestCertificateFresh(t *testing.T) {
 	})
 
 	t.Run("invalid cert file", func(t *testing.T) {
-		path := paths.SSHCertificate("bad-ca")
+		path, err := paths.SSHCertificate("bad-ca")
+		require.NoError(t, err)
 		require.NoError(t, os.WriteFile(path, []byte("not-a-cert"), 0o600))
 		assert.False(t, CertificateFresh("bad-ca", string(caPub), margin),
 			"expected false for invalid certificate file")
 	})
 
 	t.Run("cert signed by current CA is fresh", func(t *testing.T) {
-		path := paths.SSHCertificate("good-ca")
+		path, err := paths.SSHCertificate("good-ca")
+		require.NoError(t, err)
 		require.NoError(t, os.WriteFile(
 			path,
 			signCert(t, signer, now, uint64(time.Now().Add(time.Hour).Unix())),
@@ -133,7 +135,8 @@ func TestCertificateFresh(t *testing.T) {
 	})
 
 	t.Run("cert within the renewal window is stale", func(t *testing.T) {
-		path := paths.SSHCertificate("soon-ca")
+		path, err := paths.SSHCertificate("soon-ca")
+		require.NoError(t, err)
 		require.NoError(t, os.WriteFile(
 			path,
 			signCert(t, signer, now, uint64(time.Now().Add(5*time.Minute).Unix())),
@@ -144,7 +147,8 @@ func TestCertificateFresh(t *testing.T) {
 	})
 
 	t.Run("cert signed by a retired CA is rejected", func(t *testing.T) {
-		path := paths.SSHCertificate("rolled-ca")
+		path, err := paths.SSHCertificate("rolled-ca")
+		require.NoError(t, err)
 		require.NoError(t, os.WriteFile(
 			path,
 			signCert(t, otherSigner, now, uint64(time.Now().Add(time.Hour).Unix())),

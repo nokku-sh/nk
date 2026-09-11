@@ -38,18 +38,16 @@ type CA struct {
 }
 
 type Target struct {
-	ID          string      `json:"id"`
-	WorkspaceID string      `json:"workspace_id"`
-	CAID        string      `json:"ca_id,omitempty"`
-	DaemonID    string      `json:"daemon_id,omitempty"`
-	Name        string      `json:"name"`
-	Endpoints   []string    `json:"endpoints,omitempty"`
-	Principals  []Principal `json:"principals,omitempty"`
-}
-
-type Principal struct {
-	ID       string `json:"id"`
-	Username string `json:"username"`
+	ID          string   `json:"id"`
+	WorkspaceID string   `json:"workspace_id"`
+	CAID        string   `json:"ca_id,omitempty"`
+	DaemonID    string   `json:"daemon_id,omitempty"`
+	Name        string   `json:"name"`
+	Endpoints   []string `json:"endpoints,omitempty"`
+	// Usernames are the accounts this subject may log in as on the target.
+	Usernames []string `json:"usernames,omitempty"`
+	// HostPublicKey pins the host key of a manual target.
+	HostPublicKey string `json:"host_public_key,omitempty"`
 }
 
 // State is the in-memory session, combining persisted config and offline cache.
@@ -57,18 +55,16 @@ type State struct {
 	Config
 	Cache
 
-	// Token holds a service account token injected via --token or
-	// NK_TOKEN. It is intentionally not part of Config: it is ephemeral
-	// and never written to disk.
+	// Token is a service account token from --token or NK_TOKEN. Ephemeral
+	// on purpose, so it is never written to disk.
 	Token string
 
-	// RequireTPM mirrors the --require-tpm flag: refuse the software key
-	// fallback. Like Token, it is ephemeral and never persisted.
+	// RequireTPM mirrors the --require-tpm flag and refuses the software
+	// key fallback. Ephemeral like Token.
 	RequireTPM bool
 
-	// Insecure mirrors the --insecure flag. Ephemeral on purpose: a TLS
-	// verification downgrade must never outlive the invocation that asked
-	// for it.
+	// Insecure mirrors the --insecure flag. Ephemeral so a TLS downgrade
+	// cannot outlive the invocation that asked for it.
 	Insecure bool
 }
 
@@ -109,7 +105,7 @@ func (s *State) HasCachedData() bool {
 	return len(s.Targets) > 0 && (s.User != nil || s.ServiceAccount != nil)
 }
 
-func (s *State) GetTargetsByName(name string) []*Target {
+func (s *State) TargetsByName(name string) []*Target {
 	var matches []*Target
 	for i := range s.Targets {
 		if s.Targets[i].Name == name {
@@ -119,7 +115,7 @@ func (s *State) GetTargetsByName(name string) []*Target {
 	return matches
 }
 
-func (s *State) GetCAByID(id string) *CA {
+func (s *State) CAByID(id string) *CA {
 	for i := range s.CAs {
 		if s.CAs[i].ID == id {
 			return &s.CAs[i]

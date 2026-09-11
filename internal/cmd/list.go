@@ -2,13 +2,11 @@ package cmd
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"strings"
 
 	"github.com/urfave/cli/v3"
 
-	"github.com/nokku-sh/nk/internal/client"
 	"github.com/nokku-sh/nk/internal/state"
 )
 
@@ -21,12 +19,7 @@ func listCMD() *cli.Command {
 			&cli.BoolFlag{Name: jsonFlag, Usage: jsonFlagUse},
 		},
 		Action: func(ctx context.Context, cmd *cli.Command) error {
-			s := state.FromCommand(cmd)
-			client, err := client.New(s)
-			if err != nil {
-				return err
-			}
-			err = client.SyncOrCache(ctx, true)
+			_, s, err := connect(ctx, cmd, true)
 			if err != nil {
 				return err
 			}
@@ -41,13 +34,9 @@ func listCMD() *cli.Command {
 
 			fmt.Printf("Targets (%d):\n", len(s.Targets))
 			for _, t := range s.Targets {
-				users := make([]string, 0, len(t.Principals))
-				for _, p := range t.Principals {
-					users = append(users, p.Username)
-				}
 				userStr := "none"
-				if len(users) > 0 {
-					userStr = strings.Join(users, ", ")
+				if len(t.Usernames) > 0 {
+					userStr = strings.Join(t.Usernames, ", ")
 				}
 				fmt.Printf("-  %-20s  [Users: %s]\n", t.Name, userStr)
 			}
@@ -57,7 +46,6 @@ func listCMD() *cli.Command {
 	}
 }
 
-// printTargetsJSON writes the machine list as JSON, grouped by workspace.
 func printTargetsJSON(s *state.State) error {
 	workspaces := make(map[string]string, len(s.Workspaces))
 	for _, w := range s.Workspaces {
@@ -74,20 +62,11 @@ func printTargetsJSON(s *state.State) error {
 	}{Targets: make([]target, 0, len(s.Targets))}
 
 	for _, t := range s.Targets {
-		users := make([]string, 0, len(t.Principals))
-		for _, p := range t.Principals {
-			users = append(users, p.Username)
-		}
 		out.Targets = append(out.Targets, target{
 			Name:      t.Name,
 			Workspace: workspaces[t.WorkspaceID],
-			Users:     users,
+			Users:     t.Usernames,
 		})
 	}
-	b, err := json.MarshalIndent(out, "", "  ")
-	if err != nil {
-		return err
-	}
-	fmt.Println(string(b))
-	return nil
+	return printJSON(out)
 }

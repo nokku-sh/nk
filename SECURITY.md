@@ -38,9 +38,15 @@ The following are in scope for security reports:
 - The `nk` CLI binary. This covers the browser-based login flow, service-account token
   handling, SSH certificate request/signing, the OpenSSH `ProxyCommand`
   implementation, and X.509 certificate issuance.
-- Local state and configuration it writes under `~/.config/nk/`:
-  - `config.json`, `cache.json`, `ssh_config`, `known_hosts`
-  - `nokku` / `nokku.pub` (local key and public key)
+- Local state and configuration it writes under the user config directory
+  (`~/.config/nk/` on Linux, `~/Library/Application Support/nk/` on macOS,
+  `%AppData%\nk\` on Windows):
+  - `config.json` and `cache.json`
+  - `ssh-signer.json` (the SSH signing identity) and `signer.json` (the DPoP
+    signing identity). On a TPM machine these hold TPM-backed state, otherwise a
+    private key wrapped with a key derived from the machine fingerprint
+  - `agent.sock`, the local agent socket `ssh` uses for signing
+  - `ssh_config`, `known_hosts`, `nokku.pub`
   - `certs/` and any issued certificate output
 
 ### Out of scope
@@ -56,11 +62,16 @@ The following are in scope for security reports:
 user's SSH key, and requests signed SSH and X.509 certificates from the
 backend.
 
-- Local credentials and cache live under `~/.config/nk/`. The private key
-  (`nokku`) and authentication tokens are credentials. Protect this
-  directory and keep service-account tokens out of source control.
+- Local credentials and cache live under the user config directory. The signer
+  state files, the SSH certificates, and the authentication tokens are
+  credentials. Protect this directory and keep service-account tokens out of
+  source control.
 - When the backend is unavailable, `nk` can use cached target data and an
   existing certificate, but cannot refresh access or issue a new certificate
   while offline.
-- Releases are built via GoReleaser and signed/checksummed. Verify downloads
-  against the published checksums and signatures.
+- Releases are built via GoReleaser. Each release publishes `nk_checksums.txt`,
+  a cosign signature bundle for it (`nk_checksums.txt.sigstore.json`), and a
+  CycloneDX SBOM per binary. `install.sh` verifies the SHA-256 of the binary it
+  downloads against the checksum manifest and stops on a mismatch. The manifest
+  itself can be checked with `cosign verify-blob` against the attached bundle and
+  the GitHub Actions OIDC issuer.

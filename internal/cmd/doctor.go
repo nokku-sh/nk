@@ -22,16 +22,16 @@ func doctorCMD() *cli.Command {
 			},
 		},
 		Action: func(ctx context.Context, cmd *cli.Command) error {
-			report := doctor.RunDoctor(
+			report := doctor.Run(
 				ctx,
 				state.FromCommand(cmd),
 				cmd.Bool("fix"),
 			)
-			if err := doctor.PrintReport(os.Stdout, report, cmd.Bool(jsonFlag)); err != nil {
+			if err := doctor.Print(os.Stdout, report, cmd.Bool(jsonFlag)); err != nil {
 				return err
 			}
 			if code := report.ExitCode(); code != 0 {
-				return cli.Exit("", code)
+				return cli.Exit("doctor found issues", code)
 			}
 			return nil
 		},

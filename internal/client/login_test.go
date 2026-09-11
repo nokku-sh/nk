@@ -2,6 +2,9 @@ package client
 
 import (
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -14,6 +17,9 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/nokku-sh/mon/dpop"
+	"github.com/nokku-sh/mon/dpopclient"
 
 	"github.com/nokku-sh/nk/internal/state"
 )
@@ -109,7 +115,7 @@ func (f *fakeDeviceFlow) poll(w http.ResponseWriter, r *http.Request) {
 		if derr != "" {
 			// Mirror the server's advertisement: the canonical URL rides
 			// every proof failure, the nonce on all of them too.
-			w.Header().Set(urlHeader, f.baseURL)
+			w.Header().Set(dpopclient.APIURLHeader, f.baseURL)
 			w.Header().Set("DPoP-Nonce", f.nonce)
 			writeOAuthErr(w, derr)
 			return
@@ -125,13 +131,13 @@ func (f *fakeDeviceFlow) poll(w http.ResponseWriter, r *http.Request) {
 func (f *fakeDeviceFlow) nonceEndpoint(w http.ResponseWriter, _ *http.Request) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	w.Header().Set(urlHeader, f.baseURL)
+	w.Header().Set(dpopclient.APIURLHeader, f.baseURL)
 	w.Header().Set("DPoP-Nonce", f.nonce)
 	w.WriteHeader(http.StatusNoContent)
 }
 
 // verifyProof checks the DPoP claims the server checks at issuance. The
-// signature itself is not verified; the loop behavior under test does not
+// signature itself is not verified, the loop behavior under test does not
 // depend on it.
 func (f *fakeDeviceFlow) verifyProof(r *http.Request) (string, string) {
 	proof := r.Header.Get("DPoP")
@@ -186,6 +192,15 @@ func writeJSON(w http.ResponseWriter, v any) {
 	_ = json.NewEncoder(w).Encode(v)
 }
 
+func newTestProofer(t *testing.T) *dpop.Proofer {
+	t.Helper()
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	require.NoError(t, err)
+	p, err := dpop.NewProofer(key, dpop.ProoferOptions{})
+	require.NoError(t, err)
+	return p
+}
+
 // runDeviceLogin drives the same path deviceLogin uses, with the approval
 // injected shortly after the flow starts, like a user clicking accept.
 func runDeviceLogin(t *testing.T, c *Client, f *fakeDeviceFlow) (string, error) {
@@ -206,7 +221,12 @@ func TestDeviceFlowTwoConsecutiveLogins(t *testing.T) {
 	f, srv := newFakeDeviceFlow(t)
 
 	c := &Client{State: &state.State{APIURL: srv.URL}, httpc: srv.Client()}
-	c.dpop = &dpopAuth{state: c.State, proofer: newTestProofer(t), httpc: srv.Client()}
+	c.dpop = dpopclient.New(
+		newTestProofer(t),
+		srv.Client(),
+		func() string { return c.State.SessionToken },
+		dpopclient.Options{BaseURL: c.State.APIURL},
+	)
 
 	for i := range 2 {
 		token, err := runDeviceLogin(t, c, f)

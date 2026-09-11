@@ -12,9 +12,16 @@ import (
 	"github.com/nokku-sh/nk/internal/state"
 )
 
+// relayStream adapts the relay's bidi stream to [io.ReadWriteCloser]. Read
+// and Write each have exactly one caller (the ProxyCommand pipes).
+type relayStream struct {
+	stream  *connect.BidiStreamForClientSimple[nokkuv1.RelayRequest, nokkuv1.RelayResponse]
+	pending []byte
+}
+
 // Relay opens a relayed connection to the target's daemon. The returned
-// stream carries the raw bytes between the local ssh client and the
-// daemon's sshd, end to end.
+// stream carries the raw bytes between the local ssh client and the daemon's
+// sshd.
 func (c *Client) Relay(ctx context.Context, target *state.Target) (io.ReadWriteCloser, error) {
 	if target.DaemonID == "" {
 		return nil, fmt.Errorf("target %s is not backed by a daemon", target.Name)
@@ -53,13 +60,6 @@ func (c *Client) Relay(ctx context.Context, target *state.Target) (io.ReadWriteC
 	return &relayStream{stream: stream}, nil
 }
 
-// relayStream adapts the relay's bidi stream to [io.ReadWriteCloser]. Read
-// and Write each have exactly one caller (the ProxyCommand pipes).
-type relayStream struct {
-	stream  *connect.BidiStreamForClientSimple[nokkuv1.RelayRequest, nokkuv1.RelayResponse]
-	pending []byte
-}
-
 func (r *relayStream) Read(p []byte) (int, error) {
 	if len(r.pending) > 0 {
 		n := copy(p, r.pending)
@@ -87,7 +87,7 @@ func (r *relayStream) Read(p []byte) (int, error) {
 }
 
 // readChunk copies a received data chunk into p, keeping the remainder for
-// the next read: relay messages can be larger than the caller's buffer.
+// the next read. Relay messages can be larger than the caller's buffer.
 func readChunk(p, chunk []byte) (int, []byte) {
 	n := copy(p, chunk)
 	return n, chunk[n:]
@@ -103,8 +103,8 @@ func (r *relayStream) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
-// CloseWrite half-closes the send side: stdin reached EOF, but the sshd
-// side keeps streaming until it closes the session.
+// CloseWrite half-closes the send side. The sshd side keeps streaming until
+// it closes the session.
 func (r *relayStream) CloseWrite() error {
 	return r.stream.CloseRequest()
 }

@@ -2,76 +2,89 @@ package ssh
 
 import (
 	"bytes"
-	"crypto/ed25519"
-	"crypto/rand"
-	"encoding/pem"
+	"errors"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"os"
-	"strings"
 
-	"golang.org/x/crypto/ssh"
+	cryptossh "golang.org/x/crypto/ssh"
 
-	"github.com/nokku-sh/nk/internal/fsutil"
+	"github.com/nokku-sh/mon/fsutil"
+	"github.com/nokku-sh/mon/tpm"
+
 	"github.com/nokku-sh/nk/internal/paths"
 )
 
-// SetupKey ensures the SSH identity exists: a TPM-resident key when a TPM is
-// available, otherwise a software ed25519 key. requireTPM makes a missing TPM
-// an error. A TPM identity is never silently downgraded to a software key.
-func SetupKey(requireTPM bool) error {
-	err := setupTPMKey()
-	if err == nil {
-		return nil
-	}
-	if TPMKeyActive() {
-		return fmt.Errorf(
-			"TPM identity exists but the TPM is unavailable: %w; remove %s to start over",
-			err,
-			paths.PubKeyFile(),
-		)
-	}
-	if requireTPM {
-		return fmt.Errorf("require-tpm is set but no TPM key could be created: %w", err)
-	}
-	slog.Warn("TPM unavailable, falling back to a software key", "err", err)
-	return setupFileKey()
+const unknownHost = "unknown"
+
+// sshSalt namespaces the SSH identity. It must differ from the DPoP salt,
+// since two purposes sharing a salt on one machine share one identity.
+var sshSalt = []byte("nokku-cli-ssh")
+
+// newSSHSigner loads or creates the machine's SSH identity: TPM-resident when
+// a TPM is usable, otherwise a software key wrapped to this machine.
+func newSSHSigner(requireTPM bool) (tpm.Signer, error) {
+	return tpm.NewSigner(tpm.SignerOptions{
+		Salt:             sshSalt,
+		StatePath:        paths.SSHSignerFile(),
+		RequireTPM:       requireTPM,
+		OnIdentityChange: tpm.RecreateIdentity,
+	})
 }
 
-// setupFileKey ensures a software ed25519 keypair exists.
-func setupFileKey() error {
-	if fsutil.FileExists(paths.KeyFile()) && fsutil.FileExists(paths.PubKeyFile()) {
-		return nil
-	}
-
-	pub, priv, err := ed25519.GenerateKey(rand.Reader)
+// SetupKey ensures the SSH identity exists and its authorized_keys line is on
+// disk. A changed identity invalidates the cached certificates.
+func SetupKey(requireTPM bool) error {
+	signer, err := newSSHSigner(requireTPM)
 	if err != nil {
 		return err
 	}
+	defer func() { _ = signer.Close() }()
 
+	pub, err := cryptossh.NewPublicKey(signer.Public())
+	if err != nil {
+		return err
+	}
+	pubData := authorizedKeyLine(pub)
+
+	old, readErr := os.ReadFile(paths.PubKeyFile())
+	if readErr == nil && bytes.Equal(bytes.TrimSpace(old), bytes.TrimSpace(pubData)) {
+		return removeLegacyKeys()
+	}
+	if err = fsutil.WriteFile(paths.PubKeyFile(), pubData, 0o600); err != nil {
+		return err
+	}
+	if readErr == nil {
+		// The identity changed, certificates for the old key are useless.
+		slog.Warn("ssh identity changed, run nk login to register the new key")
+		if err = removeCerts(); err != nil {
+			return err
+		}
+	}
+	return removeLegacyKeys()
+}
+
+// authorizedKeyLine renders the authorized_keys line for pub, with the
+// hostname as the comment so an operator can tell where the entry came from.
+func authorizedKeyLine(pub cryptossh.PublicKey) []byte {
 	hostname, err := os.Hostname()
 	if err != nil {
-		hostname = "unknown"
+		hostname = unknownHost
 	}
-	comment := fmt.Sprintf("%s@nokku", hostname)
+	line := bytes.TrimSpace(cryptossh.MarshalAuthorizedKey(pub))
+	return append(line, []byte(" "+hostname+"@nokku\n")...)
+}
 
-	block, err := ssh.MarshalPrivateKey(priv, comment)
-	if err != nil {
-		return err
+// removeLegacyKeys drops the pre-Signer key files. The signer cannot load
+// them, so they are dead weight.
+func removeLegacyKeys() error {
+	for _, path := range []string{paths.SoftKeyFile(), paths.KeyFile()} {
+		if err := os.Remove(path); err != nil && !errors.Is(err, fs.ErrNotExist) {
+			return fmt.Errorf("remove legacy ssh key %s: %w", path, err)
+		}
 	}
-	if err = fsutil.WriteFile(paths.KeyFile(), pem.EncodeToMemory(block), 0o600); err != nil {
-		return err
-	}
-
-	sshPub, err := ssh.NewPublicKey(pub)
-	if err != nil {
-		return err
-	}
-	pubData := ssh.MarshalAuthorizedKey(sshPub)
-	pubData = bytes.TrimSpace(pubData)
-	pubData = append(pubData, []byte(" "+comment+"\n")...)
-
-	return fsutil.WriteFile(paths.PubKeyFile(), pubData, 0o600)
+	return nil
 }
 
 func GetPubKey() (string, error) {
@@ -79,5 +92,20 @@ func GetPubKey() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return strings.TrimSpace(string(pubKeyData)), nil
+	return string(bytes.TrimSpace(pubKeyData)), nil
+}
+
+// IdentityMethod reports the active SSH identity method, "" when none exists.
+func IdentityMethod() string { return tpm.IdentityMethod(paths.SSHSignerFile()) }
+
+// IdentityStatus describes the active SSH identity for diagnostics.
+func IdentityStatus() string {
+	switch IdentityMethod() {
+	case tpm.MethodTPM:
+		return "TPM 2.0 (ecdsa-p256), private key never touches disk"
+	case tpm.MethodSoft:
+		return "software key (ecdsa-p256), machine-wrapped, served via the agent"
+	default:
+		return "not logged in yet"
+	}
 }
