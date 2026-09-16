@@ -24,8 +24,9 @@ const (
 	PrincipalsDirMode  = 0o755
 
 	// maxLocalAccounts caps what one sync reports, so a pathological passwd
-	// file cannot flood the backend.
-	maxLocalAccounts = 100
+	// file cannot flood the backend. Matches the daemon's report cap
+	// (nokkud sysutil.maxReportedUsers).
+	maxLocalAccounts = 200
 )
 
 // RenderPrincipalFile renders the subject UUIDs allowed to log in as one

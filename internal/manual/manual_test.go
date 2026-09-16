@@ -66,18 +66,18 @@ func TestLocalAccounts(t *testing.T) {
 	assert.Equal(t, []string{"alice", "carol", "root"}, LocalAccounts(getent))
 }
 
-func TestLocalAccountsCapsAtOneHundred(t *testing.T) {
+func TestLocalAccountsCapsAtTwoHundred(t *testing.T) {
 	t.Parallel()
 
 	var b strings.Builder
-	for i := range 150 {
+	for i := range 250 {
 		fmt.Fprintf(&b, "user%03d:x:%d:%d::/home/user%03d:/bin/bash\n", i, 1000+i, 1000+i, i)
 	}
 
 	accounts := LocalAccounts(b.String())
-	assert.Len(t, accounts, 100)
+	assert.Len(t, accounts, 200)
 	assert.Equal(t, "user000", accounts[0])
-	assert.Equal(t, "user099", accounts[99])
+	assert.Equal(t, "user199", accounts[199])
 }
 
 func TestRootLoginAllowed(t *testing.T) {
