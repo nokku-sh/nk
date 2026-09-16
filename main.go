@@ -15,7 +15,7 @@ import (
 )
 
 func main() {
-	root := &cli.Command{
+	cmd := &cli.Command{
 		EnableShellCompletion: true,
 		Suggest:               true,
 		Name:                  "nk",
@@ -64,8 +64,8 @@ func main() {
 		},
 	}
 
-	if err := root.Run(sigx.NotifyContext(), os.Args); err != nil {
-		fmt.Fprintf(os.Stderr, "nk: %v\n", err)
+	if err := cmd.Run(sigx.NotifyContext(), os.Args); err != nil {
+		fmt.Fprintf(os.Stderr, "%s: %v\n", cmd.Name, err)
 		os.Exit(1)
 	}
 }
