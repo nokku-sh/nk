@@ -301,6 +301,12 @@ func syncManualTarget(
 		return fmt.Errorf("no host public key found on %s", host)
 	}
 
+	// The pin update rides the SyncTargetUsers call below, which sends this
+	// fresh key.
+	if target.HostPublicKey != "" && target.HostPublicKey != hostKey {
+		fmt.Fprintf(os.Stderr, "warning: host key for %s changed, the pin will be updated\n", host)
+	}
+
 	principals, err := c.GetTargetPrincipals(ctx, target.WorkspaceID, target.ID)
 	if err != nil {
 		return err
@@ -342,6 +348,12 @@ func syncManualTarget(
 
 	if grantedRoot(principals) {
 		warnRootLogin(ctx, rd)
+	}
+
+	// Refresh locally so nk ls, ssh_config, and the known_hosts pin reflect
+	// this sync immediately.
+	if err = c.SyncOrCache(ctx, false); err != nil {
+		fmt.Fprintln(os.Stderr, "warning: local state refresh failed, run nk login to update ssh config")
 	}
 	return nil
 }

@@ -16,6 +16,9 @@ done`
 // configuration.
 const reloadMarker = "reloaded sshd"
 
+// verifyMarker is echoed when sshd -T confirms the drop-in is live config.
+const verifyMarker = "verified sshd config"
+
 // File is one file a manual sync writes on the target host.
 type File struct {
 	Path    string
@@ -96,6 +99,16 @@ func WriteScript(files []File, stale []string) string {
 	fmt.Fprintf(&b, "  echo %s\n", shellQuote(reloadMarker))
 	b.WriteString("elif systemctl reload ssh 2>/dev/null; then\n")
 	fmt.Fprintf(&b, "  echo %s\n", shellQuote(reloadMarker))
+	b.WriteString("fi\n")
+
+	// The reload succeeding does not mean sshd read the drop-in: a host whose
+	// sshd_config lacks the Include line silently ignores it.
+	fmt.Fprintf(&b, "if sshd -T 2>/dev/null | grep -qi %s; then\n",
+		shellQuote("^trustedusercakeys "+CAPath))
+	fmt.Fprintf(&b, "  echo %s\n", shellQuote(verifyMarker))
+	b.WriteString("else\n")
+	fmt.Fprintf(&b, "  echo %s >&2\n", shellQuote(
+		"warning: sshd did not pick up the drop-in, check that sshd_config has: Include /etc/ssh/sshd_config.d/*.conf"))
 	b.WriteString("fi\n")
 	return b.String()
 }
