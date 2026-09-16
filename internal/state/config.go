@@ -3,6 +3,8 @@ package state
 import (
 	"time"
 
+	"github.com/nokku-sh/mon/fsutil"
+
 	"github.com/nokku-sh/nk/internal/paths"
 )
 
@@ -18,9 +20,9 @@ type Config struct {
 }
 
 func (c *Config) Load() error {
-	return loadJSON(paths.ConfigFile(), c)
+	return fsutil.LoadJSON(paths.ConfigFile(), c)
 }
 
 func (c *Config) Save() error {
-	return saveJSON(paths.ConfigFile(), c)
+	return fsutil.SaveJSON(paths.ConfigFile(), c, 0o600)
 }

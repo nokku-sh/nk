@@ -1,6 +1,10 @@
 package state
 
-import "github.com/nokku-sh/nk/internal/paths"
+import (
+	"github.com/nokku-sh/mon/fsutil"
+
+	"github.com/nokku-sh/nk/internal/paths"
+)
 
 type Cache struct {
 	User           *User           `json:"user,omitempty"`
@@ -11,9 +15,9 @@ type Cache struct {
 }
 
 func (c *Cache) Load() error {
-	return loadJSON(paths.CacheFile(), c)
+	return fsutil.LoadJSON(paths.CacheFile(), c)
 }
 
 func (c *Cache) Save() error {
-	return saveJSON(paths.CacheFile(), c)
+	return fsutil.SaveJSON(paths.CacheFile(), c, 0o600)
 }

@@ -13,6 +13,7 @@ import (
 	"github.com/mizuchilabs/kata/buildinfo"
 	"github.com/nokku-sh/mon/dpopclient"
 	"github.com/nokku-sh/mon/fsutil"
+	"github.com/nokku-sh/mon/tpm"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/protobuf/types/known/durationpb"
 
@@ -28,6 +29,10 @@ const (
 	syncTimeout     = 5 * time.Second
 	dialTimeout     = 3 * time.Second
 )
+
+// SignerSalt namespaces the CLI's machine signing key, so every Nokku binary
+// derives its own. It is part of the salt registry documented in mon/README.md.
+var SignerSalt = []byte("nokku-cli")
 
 type Client struct {
 	State *state.State
@@ -63,7 +68,12 @@ func (c *Client) setupClients() error {
 	if c.State.IsServiceAccount() {
 		interceptors = append(interceptors, newBearerAuth(c.State.Token))
 	} else {
-		proofer, perr := newProofer(c.State)
+		proofer, perr := dpopclient.NewProofer(
+			SignerSalt,
+			paths.SignerStateFile(),
+			c.State.RequireTPM,
+			tpm.RecreateIdentity,
+		)
 		if perr != nil {
 			return perr
 		}
