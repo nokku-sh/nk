@@ -78,6 +78,7 @@ func MapTarget(t *nokkuv1.Target) *Target {
 		Endpoints:     t.GetEndpoints(),
 		Usernames:     t.GetUsernames(),
 		HostPublicKey: t.GetHostPublicKey(),
+		Metadata:      t.GetMetadata(),
 	}
 }
 

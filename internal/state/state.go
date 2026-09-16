@@ -48,6 +48,9 @@ type Target struct {
 	Usernames []string `json:"usernames,omitempty"`
 	// HostPublicKey pins the host key of a manual target.
 	HostPublicKey string `json:"host_public_key,omitempty"`
+	// Metadata carries backend-reported target metadata, notably
+	// last_manual_sync for daemonless targets.
+	Metadata map[string]string `json:"metadata,omitempty"`
 }
 
 // State is the in-memory session, combining persisted config and offline cache.
