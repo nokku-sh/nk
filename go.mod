@@ -1,13 +1,13 @@
 module github.com/nokku-sh/nk
 
-go 1.27
+go 1.27.0
 
 require (
 	buf.build/gen/go/bufbuild/protovalidate/protocolbuffers/go v1.36.12-20260825204119-511051f7f437.2
 	connectrpc.com/connect v1.21.0
 	github.com/cenkalti/backoff/v7 v7.0.0
 	github.com/google/go-tpm v0.9.8
-	github.com/mizuchilabs/kata v0.1.3
+	github.com/mizuchilabs/kata v0.1.5
 	github.com/nokku-sh/mon v0.1.2
 	github.com/pkg/browser v0.0.0-20240102092130-5ac0b6a4141c
 	github.com/stretchr/testify v1.12.1
