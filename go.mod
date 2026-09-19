@@ -7,7 +7,7 @@ require (
 	connectrpc.com/connect v1.21.0
 	github.com/cenkalti/backoff/v7 v7.0.0
 	github.com/google/go-tpm v0.9.8
-	github.com/mizuchilabs/kata v0.1.5
+	github.com/mizuchilabs/kata v0.1.11
 	github.com/nokku-sh/mon v0.1.2
 	github.com/pkg/browser v0.0.0-20240102092130-5ac0b6a4141c
 	github.com/stretchr/testify v1.12.1
