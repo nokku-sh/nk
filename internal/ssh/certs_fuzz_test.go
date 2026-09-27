@@ -1,73 +1,39 @@
 package ssh
 
 import (
-	"crypto/ed25519"
-	"crypto/rand"
 	"testing"
 	"time"
 
 	"golang.org/x/crypto/ssh"
 )
 
-// FuzzVerifyCertificate feeds arbitrary bytes into the certificate
-// validity checker. It must never panic, and anything it accepts must
-// be a certificate valid at the current time.
-func FuzzVerifyCertificate(f *testing.F) {
-	_, priv, err := ed25519.GenerateKey(rand.Reader)
-	if err != nil {
-		f.Fatalf("generate key: %v", err)
-	}
-	signer, err := ssh.NewSignerFromKey(priv)
-	if err != nil {
-		f.Fatalf("signer: %v", err)
-	}
-
-	sign := func(validAfter, validBefore uint64) []byte {
-		c := &ssh.Certificate{
-			Key:         signer.PublicKey(),
-			CertType:    ssh.UserCert,
-			ValidAfter:  validAfter,
-			ValidBefore: validBefore,
-		}
-		if err = c.SignCert(rand.Reader, signer); err != nil {
-			f.Fatalf("sign cert: %v", err)
-		}
-		return ssh.MarshalAuthorizedKey(c)
-	}
-
+// FuzzCheckCert must never panic, and anything it accepts must be a
+// certificate from the CA that is valid now.
+func FuzzCheckCert(f *testing.F) {
+	signer := newSigner(f)
+	caKey := string(ssh.MarshalAuthorizedKey(signer.PublicKey()))
 	now := time.Now()
-	seeds := [][]byte{
-		sign(uint64(now.Add(-time.Hour).Unix()), uint64(now.Add(time.Hour).Unix())),
-		sign(uint64(now.Add(-2*time.Hour).Unix()), uint64(now.Add(-time.Hour).Unix())),
-		sign(0, ssh.CertTimeInfinity),
+	for _, seed := range [][]byte{
+		signCert(f, signer, now.Add(-time.Hour), now.Add(time.Hour)),
+		signCert(f, signer, now.Add(-2*time.Hour), now.Add(-time.Hour)),
 		ssh.MarshalAuthorizedKey(signer.PublicKey()),
 		[]byte(""),
 		[]byte("not-a-cert"),
-		[]byte("-----BEGIN OPENSSH PRIVATE KEY-----"),
-	}
-	for _, seed := range seeds {
+	} {
 		f.Add(seed)
 	}
 
 	f.Fuzz(func(t *testing.T, data []byte) {
-		checkErr := VerifyCertificate(data)
-		if checkErr != nil {
+		if CheckCert(data, caKey, 0) != nil {
 			return
 		}
-
-		pub, _, _, _, perr := ssh.ParseAuthorizedKey(data)
-		if perr != nil {
-			t.Fatalf("VerifyCertificate accepted unparseable data: %v", perr)
+		cert, err := ParseCert(data)
+		if err != nil {
+			t.Fatalf("CheckCert accepted unparseable data: %v", err)
 		}
-		cert, ok := pub.(*ssh.Certificate)
-		if !ok {
-			t.Fatalf("VerifyCertificate accepted a non-certificate")
-		}
-		// The validator's own acceptance rule: now must fall inside the
-		// certificate's validity window.
-		if time.Now().Before(unixTime(cert.ValidAfter)) ||
-			time.Now().After(unixTime(cert.ValidBefore)) {
-			t.Fatalf("VerifyCertificate accepted a certificate outside its validity window")
+		after, before := CertWindow(cert)
+		if time.Now().Before(after) || time.Now().After(before) {
+			t.Fatal("CheckCert accepted a certificate outside its validity window")
 		}
 	})
 }

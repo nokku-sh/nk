@@ -13,21 +13,18 @@ import (
 func doctorCMD() *cli.Command {
 	return &cli.Command{
 		Name:  "doctor",
-		Usage: "Check local system setup and configuration",
+		Usage: "Check your setup and explain how to fix problems",
 		Flags: []cli.Flag{
-			&cli.BoolFlag{Name: jsonFlag, Usage: jsonFlagUse},
-			&cli.BoolFlag{
-				Name:  "fix",
-				Usage: "Repair common issues (ssh config, permissions)",
-			},
+			jsonFlag,
+			&cli.BoolFlag{Name: "fix", Usage: "Repair the ssh config, permissions, and stale certificates"},
 		},
 		Action: func(ctx context.Context, cmd *cli.Command) error {
-			report := doctor.Run(
-				ctx,
-				state.FromCommand(cmd),
-				cmd.Bool("fix"),
-			)
-			if err := doctor.Print(os.Stdout, report, cmd.Bool(jsonFlag)); err != nil {
+			s, err := state.FromCommand(cmd)
+			if err != nil {
+				return err
+			}
+			report := doctor.Run(ctx, s, cmd.Bool("fix"))
+			if err = doctor.Print(os.Stdout, report, cmd.Bool(jsonFlag.Name)); err != nil {
 				return err
 			}
 			if code := report.ExitCode(); code != 0 {

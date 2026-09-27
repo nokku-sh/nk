@@ -45,12 +45,13 @@ func TestCreateTarget(t *testing.T) {
 	c := &Client{State: &state.State{APIURL: server.URL, SessionToken: "sess-token"}}
 	c.tc = nokkuv1connect.NewTargetServiceClient(http.DefaultClient, server.URL)
 
-	created, err := c.CreateTarget(
-		context.Background(), "ws-1", "ca-1", "", "ssh-ed25519 AAAA", []string{"10.0.0.5"},
-	)
+	created, err := c.CreateTarget(t.Context(), &state.Target{
+		WorkspaceID: "ws-1", CAID: "ca-1", HostPublicKey: "ssh-ed25519 AAAA", Endpoints: []string{"10.0.0.5"},
+	})
 	require.NoError(t, err)
 
-	assert.Equal(t, "fair-juniper", created.GetName(), "the server-generated name comes back")
+	assert.Equal(t, "fair-juniper", created.Name, "the server-generated name comes back")
+	assert.Equal(t, "ws-1", created.WorkspaceID)
 	require.NotNil(t, svc.got)
 	assert.Empty(t, svc.got.GetName(), "an empty name asks the server to generate one")
 	assert.Equal(t, "ws-1", svc.got.GetWorkspaceId())

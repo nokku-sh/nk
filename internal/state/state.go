@@ -1,16 +1,26 @@
-// Package state provides user authentication state and workspace context.
+// Package state holds the persisted session and the offline access snapshot.
 package state
 
 import (
+	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
+
+	"github.com/mizuchilabs/kata/fsutil"
+	"github.com/urfave/cli/v3"
+
+	"github.com/nokku-sh/nk/internal/paths"
 )
 
+// saPrefix marks service-account tokens. Unlike device sessions they
+// authenticate with a plain Bearer header, without DPoP binding.
+const saPrefix = "nokku_sa_"
+
 type Workspace struct {
-	ID          string `json:"id"`
-	Name        string `json:"name"`
-	Description string `json:"description,omitempty"`
+	ID   string `json:"id"`
+	Name string `json:"name"`
 }
 
 type User struct {
@@ -20,21 +30,17 @@ type User struct {
 }
 
 type ServiceAccount struct {
-	ID          string    `json:"id"`
-	WorkspaceID string    `json:"workspace_id"`
-	Name        string    `json:"name"`
-	Description string    `json:"description,omitempty"`
-	ExpiresAt   time.Time `json:"expires_at"`
+	ID          string `json:"id"`
+	WorkspaceID string `json:"workspace_id"`
+	Name        string `json:"name"`
 }
 
 type CA struct {
-	ID             string        `json:"id"`
-	WorkspaceID    string        `json:"workspace_id"`
-	Name           string        `json:"name"`
-	PublicKey      string        `json:"public_key"`
-	Default        bool          `json:"default"`
-	UserDefaultTTL time.Duration `json:"user_default_ttl"`
-	UserMaxTTL     time.Duration `json:"user_max_ttl"`
+	ID          string `json:"id"`
+	WorkspaceID string `json:"workspace_id"`
+	Name        string `json:"name"`
+	PublicKey   string `json:"public_key"`
+	Default     bool   `json:"default,omitzero"`
 }
 
 type Target struct {
@@ -47,56 +53,102 @@ type Target struct {
 	// Usernames are the accounts this subject may log in as on the target.
 	Usernames []string `json:"usernames,omitempty"`
 	// HostPublicKey pins the host key of a manual target.
-	HostPublicKey string `json:"host_public_key,omitempty"`
-	// Metadata carries backend-reported target metadata, notably
-	// last_manual_sync for daemonless targets.
-	Metadata map[string]string `json:"metadata,omitempty"`
+	HostPublicKey string            `json:"host_public_key,omitempty"`
+	Metadata      map[string]string `json:"metadata,omitempty"`
 }
 
-// State is the in-memory session, combining persisted config and offline cache.
+// Manual reports whether the target has no daemon and is synced by hand.
+func (t Target) Manual() bool { return t.DaemonID == "" }
+
+// LastManualSync is when an operator last ran nk sync, zero when never.
+func (t Target) LastManualSync() time.Time {
+	ts, _ := time.Parse(time.RFC3339, t.Metadata["last_manual_sync"])
+	return ts
+}
+
+// Config is persisted in config.json. A session belongs to the API that issued
+// it, so both live together.
+type Config struct {
+	APIURL           string    `json:"api_url,omitempty"`
+	SessionToken     string    `json:"session_token,omitempty"`
+	SessionExpiresAt time.Time `json:"session_expires_at,omitzero"`
+}
+
+// Cache is the last access snapshot, persisted in cache.json for offline use.
+type Cache struct {
+	User           *User           `json:"user,omitempty"`
+	ServiceAccount *ServiceAccount `json:"service_account,omitempty"`
+	Workspaces     []Workspace     `json:"workspaces,omitempty"`
+	CAs            []CA            `json:"cas,omitempty"`
+	Targets        []Target        `json:"targets,omitempty"`
+}
+
+// State is the in-memory session. Everything outside Config and Cache comes
+// from flags and is never written to disk.
 type State struct {
 	Config
 	Cache
 
-	// Token is a service account token from --token or NK_TOKEN. Ephemeral
-	// on purpose, so it is never written to disk.
-	Token string
-
-	// RequireTPM mirrors the --require-tpm flag and refuses the software
-	// key fallback. Ephemeral like Token.
+	// Token is a service account token from --token or NK_TOKEN.
+	Token      string
+	TTL        time.Duration
 	RequireTPM bool
-
-	// Insecure mirrors the --insecure flag. Ephemeral so a TLS downgrade
-	// cannot outlive the invocation that asked for it.
-	Insecure bool
+	Insecure   bool
 }
 
-func New() *State {
-	s := &State{}
+// FromCommand loads the persisted state and applies the global flags.
+func FromCommand(cmd *cli.Command) (*State, error) {
+	s := Load()
+	s.Token = cmd.String("token")
+	s.TTL = cmd.Duration("ttl")
+	s.RequireTPM = cmd.Bool("require-tpm")
+	s.Insecure = cmd.Bool("insecure")
 
-	if err := s.Config.Load(); err != nil {
+	if s.Token != "" && !strings.HasPrefix(s.Token, saPrefix) {
+		return nil, errors.New("--token (NK_TOKEN) must be a service account token starting with " + saPrefix)
+	}
+	if api := cmd.String("api"); s.APIURL != api && (s.APIURL == "" || cmd.IsSet("api")) {
+		// Another server never gets this session or shows its targets.
+		s.Config = Config{APIURL: api}
+		s.Cache = Cache{}
+	}
+	return s, nil
+}
+
+// Load reads config and cache. A missing or corrupt file starts empty.
+func Load() *State {
+	s := &State{}
+	if err := fsutil.LoadJSON(paths.ConfigFile(), &s.Config); err != nil {
 		slog.Warn("failed to load config", "err", err)
 	}
-	if err := s.Cache.Load(); err != nil {
+	if err := s.LoadCache(); err != nil {
 		slog.Warn("failed to load cache", "err", err)
 	}
-
 	return s
 }
 
+// LoadCache replaces the in-memory snapshot with the one on disk.
+func (s *State) LoadCache() error {
+	s.Cache = Cache{}
+	return fsutil.LoadJSON(paths.CacheFile(), &s.Cache)
+}
+
 func (s *State) Save() error {
-	if err := s.Config.Save(); err != nil {
+	if err := fsutil.SaveJSON(paths.ConfigFile(), s.Config, 0o600); err != nil {
 		return fmt.Errorf("saving config: %w", err)
 	}
-	if err := s.Cache.Save(); err != nil {
+	if err := fsutil.SaveJSON(paths.CacheFile(), s.Cache, 0o600); err != nil {
 		return fmt.Errorf("saving cache: %w", err)
 	}
 	return nil
 }
 
+// IsServiceAccount reports whether a service account token is in use.
+func (s *State) IsServiceAccount() bool { return s.Token != "" }
+
 func (s *State) SessionValid() bool {
 	if s.IsServiceAccount() {
-		return s.Token != ""
+		return true
 	}
 	if s.SessionToken == "" {
 		return false
@@ -108,14 +160,13 @@ func (s *State) HasCachedData() bool {
 	return len(s.Targets) > 0 && (s.User != nil || s.ServiceAccount != nil)
 }
 
-func (s *State) TargetsByName(name string) []*Target {
-	var matches []*Target
+func (s *State) TargetByID(id string) *Target {
 	for i := range s.Targets {
-		if s.Targets[i].Name == name {
-			matches = append(matches, &s.Targets[i])
+		if s.Targets[i].ID == id {
+			return &s.Targets[i]
 		}
 	}
-	return matches
+	return nil
 }
 
 func (s *State) CAByID(id string) *CA {
@@ -125,4 +176,13 @@ func (s *State) CAByID(id string) *CA {
 		}
 	}
 	return nil
+}
+
+func (s *State) WorkspaceName(id string) string {
+	for _, w := range s.Workspaces {
+		if w.ID == id {
+			return w.Name
+		}
+	}
+	return ""
 }

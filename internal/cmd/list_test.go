@@ -9,7 +9,7 @@ import (
 	"github.com/nokku-sh/nk/internal/state"
 )
 
-func TestManualSuffix(t *testing.T) {
+func TestManualNote(t *testing.T) {
 	t.Parallel()
 
 	stamp := time.Now().Add(-3*time.Hour - 12*time.Minute).UTC().Format(time.RFC3339)
@@ -29,7 +29,7 @@ func TestManualSuffix(t *testing.T) {
 			target: state.Target{
 				Metadata: map[string]string{"last_manual_sync": stamp},
 			},
-			want: "(manual, synced 3h12m)",
+			want: "(manual, synced 3h12m ago)",
 		},
 		{
 			name: "an unparsable stamp reads as never synced",
@@ -48,7 +48,7 @@ func TestManualSuffix(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			assert.Equal(t, tt.want, manualSuffix(tt.target))
+			assert.Equal(t, tt.want, manualNote(tt.target))
 		})
 	}
 }

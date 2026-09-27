@@ -39,11 +39,10 @@ func (c *Client) Relay(ctx context.Context, target *state.Target) (io.ReadWriteC
 		}
 	}()
 
-	workspace, daemon := target.WorkspaceID, target.DaemonID
 	if err = stream.Send(&nokkuv1.RelayRequest{
 		Msg: &nokkuv1.RelayRequest_Start{Start: &nokkuv1.RelayStart{
-			WorkspaceId: &workspace,
-			DaemonId:    &daemon,
+			WorkspaceId: new(target.WorkspaceID),
+			DaemonId:    new(target.DaemonID),
 		}},
 	}); err != nil {
 		return nil, fmt.Errorf("relay start: %w", err)
@@ -78,19 +77,13 @@ func (r *relayStream) Read(p []byte) (int, error) {
 	case *nokkuv1.RelayResponse_Closed:
 		return 0, io.EOF
 	case *nokkuv1.RelayResponse_Data:
-		n, rest := readChunk(p, m.Data)
-		r.pending = rest
+		// A message can be larger than p, keep the rest for the next Read.
+		n := copy(p, m.Data)
+		r.pending = m.Data[n:]
 		return n, nil
 	default:
 		return 0, fmt.Errorf("unexpected relay message %T", res.GetMsg())
 	}
-}
-
-// readChunk copies a received data chunk into p, keeping the remainder for
-// the next read. Relay messages can be larger than the caller's buffer.
-func readChunk(p, chunk []byte) (int, []byte) {
-	n := copy(p, chunk)
-	return n, chunk[n:]
 }
 
 func (r *relayStream) Write(p []byte) (int, error) {

@@ -15,12 +15,6 @@ import (
 	"github.com/nokku-sh/nk/internal/pki"
 )
 
-type caJSON struct {
-	ID        string `json:"id"`
-	Name      string `json:"name"`
-	ExpiresAt string `json:"expires_at"`
-}
-
 func pkiCMD() *cli.Command {
 	return &cli.Command{
 		Name:     "pki",
@@ -33,11 +27,9 @@ func pkiListCMD() *cli.Command {
 	return &cli.Command{
 		Name:  "list",
 		Usage: "List available X.509 certificate authorities",
-		Flags: []cli.Flag{
-			&cli.BoolFlag{Name: jsonFlag, Usage: jsonFlagUse},
-		},
+		Flags: []cli.Flag{jsonFlag},
 		Action: func(ctx context.Context, cmd *cli.Command) error {
-			c, _, err := connect(ctx, cmd, true)
+			c, err := connect(ctx, cmd, true)
 			if err != nil {
 				return err
 			}
@@ -46,7 +38,7 @@ func pkiListCMD() *cli.Command {
 			if err != nil {
 				return err
 			}
-			if cmd.Bool(jsonFlag) {
+			if cmd.Bool(jsonFlag.Name) {
 				return printCAsJSON(cas)
 			}
 			if len(cas) == 0 {
@@ -112,7 +104,7 @@ func pkiIssue(ctx context.Context, cmd *cli.Command) error {
 		return err
 	}
 
-	c, _, err := connect(ctx, cmd, true)
+	c, err := connect(ctx, cmd, true)
 	if err != nil {
 		return err
 	}
@@ -134,13 +126,7 @@ func pkiIssue(ctx context.Context, cmd *cli.Command) error {
 		return err
 	}
 
-	res, err := c.SignX509Certificate(
-		ctx,
-		ca,
-		csrPEM,
-		usage,
-		cmd.Duration("ttl"),
-	)
+	res, err := c.SignX509Certificate(ctx, ca, csrPEM, usage)
 	if err != nil {
 		return err
 	}
@@ -188,6 +174,11 @@ func parseX509Usage(s string) (nokkuv1.SignX509CertificateRequest_X509Usage, err
 }
 
 func printCAsJSON(cas []*nokkuv1.CertificateAuthority) error {
+	type caJSON struct {
+		ID        string `json:"id"`
+		Name      string `json:"name"`
+		ExpiresAt string `json:"expires_at"`
+	}
 	out := struct {
 		CAs []caJSON `json:"cas"`
 	}{CAs: make([]caJSON, 0, len(cas))}

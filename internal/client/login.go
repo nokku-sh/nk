@@ -1,6 +1,7 @@
 package client
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -17,11 +18,13 @@ import (
 	"github.com/nokku-sh/mon/dpopclient"
 )
 
+// deviceAuth is the RFC 8628 device authorization response.
 type deviceAuth struct {
-	deviceCode      string
-	userCode        string
-	verificationURI string
-	interval        int
+	DeviceCode              string `json:"device_code"`
+	UserCode                string `json:"user_code"`
+	VerificationURI         string `json:"verification_uri"`
+	VerificationURIComplete string `json:"verification_uri_complete"`
+	Interval                int    `json:"interval"`
 }
 
 // ensureSession guarantees a usable session before a request. Service
@@ -37,7 +40,7 @@ func (c *Client) ensureSession(ctx context.Context, interactive bool) error {
 		return nil
 	}
 	if !interactive {
-		return errors.New("not logged in (run nk login)")
+		return errors.New("not signed in to Nokku")
 	}
 	return c.deviceLogin(ctx)
 }
@@ -59,14 +62,12 @@ func (c *Client) deviceLogin(ctx context.Context) error {
 		return err
 	}
 
-	// The verification URI already carries the code.
-	if err = browser.OpenURL(d.verificationURI); err != nil {
-		fmt.Printf("\nOpen this URL to authenticate:\n%s\n", d.verificationURI)
-	} else {
-		fmt.Printf("\nWaiting for approval... (code: %s)\n", d.userCode)
-	}
+	// The link already carries the code, the code is shown to compare.
+	fmt.Printf("\nSign in to Nokku in your browser. If it does not open, visit:\n  %s\n", d.VerificationURI)
+	fmt.Printf("Confirm the code %s there. Waiting...\n", d.UserCode)
+	_ = browser.OpenURL(d.VerificationURI)
 
-	token, expiresIn, err := c.pollDeviceToken(ctx, d.deviceCode, d.interval)
+	token, expiresIn, err := c.pollDeviceToken(ctx, d.DeviceCode, d.Interval)
 	if err != nil {
 		return err
 	}
@@ -83,39 +84,20 @@ func (c *Client) deviceLogin(ctx context.Context) error {
 	return nil
 }
 
-func (c *Client) beginDeviceAuth(
-	ctx context.Context,
-) (deviceAuth, error) {
-	form := url.Values{}
-	resp, err := c.postForm(ctx, "/auth/device", form)
+func (c *Client) beginDeviceAuth(ctx context.Context) (deviceAuth, error) {
+	var d deviceAuth
+	resp, err := c.postForm(ctx, "/auth/device", url.Values{})
 	if err != nil {
-		return deviceAuth{}, err
+		return d, err
 	}
-	var out struct {
-		DeviceCode              string `json:"device_code"`
-		UserCode                string `json:"user_code"`
-		VerificationURI         string `json:"verification_uri"`
-		VerificationURIComplete string `json:"verification_uri_complete"`
-		Interval                int    `json:"interval"`
+	if err = json.Unmarshal(resp, &d); err != nil {
+		return d, fmt.Errorf("device authorization: %w", err)
 	}
-	if err = json.Unmarshal(resp, &out); err != nil {
-		return deviceAuth{}, fmt.Errorf("device authorization: %w", err)
+	d.VerificationURI = cmp.Or(d.VerificationURIComplete, d.VerificationURI)
+	if d.DeviceCode == "" || d.UserCode == "" || d.VerificationURI == "" {
+		return d, errors.New("device authorization: incomplete response")
 	}
-	if out.DeviceCode == "" || out.UserCode == "" {
-		return deviceAuth{}, errors.New("device authorization: missing codes in response")
-	}
-	if out.VerificationURIComplete != "" {
-		out.VerificationURI = out.VerificationURIComplete
-	}
-	if out.VerificationURI == "" {
-		return deviceAuth{}, errors.New("device authorization: missing verification URI")
-	}
-	return deviceAuth{
-		deviceCode:      out.DeviceCode,
-		userCode:        out.UserCode,
-		verificationURI: out.VerificationURI,
-		interval:        out.Interval,
-	}, nil
+	return d, nil
 }
 
 func (c *Client) pollDeviceToken(
@@ -134,7 +116,7 @@ func (c *Client) pollDeviceToken(
 	ticker := time.NewTicker(wait)
 	defer ticker.Stop()
 
-	bootstrapped := false
+	bootstrapped, nonceRetried := false, false
 
 	for {
 		form := url.Values{"device_code": {deviceCode}}
@@ -160,9 +142,12 @@ func (c *Client) pollDeviceToken(
 			case "authorization_pending":
 				// keep polling
 			case "use_dpop_nonce":
-				// postForm learned the fresh nonce, retry without waiting
-				// for the next tick
-				continue
+				// postForm learned the fresh nonce, retry once without
+				// waiting, never in a tight loop.
+				if !nonceRetried {
+					nonceRetried = true
+					continue
+				}
 			case "invalid_dpop_proof":
 				// The configured API URL can differ from the canonical URL
 				// proofs bind to. The first rejection is not fatal, learn
@@ -180,8 +165,10 @@ func (c *Client) pollDeviceToken(
 				// must be honored.
 				wait += 5 * time.Second
 				ticker.Reset(wait)
-			case "access_denied", "expired_token":
-				return "", 0, errors.New("device authorization: " + authErr.Error)
+			case "access_denied":
+				return "", 0, errors.New("sign-in was denied in the browser")
+			case "expired_token":
+				return "", 0, errors.New("sign-in code expired, run nk login again")
 			default:
 				return "", 0, errors.New("device authorization failed: " + authErr.Error)
 			}
@@ -198,8 +185,9 @@ func (c *Client) pollDeviceToken(
 		case <-ctx.Done():
 			return "", 0, ctx.Err()
 		case <-ticker.C:
+			nonceRetried = false
 		case <-timeout.C:
-			return "", 0, errors.New("device authorization timed out")
+			return "", 0, errors.New("sign-in timed out, run nk login again")
 		}
 	}
 }

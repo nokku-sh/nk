@@ -7,10 +7,8 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"math/rand/v2"
 	"net"
 	"os"
-	"strings"
 	"time"
 
 	"golang.org/x/sync/errgroup"
@@ -18,174 +16,72 @@ import (
 	"github.com/nokku-sh/nk/internal/state"
 )
 
-// RelayDialer opens a relayed connection to the target through the nokku
-// backend, for when the target's endpoints are unreachable.
+// RelayDialer opens a relayed connection to a daemon target through the
+// backend.
 type RelayDialer func(ctx context.Context, target *state.Target) (io.ReadWriteCloser, error)
 
-// halfCloseWriter lets proxyIO signal end-of-stdin without ending the
-// connection. Implemented by TCP connections and the relay stream.
-type halfCloseWriter interface{ CloseWrite() error }
-
-// Proxy pipes an ssh ProxyCommand connection to the target. Direct
-// endpoints are tried first. When every dial fails, the connection falls
-// back to the relay. relay may be nil.
-func Proxy(ctx context.Context, target *state.Target, port string, relay RelayDialer) error {
-	if target == nil {
-		return fmt.Errorf("internal error: nil target")
+// Proxy pipes an ssh ProxyCommand connection to the target. Endpoints are
+// tried in order, a daemon target falls back to the relay. forceRelay skips
+// the direct dials.
+func Proxy(ctx context.Context, target *state.Target, port string, relay RelayDialer, forceRelay bool) error {
+	if forceRelay && target.Manual() {
+		return fmt.Errorf("%s has no daemon, so it cannot be reached through the relay", target.Name)
 	}
 
-	// Shuffle to avoid hotspotting
-	endpoints := make([]string, len(target.Endpoints))
-	copy(endpoints, target.Endpoints)
-	//nolint:gosec // no need for crypto
-	rand.Shuffle(len(endpoints), func(i, j int) {
-		endpoints[i], endpoints[j] = endpoints[j], endpoints[i]
-	})
-
-	dialer := &net.Dialer{Timeout: 2 * time.Second}
-	var dialErrs []error
-	for _, ep := range endpoints {
-		addr, err := normalizeEndpoint(ep, port)
-		if err != nil {
-			dialErrs = append(dialErrs, fmt.Errorf("invalid endpoint %q: %w", ep, err))
-			continue
+	var errs []error
+	if !forceRelay {
+		dialer := net.Dialer{Timeout: 2 * time.Second}
+		for _, ep := range target.Endpoints {
+			conn, err := dialer.DialContext(ctx, "tcp", endpointAddr(ep, port))
+			if err == nil {
+				return pipe(ctx, conn)
+			}
+			errs = append(errs, err)
 		}
+	}
 
-		conn, err := dialer.DialContext(ctx, "tcp", addr)
-		if err != nil {
-			dialErrs = append(dialErrs, fmt.Errorf("failed to dial %s: %w", addr, err))
-			continue
+	if target.Manual() {
+		if len(errs) == 0 {
+			return fmt.Errorf("%s has no address, run nk sync on it again", target.Name)
 		}
-		return proxyIO(ctx, conn)
+		return fmt.Errorf("cannot reach %s: %w", target.Name, errors.Join(errs...))
 	}
-
-	if len(dialErrs) > 0 {
-		return useRelay(ctx, target, relay, fmt.Errorf("all endpoints failed:\n%w", errors.Join(dialErrs...)))
-	}
-	return useRelay(ctx, target, relay)
-}
-
-// ProxyRelay pipes the connection through the relay unconditionally,
-// skipping the direct dial entirely.
-func ProxyRelay(ctx context.Context, target *state.Target, relay RelayDialer) error {
-	if target == nil {
-		return fmt.Errorf("internal error: nil target")
-	}
-	if relay == nil {
-		return errors.New("relay is not available")
-	}
-	rc, err := relay(ctx, target)
-	if err != nil {
-		return fmt.Errorf("relay connection failed: %w", err)
-	}
-	return proxyIO(ctx, rc)
-}
-
-func useRelay(ctx context.Context, target *state.Target, relay RelayDialer, directErrs ...error) error {
-	if relay == nil {
-		if len(directErrs) > 0 {
-			return directErrs[0]
-		}
-		return fmt.Errorf("target %s has no endpoints configured", target.Name)
-	}
-	if len(directErrs) > 0 {
+	if len(errs) > 0 {
 		slog.Info("direct connection failed, using relay", "target", target.Name)
-	} else {
-		slog.Info("no direct endpoints, using relay", "target", target.Name)
 	}
 	rc, err := relay(ctx, target)
 	if err != nil {
-		return fmt.Errorf("relay connection failed: %w", err)
+		return fmt.Errorf("cannot reach %s: %w", target.Name, errors.Join(append(errs, err)...))
 	}
-	return proxyIO(ctx, rc)
+	return pipe(ctx, rc)
 }
 
-func proxyIO(ctx context.Context, conn io.ReadWriteCloser) error {
-	defer func() { _ = conn.Close() }()
+// endpointAddr keeps an endpoint's own port and uses port otherwise.
+func endpointAddr(endpoint, port string) string {
+	if _, _, err := net.SplitHostPort(endpoint); err == nil {
+		return endpoint
+	}
+	return net.JoinHostPort(endpoint, port)
+}
 
-	// Closing the connection is the only way to unblock the io.Copy calls
-	// when the context is cancelled: they read from stdin/stdout pipes.
-	go func() {
-		<-ctx.Done()
-		_ = conn.Close()
-	}()
+func pipe(ctx context.Context, conn io.ReadWriteCloser) error {
+	defer func() { _ = conn.Close() }()
+	// Closing is the only way to unblock the copies on cancel.
+	stop := context.AfterFunc(ctx, func() { _ = conn.Close() })
+	defer stop()
 
 	var eg errgroup.Group
-
 	eg.Go(func() error {
 		_, err := io.Copy(os.Stdout, conn)
-		if err != nil && !errors.Is(err, io.EOF) {
-			return err
-		}
-		return nil
+		return err
 	})
-
 	eg.Go(func() error {
 		_, err := io.Copy(conn, os.Stdin)
-		if hc, ok := conn.(halfCloseWriter); ok {
+		// Half-close so sshd sees EOF but can keep sending.
+		if hc, ok := conn.(interface{ CloseWrite() error }); ok {
 			_ = hc.CloseWrite()
 		}
-		if err != nil && !errors.Is(err, io.EOF) {
-			return err
-		}
-		return nil
+		return err
 	})
-
 	return eg.Wait()
-}
-
-// ResolveTarget resolves an ssh host argument to a single target. A host is a
-// bare target name, or "workspace/target" to disambiguate duplicates. The
-// workspace part may be either a workspace name or ID.
-func ResolveTarget(s *state.State, host string) (*state.Target, error) {
-	name, workspace := host, ""
-	if before, after, found := strings.Cut(host, "/"); found {
-		workspace, name = before, after
-	}
-
-	targets := s.TargetsByName(name)
-	if workspace != "" {
-		for _, t := range targets {
-			if t.WorkspaceID == workspace {
-				return t, nil
-			}
-		}
-		for _, t := range targets {
-			for _, ws := range s.Workspaces {
-				if ws.Name == workspace && ws.ID == t.WorkspaceID {
-					return t, nil
-				}
-			}
-		}
-		return nil, fmt.Errorf("target %q not found in workspace %q", name, workspace)
-	}
-
-	switch len(targets) {
-	case 0:
-		return nil, fmt.Errorf("target %q not found in your allowed targets", name)
-	case 1:
-		return targets[0], nil
-	default:
-		return nil, fmt.Errorf(
-			"target %q is ambiguous across %d workspaces; use <workspace>/<target>",
-			name,
-			len(targets),
-		)
-	}
-}
-
-func normalizeEndpoint(endpoint, sshPort string) (string, error) {
-	if endpoint == "" {
-		return "", errors.New("empty endpoint")
-	}
-
-	host, port, err := net.SplitHostPort(endpoint)
-	if err == nil {
-		if port == "" {
-			port = sshPort
-		}
-		return net.JoinHostPort(host, port), nil
-	}
-
-	return net.JoinHostPort(endpoint, sshPort), nil
 }

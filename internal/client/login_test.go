@@ -210,10 +210,10 @@ func runDeviceLogin(t *testing.T, c *Client, f *fakeDeviceFlow) (string, error) 
 
 	go func() {
 		time.Sleep(1500 * time.Millisecond)
-		f.approve(d.deviceCode)
+		f.approve(d.DeviceCode)
 	}()
 
-	token, _, err := c.pollDeviceToken(context.Background(), d.deviceCode, d.interval)
+	token, _, err := c.pollDeviceToken(context.Background(), d.DeviceCode, d.Interval)
 	return token, err
 }
 

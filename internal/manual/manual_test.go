@@ -2,114 +2,96 @@ package manual
 
 import (
 	"fmt"
+	"os/exec"
 	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
-func TestRenderPrincipalFile(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name string
-		ids  []string
-		want string
-	}{
-		{name: "empty input renders empty", ids: nil, want: ""},
-		{name: "sorts and terminates with a newline", ids: []string{"id-b", "id-a"}, want: "id-a\nid-b\n"},
-		{name: "drops duplicates", ids: []string{"id-b", "id-a", "id-b"}, want: "id-a\nid-b\n"},
-		{name: "drops empty ids", ids: []string{"", "id-a", ""}, want: "id-a\n"},
-		{name: "all empty renders empty", ids: []string{"", ""}, want: ""},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			assert.Equal(t, tt.want, string(RenderPrincipalFile(tt.ids)))
-		})
-	}
+func probeOutput(passwd ...string) string {
+	return sectionPasswd + "\n" + strings.Join(passwd, "\n") + "\n" +
+		sectionHostKey + "\nssh-ed25519 AAAAhost root@web\n" +
+		sectionPrincipals + "\nalice\ngone\n"
 }
 
-func TestRenderDropIn(t *testing.T) {
+func TestParseProbe(t *testing.T) {
 	t.Parallel()
-
-	assert.Equal(t,
-		"TrustedUserCAKeys /etc/ssh/nokku_ca.pub\n"+
-			"AuthorizedPrincipalsFile /etc/ssh/nokku_principals/%u\n",
-		string(RenderDropIn(CAPath, PrincipalsDir)))
-
-	assert.Equal(t,
-		"TrustedUserCAKeys /tmp/ca.pub\n"+
-			"AuthorizedPrincipalsFile /tmp/principals/%u\n",
-		string(RenderDropIn("/tmp/ca.pub", "/tmp/principals")))
-}
-
-func TestLocalAccounts(t *testing.T) {
-	t.Parallel()
-
-	getent := strings.Join([]string{
+	h, err := ParseProbe(probeOutput(
 		"root:x:0:0:root:/root:/bin/bash",
 		"daemon:x:1:1:daemon:/usr/sbin:/usr/sbin/nologin",
-		"bin:x:2:2:bin:/bin:/usr/sbin/nologin",
 		"sync:x:5:0:sync:/sbin:/bin/sync",
 		"alice:x:1000:1000:Alice:/home/alice:/bin/bash",
 		"bob:x:1001:1001:Bob:/home/bob:/usr/bin/false",
-		"svc:x:1002:1002:Service:/var/lib/svc:/usr/sbin/nologin",
 		"carol:x:1003:1003:Carol:/home/carol:/bin/zsh",
 		"nobody:x:65534:65534:nobody:/nonexistent:/usr/sbin/nologin",
+		"..:x:1005:1005::/tmp:/bin/sh",
+		"we'ird:x:1006:1006::/tmp:/bin/sh",
 		"broken:fewer:fields",
 		"nauid:x:notanumber:0:x:/home/x:/bin/sh",
-		":x:1004:1004:No name:/home/none:/bin/sh",
-		"",
-	}, "\n")
-
-	assert.Equal(t, []string{"alice", "carol", "root"}, LocalAccounts(getent))
+	))
+	require.NoError(t, err)
+	assert.Equal(t, []string{"alice", "carol", "root"}, h.Accounts)
+	assert.Equal(t, "ssh-ed25519 AAAAhost root@web", h.HostKey)
+	assert.Equal(t, []string{"alice", "gone"}, h.Principals)
 }
 
-func TestLocalAccountsCapsAtTwoHundred(t *testing.T) {
+func TestParseProbeWithoutHostKey(t *testing.T) {
 	t.Parallel()
+	_, err := ParseProbe(
+		sectionPasswd + "\nroot:x:0:0::/root:/bin/sh\n" + sectionHostKey + "\n" + sectionPrincipals + "\n",
+	)
+	assert.ErrorContains(t, err, "no ssh host key")
+}
 
-	var b strings.Builder
+func TestLocalAccountsCap(t *testing.T) {
+	t.Parallel()
+	var lines []string
 	for i := range 250 {
-		fmt.Fprintf(&b, "user%03d:x:%d:%d::/home/user%03d:/bin/bash\n", i, 1000+i, 1000+i, i)
+		lines = append(lines, fmt.Sprintf("user%03d:x:%d:%d::/home/u:/bin/bash", i, 1000+i, 1000+i))
 	}
-
-	accounts := LocalAccounts(b.String())
-	assert.Len(t, accounts, 200)
-	assert.Equal(t, "user000", accounts[0])
+	accounts := localAccounts(lines)
+	assert.Len(t, accounts, maxLocalAccounts)
 	assert.Equal(t, "user199", accounts[199])
 }
 
-func TestRootLoginAllowed(t *testing.T) {
+func TestNewPlan(t *testing.T) {
 	t.Parallel()
+	h := Host{Accounts: []string{"alice", "root"}, Principals: []string{"alice", "gone", ".."}}
+	p := NewPlan("ca-key\n", map[string][]string{"root": {"id-b", "id-a", "id-b", ""}}, h)
 
-	tests := []struct {
-		name  string
-		sshdT string
-		want  bool
-	}{
-		{name: "yes", sshdT: "permitrootlogin yes\n", want: true},
-		{name: "prohibit-password", sshdT: "permitrootlogin prohibit-password\n", want: true},
-		{name: "without-password alias", sshdT: "permitrootlogin without-password\n", want: true},
-		{name: "no", sshdT: "permitrootlogin no\n", want: false},
-		{name: "forced-commands-only", sshdT: "permitrootlogin forced-commands-only\n", want: false},
-		{name: "absent option keeps the default", sshdT: "port 22\n", want: true},
-		{name: "empty dump", sshdT: "", want: true},
-		{
-			name:  "extracted from a full dump",
-			sshdT: "port 22\npermitrootlogin no\npubkeyauthentication yes\n",
-			want:  false,
-		},
-		{
-			name:  "case insensitive key",
-			sshdT: "PermitRootLogin prohibit-password\n",
-			want:  true,
-		},
+	byPath := map[string]string{}
+	for _, f := range p.Files {
+		byPath[f.Path] = f.Content
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			assert.Equal(t, tt.want, RootLoginAllowed(tt.sshdT))
-		})
+	require.Len(t, byPath, 4, "the CA, the drop-in, and one file per account")
+	assert.Equal(t, "ca-key\n", byPath[CAPath])
+	assert.Equal(
+		t,
+		"TrustedUserCAKeys /etc/ssh/nokku_ca.pub\nAuthorizedPrincipalsFile /etc/ssh/nokku_principals/%u\n",
+		byPath[DropInPath],
+	)
+	assert.Equal(t, "id-a\nid-b\n", byPath[PrincipalsDir+"/root"])
+	assert.Empty(t, byPath[PrincipalsDir+"/alice"], "no grants means an empty deny file")
+	assert.Equal(t, []string{PrincipalsDir + "/gone"}, p.Stale)
+}
+
+func TestScriptIsValidShell(t *testing.T) {
+	t.Parallel()
+	if _, err := exec.LookPath("sh"); err != nil {
+		t.Skip("sh not available")
 	}
+	p := NewPlan("ca-key 'quoted'\n", nil, Host{Accounts: []string{"root"}, Principals: []string{"gone"}})
+	cmd := exec.Command("sh", "-n")
+	cmd.Stdin = strings.NewReader(p.Script())
+	out, err := cmd.CombinedOutput()
+	require.NoError(t, err, "generated script must parse: %s", out)
+}
+
+func TestParseResult(t *testing.T) {
+	t.Parallel()
+	out := "written   /etc/ssh/nokku_ca.pub\n" + reloadMarker + "\n"
+	assert.Equal(t, Result{Reloaded: true}, ParseResult(out))
+	assert.Equal(t, "written   /etc/ssh/nokku_ca.pub\n", Output(out))
 }

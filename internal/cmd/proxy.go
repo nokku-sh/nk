@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 
@@ -10,61 +11,58 @@ import (
 	"github.com/nokku-sh/nk/internal/ssh"
 )
 
+// proxyCMD is the ProxyCommand in the generated ssh_config. ssh runs it, users
+// do not.
 func proxyCMD() *cli.Command {
 	return &cli.Command{
 		Name:      "proxy",
-		Usage:     "Proxy an SSH connection (internal use by SSH)",
-		ArgsUsage: "[host] [port]",
+		Usage:     "Proxy an SSH connection (used by ssh)",
+		ArgsUsage: "<target-id> <port>",
 		Hidden:    true,
 		Flags: []cli.Flag{
-			&cli.BoolFlag{
-				Name:  "relay",
-				Usage: "route the connection through the nokku relay, skipping direct connection",
-			},
+			&cli.BoolFlag{Name: "relay", Usage: "Always go through the Nokku relay"},
 		},
 		Action: func(ctx context.Context, cmd *cli.Command) error {
-			host := cmd.Args().Get(0)
-			if host == "" {
-				return fmt.Errorf("host name is required")
-			}
-			port := cmd.Args().Get(1)
-			if port == "" {
-				port = "22"
+			id, port := cmd.Args().Get(0), cmd.Args().Get(1)
+			if id == "" || port == "" {
+				return errors.New("usage: nk proxy <target-id> <port>")
 			}
 
-			// A missing session never opens a browser, the user runs nk login.
-			c, s, err := connect(ctx, cmd, false)
+			// Never open a browser under ssh, a stale session uses the cache.
+			c, err := connect(ctx, cmd, false)
 			if err != nil {
 				return err
 			}
-
-			target, err := ssh.ResolveTarget(s, host)
-			if err != nil {
-				return err
+			target := c.State.TargetByID(id)
+			if target == nil {
+				return errors.New("you no longer have access to this server, run nk ls to see yours")
+			}
+			ca := c.State.CAByID(target.CAID)
+			if ca == nil {
+				return fmt.Errorf("the certificate authority of %s is missing, run nk login", target.Name)
 			}
 
-			// Keep using the cached certificate when signing fails offline.
-			if err = c.EnsureTargetCert(ctx, target, false); err != nil {
-				if !ssh.CertificateOnDisk(target.CAID) {
-					return err
+			if err = c.EnsureCert(ctx, *ca, false); err != nil {
+				if !ssh.CertValid(*ca, 0) {
+					return fmt.Errorf("no valid certificate for %s, run nk login: %w", target.Name, err)
 				}
-				slog.Warn("certificate signing failed, using cached certificate",
-					"target", target.Name, "err", err)
+				slog.Warn("certificate renewal failed, using the cached one", "target", target.Name, "err", err)
 			}
-
-			// Serve the machine identity before ssh starts authenticating.
-			stopAgent, err := ssh.ServeAgent(ctx)
-			if err != nil {
+			if err = ssh.EnsureAgent(ctx); err != nil {
 				return err
 			}
-			defer func() { _ = stopAgent() }()
+			return ssh.Proxy(ctx, target, port, c.Relay, cmd.Bool("relay"))
+		},
+	}
+}
 
-			// Direct endpoints first with the relay as fallback. --relay forces it.
-			relay := ssh.RelayDialer(c.Relay)
-			if cmd.Bool("relay") {
-				return ssh.ProxyRelay(ctx, target, relay)
-			}
-			return ssh.Proxy(ctx, target, port, relay)
+func agentCMD() *cli.Command {
+	return &cli.Command{
+		Name:   "agent",
+		Usage:  "Serve the machine SSH identity (started by nk proxy)",
+		Hidden: true,
+		Action: func(ctx context.Context, _ *cli.Command) error {
+			return ssh.RunAgent(ctx)
 		},
 	}
 }

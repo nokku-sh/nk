@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"path/filepath"
 	"testing"
 	"time"
 
@@ -16,7 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 	cryptossh "golang.org/x/crypto/ssh"
 
-	"github.com/nokku-sh/mon/fsutil"
+	"github.com/mizuchilabs/kata/fsutil"
 
 	nokkuv1 "github.com/nokku-sh/nk/internal/gen/nokku/v1"
 	"github.com/nokku-sh/nk/internal/gen/nokku/v1/nokkuv1connect"
@@ -95,18 +94,20 @@ func (f *fakeCA) signRequest(t *testing.T, req *nokkuv1.SignSSHCertificateReques
 	return f.signCert(t, pub, time.Hour)
 }
 
-// setTestDirs redirects the config dir and $HOME into fresh temp dirs and
-// creates the directories EnsurePaths would create at startup.
+const (
+	wsID     = "0199a0a0-0000-7000-8000-000000000001"
+	caID     = "0199a0a0-0000-7000-8000-000000000002"
+	targetID = "0199a0a0-0000-7000-8000-000000000003"
+)
+
+// setTestDirs points home at a fresh temp dir and creates what EnsurePaths
+// would create at startup.
 func setTestDirs(t *testing.T) {
 	t.Helper()
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-	t.Setenv("HOME", t.TempDir())
-
-	home, err := os.UserHomeDir()
-	require.NoError(t, err)
-	for _, dir := range []string{paths.ConfigPath(), paths.SSHCertPath(), filepath.Join(home, ".ssh")} {
-		require.NoError(t, os.MkdirAll(dir, 0o700))
-	}
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	require.NoError(t, paths.EnsurePaths())
 }
 
 func newSyncTestClient(t *testing.T, backend *fakeBackend) *Client {
@@ -132,18 +133,18 @@ func accessResponse(caPubKey string) *nokkuv1.GetMyAccessResponse {
 			User: &nokkuv1.User{Id: new("user-1"), Name: new("alice")},
 		},
 		Workspaces: []*nokkuv1.WorkspaceAccess{{
-			WorkspaceId:   new("ws-1"),
+			WorkspaceId:   new(wsID),
 			WorkspaceName: new("production"),
 			Targets: []*nokkuv1.Target{{
-				Id:          new("t-1"),
+				Id:          new(targetID),
 				Name:        new("prod"),
-				WorkspaceId: new("ws-1"),
-				CaId:        new("ca-1"),
+				WorkspaceId: new(wsID),
+				CaId:        new(caID),
 				Usernames:   []string{"alice"},
 			}},
 			CertificateAuthorities: []*nokkuv1.CertificateAuthority{{
-				Id:          new("ca-1"),
-				WorkspaceId: new("ws-1"),
+				Id:          new(caID),
+				WorkspaceId: new(wsID),
 				Name:        new("Production CA"),
 				PublicKey:   new(caPubKey),
 			}},
@@ -157,19 +158,17 @@ func TestSyncCommitsAccessSnapshot(t *testing.T) {
 	backend := &fakeBackend{access: accessResponse(ca.pubKey)}
 	c := newSyncTestClient(t, backend)
 
-	require.NoError(t, c.Sync(context.Background(), false))
+	require.NoError(t, c.Sync(t.Context(), false))
 
 	assert.Equal(t, "user-1", c.State.User.ID)
-	assert.Equal(t, []state.Workspace{{ID: "ws-1", Name: "production"}}, c.State.Workspaces)
+	assert.Equal(t, []state.Workspace{{ID: wsID, Name: "production"}}, c.State.Workspaces)
 	require.Len(t, c.State.Targets, 1)
 	assert.Equal(t, "prod", c.State.Targets[0].Name)
 	require.Len(t, c.State.CAs, 1)
 	assert.Equal(t, ca.pubKey, c.State.CAs[0].PublicKey)
 
 	// The snapshot is committed to disk for offline use.
-	var cache state.Cache
-	require.NoError(t, cache.Load())
-	assert.NotNil(t, cache.User)
+	assert.NotNil(t, state.Load().User)
 
 	// And the derived SSH config was regenerated.
 	content, err := os.ReadFile(paths.SSHConfigFile())
@@ -184,7 +183,7 @@ func TestSyncUnauthenticatedNonInteractive(t *testing.T) {
 	}
 	c := newSyncTestClient(t, backend)
 
-	err := c.Sync(context.Background(), false)
+	err := c.Sync(t.Context(), false)
 	require.Error(t, err)
 	assert.Equal(t, connect.CodeUnauthenticated, connect.CodeOf(err),
 		"a session rejection must surface as Unauthenticated so interactive callers re-login")
@@ -196,12 +195,12 @@ func TestSyncOrCacheFallsBackToCache(t *testing.T) {
 	st := &state.State{APIURL: "http://127.0.0.1:1", SessionToken: "sess-token"}
 	st.Targets = []state.Target{{ID: "t-1", Name: "prod"}}
 	st.User = &state.User{ID: "user-1"}
-	require.NoError(t, st.Cache.Save())
+	require.NoError(t, st.Save())
 
 	c := &Client{State: st}
 	c.cc = nokkuv1connect.NewCertificateServiceClient(&http.Client{}, st.APIURL)
 	c.tc = nokkuv1connect.NewTargetServiceClient(&http.Client{}, st.APIURL)
-	err := c.SyncOrCache(context.Background(), false)
+	err := c.SyncOrCache(t.Context(), false)
 	require.NoError(t, err, "unreachable backend must fall back to cached data")
 	assert.True(t, st.HasCachedData())
 }
@@ -213,8 +212,8 @@ func TestSyncOrCacheWithoutCacheFails(t *testing.T) {
 	c := &Client{State: st}
 	c.cc = nokkuv1connect.NewCertificateServiceClient(&http.Client{}, st.APIURL)
 	c.tc = nokkuv1connect.NewTargetServiceClient(&http.Client{}, st.APIURL)
-	err := c.SyncOrCache(context.Background(), false)
-	assert.ErrorContains(t, err, "no cached data available")
+	err := c.SyncOrCache(t.Context(), false)
+	assert.ErrorContains(t, err, "nothing is cached yet")
 }
 
 func TestEnsureCertFreshIsNoOp(t *testing.T) {
@@ -227,13 +226,12 @@ func TestEnsureCertFreshIsNoOp(t *testing.T) {
 	pub, _, _, _, err := cryptossh.ParseAuthorizedKey([]byte(cliPub))
 	require.NoError(t, err)
 	fresh := ca.signCert(t, pub, time.Hour)
-	certPath, err := paths.SSHCertificate("ca-1")
-	require.NoError(t, err)
+	certPath := paths.SSHCertificate(caID)
 	require.NoError(t, os.WriteFile(certPath, []byte(fresh), 0o600))
 
 	c := &Client{State: &state.State{APIURL: "http://127.0.0.1:1", SessionToken: "sess-token"}}
-	err = c.EnsureCert(context.Background(), state.CA{
-		ID: "ca-1", PublicKey: ca.pubKey,
+	err = c.EnsureCert(t.Context(), state.CA{
+		ID: caID, PublicKey: ca.pubKey,
 	}, false)
 	require.NoError(t, err, "a fresh certificate must not trigger a re-sign")
 }
@@ -245,26 +243,25 @@ func TestEnsureCertSignsAndWritesCert(t *testing.T) {
 
 	backend := &fakeBackend{
 		sign: func(t *testing.T, req *nokkuv1.SignSSHCertificateRequest) (*nokkuv1.SignSSHCertificateResponse, error) {
-			assert.Equal(t, "ca-1", req.GetCaId())
+			assert.Equal(t, caID, req.GetCaId())
 			assert.Equal(t, nokkuv1.SignSSHCertificateRequest_CERTIFICATE_TYPE_USER, req.GetType())
 			return &nokkuv1.SignSSHCertificateResponse{
-				CaId:              new("ca-1"),
+				CaId:              new(caID),
 				SignedCertificate: new(ca.signRequest(t, req)),
 			}, nil
 		},
 	}
 	c := newSyncTestClient(t, backend)
 
-	err := c.EnsureCert(context.Background(), state.CA{
-		ID: "ca-1", WorkspaceID: "ws-1", PublicKey: ca.pubKey,
+	err := c.EnsureCert(t.Context(), state.CA{
+		ID: caID, WorkspaceID: wsID, PublicKey: ca.pubKey,
 	}, false)
 	require.NoError(t, err)
 
-	certPath, err := paths.SSHCertificate("ca-1")
-	require.NoError(t, err)
+	certPath := paths.SSHCertificate(caID)
 	signed, err := os.ReadFile(certPath)
 	require.NoError(t, err)
-	require.NoError(t, ssh.VerifyCertificate(signed),
+	require.NoError(t, ssh.CheckCert(signed, ca.pubKey, 0),
 		"the written certificate must pass local validation")
 }
 
@@ -276,19 +273,18 @@ func TestPrewarmCertsSignsMissingCerts(t *testing.T) {
 	backend := &fakeBackend{
 		sign: func(t *testing.T, req *nokkuv1.SignSSHCertificateRequest) (*nokkuv1.SignSSHCertificateResponse, error) {
 			return &nokkuv1.SignSSHCertificateResponse{
-				CaId:              new("ca-1"),
+				CaId:              new(caID),
 				SignedCertificate: new(ca.signRequest(t, req)),
 			}, nil
 		},
 	}
 	c := newSyncTestClient(t, backend)
-	c.State.CAs = []state.CA{{ID: "ca-1", WorkspaceID: "ws-1", PublicKey: ca.pubKey}}
-	c.State.Targets = []state.Target{{ID: "t-1", Name: "prod", CAID: "ca-1"}}
+	c.State.CAs = []state.CA{{ID: caID, WorkspaceID: wsID, PublicKey: ca.pubKey}}
+	c.State.Targets = []state.Target{{ID: targetID, Name: "prod", CAID: caID}}
 
-	c.PrewarmCerts(context.Background())
+	c.PrewarmCerts(t.Context())
 
-	certPath, err := paths.SSHCertificate("ca-1")
-	require.NoError(t, err)
+	certPath := paths.SSHCertificate(caID)
 	assert.True(t, fsutil.FileExists(certPath),
 		"prewarm must sign a certificate for the target's CA")
 }
