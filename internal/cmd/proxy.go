@@ -4,12 +4,20 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
+	"sync"
+	"time"
 
 	"github.com/urfave/cli/v3"
 
+	"github.com/nokku-sh/nk/internal/client"
 	"github.com/nokku-sh/nk/internal/ssh"
+	"github.com/nokku-sh/nk/internal/state"
 )
+
+// proxyFreshFor is how long nk proxy trusts the cached access snapshot.
+const proxyFreshFor = time.Minute
 
 // proxyCMD is the ProxyCommand in the generated ssh_config. ssh runs it, users
 // do not.
@@ -27,31 +35,58 @@ func proxyCMD() *cli.Command {
 			if id == "" || port == "" {
 				return errors.New("usage: nk proxy <target-id> <port>")
 			}
-
-			// Never open a browser under ssh, a stale session uses the cache.
-			c, err := connect(ctx, cmd, false)
+			s, err := state.FromCommand(cmd)
 			if err != nil {
 				return err
 			}
-			target := c.State.TargetByID(id)
+			// Built on first use, so a fresh snapshot with a valid cert never
+			// touches the TPM or the backend.
+			backend := sync.OnceValues(func() (*client.Client, error) { return client.New(s) })
+
+			// The daemon enforces revocation itself, so a young snapshot only
+			// delays new grants, and fan-out over many hosts syncs once.
+			if time.Since(s.SyncedAt) > proxyFreshFor || s.TargetByID(id) == nil {
+				c, cerr := backend()
+				if cerr != nil {
+					return cerr
+				}
+				// Never open a browser under ssh, a stale session uses the cache.
+				if err = c.SyncOrCache(ctx, false); err != nil {
+					return err
+				}
+			}
+			target := s.TargetByID(id)
 			if target == nil {
 				return errors.New("you no longer have access to this server, run nk ls to see yours")
 			}
-			ca := c.State.CAByID(target.CAID)
+			ca := s.CAByID(target.CAID)
 			if ca == nil {
 				return fmt.Errorf("the certificate authority of %s is missing, run nk login", target.Name)
 			}
 
-			if err = c.EnsureCert(ctx, *ca, false); err != nil {
-				if !ssh.CertValid(*ca, 0) {
-					return fmt.Errorf("no valid certificate for %s, run nk login: %w", target.Name, err)
+			if !ssh.CertValid(*ca, client.CertRenewWindow) {
+				c, cerr := backend()
+				if cerr == nil {
+					cerr = c.EnsureCert(ctx, *ca, false)
 				}
-				slog.Warn("certificate renewal failed, using the cached one", "target", target.Name, "err", err)
+				if cerr != nil {
+					if !ssh.CertValid(*ca, 0) {
+						return fmt.Errorf("no valid certificate for %s, run nk login: %w", target.Name, cerr)
+					}
+					slog.Warn("certificate renewal failed, using the cached one", "target", target.Name, "err", cerr)
+				}
 			}
 			if err = ssh.EnsureAgent(ctx); err != nil {
 				return err
 			}
-			return ssh.Proxy(ctx, target, port, c.Relay, cmd.Bool("relay"))
+			relay := func(ctx context.Context, t *state.Target) (io.ReadWriteCloser, error) {
+				c, cerr := backend()
+				if cerr != nil {
+					return nil, cerr
+				}
+				return c.Relay(ctx, t)
+			}
+			return ssh.Proxy(ctx, target, port, relay, cmd.Bool("relay"))
 		},
 	}
 }

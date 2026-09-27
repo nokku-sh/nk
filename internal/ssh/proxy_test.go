@@ -63,6 +63,21 @@ func TestProxyDaemonFallsBackToRelay(t *testing.T) {
 	assert.True(t, stub.halfClosed, "stdin EOF must half-close the relay stream")
 }
 
+// TestProxyRelayDoesNotWaitForSlowEndpoint covers the remote user whose
+// daemon only reports private addresses: the relay must win long before the
+// direct dial times out.
+func TestProxyRelayDoesNotWaitForSlowEndpoint(t *testing.T) {
+	stdinEOF(t)
+	stub := &relayStub{}
+	// TEST-NET-1 is never routed, so the dial hangs until its timeout.
+	target := &state.Target{Name: "prod", DaemonID: "d", Endpoints: []string{"192.0.2.1:22"}}
+
+	start := time.Now()
+	require.NoError(t, Proxy(t.Context(), target, "22", stub.dial, false))
+	assert.Less(t, time.Since(start), time.Second, "relay waited for the direct dial")
+	assert.Equal(t, 1, stub.calls)
+}
+
 func TestProxyReportsDialAndRelayErrors(t *testing.T) {
 	t.Parallel()
 	stub := &relayStub{err: errors.New("relay down")}

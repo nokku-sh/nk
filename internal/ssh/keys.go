@@ -14,15 +14,14 @@ import (
 	"github.com/nokku-sh/nk/internal/paths"
 )
 
-// sshSalt namespaces the SSH identity. It must differ from the DPoP salt,
-// since two purposes sharing a salt on one machine share one identity.
-var sshSalt = []byte("nokku-cli-ssh")
+// sshSalt namespaces the SSH identity. Salt registry: mon/README.md.
+const sshSalt = "nokku-cli-ssh"
 
 // newSSHSigner loads or creates the machine's SSH identity: TPM-resident when
 // a TPM is usable, otherwise a software key wrapped to this machine.
 func newSSHSigner(requireTPM bool) (tpm.Signer, error) {
 	return tpm.NewSigner(tpm.SignerOptions{
-		Salt:             sshSalt,
+		Salt:             []byte(sshSalt),
 		StatePath:        paths.SSHSignerFile(),
 		RequireTPM:       requireTPM,
 		OnIdentityChange: tpm.RecreateIdentity,

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -25,7 +26,7 @@ const unsafeChars = " ,/#\"'`$&|;<>(){}[]*?!~\\%="
 // WriteConfigs regenerates ssh_config and known_hosts from the snapshot and
 // makes sure ~/.ssh/config includes them.
 func WriteConfigs(st *state.State) error {
-	if err := fsutil.WriteIfChanged(paths.SSHConfigFile(), renderSSHConfig(st), 0o600); err != nil {
+	if err := fsutil.WriteIfChanged(paths.SSHConfigFile(), renderSSHConfig(st, nkCommand()), 0o600); err != nil {
 		return err
 	}
 	if err := fsutil.WriteIfChanged(paths.KnownHostsPath(), renderKnownHosts(st), 0o600); err != nil {
@@ -34,7 +35,7 @@ func WriteConfigs(st *state.State) error {
 	return EnsureInclude()
 }
 
-func renderSSHConfig(st *state.State) []byte {
+func renderSSHConfig(st *state.State, nk string) []byte {
 	nameCount := make(map[string]int)
 	for _, t := range st.Targets {
 		if usable(t) {
@@ -63,7 +64,7 @@ func renderSSHConfig(st *state.State) []byte {
 		// proxy gets the target id, since ssh lowercases %h.
 		fmt.Fprintf(&b, `Host %s
     User %s
-    ProxyCommand nk proxy %s %%p
+    ProxyCommand %s proxy %s %%p
     HostKeyAlias %s
     CertificateFile %s
     IdentityFile %s
@@ -75,7 +76,7 @@ func renderSSHConfig(st *state.State) []byte {
     ServerAliveInterval 60
     LogLevel ERROR
 
-`, host, t.Usernames[0], t.ID, t.ID,
+`, host, t.Usernames[0], nk, t.ID, t.ID,
 			configValue(paths.SSHCertificate(t.CAID)), configValue(paths.PubKeyFile()),
 			configValue(paths.AgentSocket()), configValue(paths.KnownHostsPath()))
 	}
@@ -102,6 +103,36 @@ func renderKnownHosts(st *state.State) []byte {
 		}
 	}
 	return b.Bytes()
+}
+
+// nkCommand names this nk by an absolute path, so ssh started without nk on
+// its PATH (IDEs, cron, git GUIs) still finds it and no other nk runs. The
+// PATH entry is preferred when it is this binary, since package managers keep
+// that path stable across upgrades.
+func nkCommand() string {
+	self, err := os.Executable()
+	if err != nil {
+		return "nk"
+	}
+	bin := self
+	if found, lookErr := exec.LookPath("nk"); lookErr == nil && filepath.IsAbs(found) && sameFile(found, self) {
+		bin = found
+	}
+	// ssh expands % tokens and hands the line to a shell, so anything a
+	// quoted path cannot carry falls back to a PATH lookup.
+	if strings.ContainsAny(bin, "\"$`%\\\n") {
+		return "nk"
+	}
+	if strings.ContainsAny(bin, " \t") {
+		return `"` + bin + `"`
+	}
+	return bin
+}
+
+func sameFile(a, b string) bool {
+	fa, errA := os.Stat(a)
+	fb, errB := os.Stat(b)
+	return errA == nil && errB == nil && os.SameFile(fa, fb)
 }
 
 func usable(t state.Target) bool {

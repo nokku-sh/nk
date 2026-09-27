@@ -26,20 +26,21 @@ import (
 )
 
 const (
-	certRenewWindow = 15 * time.Minute
+	// CertRenewWindow renews a certificate this long before it expires.
+	CertRenewWindow = 15 * time.Minute
 	syncTimeout     = 5 * time.Second
 	dialTimeout     = 3 * time.Second
 )
 
-// SignerSalt namespaces the CLI's machine signing key, so every Nokku binary
-// derives its own. It is part of the salt registry documented in mon/README.md.
-var SignerSalt = []byte("nokku-cli")
+// signerSalt namespaces the CLI's DPoP key. Salt registry: mon/README.md.
+const signerSalt = "nokku-cli"
 
 type Client struct {
 	State *state.State
 	httpc *http.Client
 	dpop  *dpopclient.Client
 
+	ac nokkuv1connect.AuthServiceClient
 	cc nokkuv1connect.CertificateServiceClient
 	tc nokkuv1connect.TargetServiceClient
 	dc nokkuv1connect.DaemonServiceClient
@@ -59,7 +60,12 @@ func New(s *state.State) (*Client, error) {
 	if s.IsServiceAccount() {
 		auth = newBearerAuth(s.Token)
 	} else {
-		proofer, perr := dpopclient.NewProofer(SignerSalt, paths.SignerStateFile(), s.RequireTPM, tpm.RecreateIdentity)
+		proofer, perr := dpopclient.NewProofer(
+			[]byte(signerSalt),
+			paths.SignerStateFile(),
+			s.RequireTPM,
+			tpm.RecreateIdentity,
+		)
 		if perr != nil {
 			return nil, perr
 		}
@@ -70,6 +76,7 @@ func New(s *state.State) (*Client, error) {
 		auth = c.dpop
 	}
 	opts := connect.WithInterceptors(auth)
+	c.ac = nokkuv1connect.NewAuthServiceClient(httpc, s.APIURL, opts)
 	c.cc = nokkuv1connect.NewCertificateServiceClient(httpc, s.APIURL, opts)
 	c.tc = nokkuv1connect.NewTargetServiceClient(httpc, s.APIURL, opts)
 	c.dc = nokkuv1connect.NewDaemonServiceClient(httpc, s.APIURL, opts)
@@ -141,6 +148,7 @@ func (c *Client) sync(ctx context.Context, interactive bool) error {
 	}
 
 	cache := state.FromAccess(res)
+	cache.SyncedAt = time.Now()
 	if err = ssh.CleanupCerts(cache.CAs); err != nil {
 		return err
 	}
@@ -149,6 +157,19 @@ func (c *Client) sync(ctx context.Context, interactive bool) error {
 		return err
 	}
 	return ssh.WriteConfigs(c.State)
+}
+
+// Logout revokes the device session on the backend. Best effort, the local
+// state goes either way.
+func (c *Client) Logout(ctx context.Context) {
+	if c.State.IsServiceAccount() || c.State.SessionToken == "" {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, syncTimeout)
+	defer cancel()
+	if _, err := c.ac.Logout(ctx, &nokkuv1.LogoutRequest{}); err != nil {
+		slog.Debug("revoke session on the backend", "err", err)
+	}
 }
 
 // PrewarmCerts signs every missing or expiring certificate in parallel.
@@ -172,7 +193,7 @@ func (c *Client) PrewarmCerts(ctx context.Context) {
 // EnsureCert makes sure a certificate from ca is on disk that stays valid for
 // the renewal window. A valid one is kept, so ssh works offline.
 func (c *Client) EnsureCert(ctx context.Context, ca state.CA, interactive bool) error {
-	if ssh.CertValid(ca, certRenewWindow) {
+	if ssh.CertValid(ca, CertRenewWindow) {
 		return nil
 	}
 	if err := c.ensureSession(ctx, interactive); err != nil {

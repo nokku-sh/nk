@@ -28,10 +28,10 @@ var Commands = []*cli.Command{
 	agentCMD(),
 }
 
-// connect syncs access just in time and falls back to the cached snapshot when
-// the backend is unreachable. When interactive is false a missing session is an
-// error instead of a browser login.
-func connect(ctx context.Context, cmd *cli.Command, interactive bool) (*client.Client, error) {
+// connect syncs access just in time, signing in through the browser when
+// needed, and falls back to the cached snapshot when the backend is
+// unreachable.
+func connect(ctx context.Context, cmd *cli.Command) (*client.Client, error) {
 	s, err := state.FromCommand(cmd)
 	if err != nil {
 		return nil, err
@@ -40,7 +40,7 @@ func connect(ctx context.Context, cmd *cli.Command, interactive bool) (*client.C
 	if err != nil {
 		return nil, err
 	}
-	if err = c.SyncOrCache(ctx, interactive); err != nil {
+	if err = c.SyncOrCache(ctx, true); err != nil {
 		return nil, err
 	}
 	return c, nil
