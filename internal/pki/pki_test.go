@@ -1,6 +1,7 @@
 package pki
 
 import (
+	"crypto/ecdsa"
 	"crypto/ed25519"
 	"crypto/rand"
 	"crypto/x509"
@@ -93,11 +94,14 @@ func TestWriteCert(t *testing.T) {
 }
 
 func TestGenerateKey(t *testing.T) {
-	priv, err := GenerateKey()
-	require.NoError(t, err)
-
-	// Key must be usable for CSR creation.
-	_, err = NewCSR(priv, "test", nil)
-	require.NoError(t, err)
-	assert.IsType(t, ed25519.PrivateKey{}, priv)
+	for keyType, want := range map[string]any{"ecdsa": &ecdsa.PrivateKey{}, "ed25519": ed25519.PrivateKey{}} {
+		priv, err := GenerateKey(keyType)
+		require.NoError(t, err, keyType)
+		assert.IsType(t, want, priv, keyType)
+		// Key must be usable for CSR creation.
+		_, err = NewCSR(priv, "test", nil)
+		require.NoError(t, err, keyType)
+	}
+	_, err := GenerateKey("rsa")
+	assert.Error(t, err)
 }

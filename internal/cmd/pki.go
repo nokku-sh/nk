@@ -29,7 +29,7 @@ func pkiListCMD() *cli.Command {
 		Usage: "List available X.509 certificate authorities",
 		Flags: []cli.Flag{jsonFlag},
 		Action: func(ctx context.Context, cmd *cli.Command) error {
-			c, err := connect(ctx, cmd, true)
+			c, err := connect(ctx, cmd)
 			if err != nil {
 				return err
 			}
@@ -80,6 +80,11 @@ func pkiIssueCMD() *cli.Command {
 				Usage: "CA ID or name (optional when only one X.509 CA exists)",
 			},
 			&cli.StringFlag{
+				Name:  "key-type",
+				Usage: "Private key type: ecdsa (P-256) or ed25519",
+				Value: "ecdsa",
+			},
+			&cli.StringFlag{
 				Name:    "output",
 				Aliases: []string{"o"},
 				Usage:   "Output directory",
@@ -104,7 +109,20 @@ func pkiIssue(ctx context.Context, cmd *cli.Command) error {
 		return err
 	}
 
-	c, err := connect(ctx, cmd, true)
+	priv, err := pki.GenerateKey(cmd.String("key-type"))
+	if err != nil {
+		return err
+	}
+	dir := cmd.String("output")
+	certPath := filepath.Join(dir, cn+".crt")
+	keyPath := filepath.Join(dir, cn+".key")
+	caPath := filepath.Join(dir, cn+"-ca.crt")
+	// A key in use elsewhere must never be replaced silently.
+	if _, statErr := os.Stat(keyPath); statErr == nil {
+		return fmt.Errorf("%s already exists, remove it or pick another --output", keyPath)
+	}
+
+	c, err := connect(ctx, cmd)
 	if err != nil {
 		return err
 	}
@@ -113,11 +131,6 @@ func pkiIssue(ctx context.Context, cmd *cli.Command) error {
 		return err
 	}
 	ca, err := pki.MatchCA(cas, cmd.String("ca"))
-	if err != nil {
-		return err
-	}
-
-	priv, err := pki.GenerateKey()
 	if err != nil {
 		return err
 	}
@@ -131,13 +144,9 @@ func pkiIssue(ctx context.Context, cmd *cli.Command) error {
 		return err
 	}
 
-	dir := cmd.String("output")
 	if err = os.MkdirAll(dir, 0o750); err != nil {
 		return err
 	}
-	certPath := filepath.Join(dir, cn+".crt")
-	keyPath := filepath.Join(dir, cn+".key")
-	caPath := filepath.Join(dir, cn+"-ca.crt")
 
 	if err = pki.WriteCert(certPath, []byte(res.GetCertificate())); err != nil {
 		return err

@@ -5,7 +5,9 @@ package pki
 
 import (
 	"crypto"
+	"crypto/ecdsa"
 	"crypto/ed25519"
+	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/x509"
 	"crypto/x509/pkix"
@@ -18,11 +20,19 @@ import (
 	"github.com/mizuchilabs/kata/fsutil"
 )
 
-// GenerateKey creates a new ed25519 private key. X.509 issuance writes the
-// private key to disk, so TPM-backed keys cannot be used here.
-func GenerateKey() (crypto.PrivateKey, error) {
-	_, priv, err := ed25519.GenerateKey(rand.Reader)
-	return priv, err
+// GenerateKey creates a private key of keyType, "ecdsa" (P-256) or
+// "ed25519". ECDSA is the default because older Java, databases, and some
+// Kubernetes setups reject ed25519 certificates. X.509 issuance writes the
+// key to disk, so TPM-backed keys cannot be used here.
+func GenerateKey(keyType string) (crypto.PrivateKey, error) {
+	switch keyType {
+	case "ecdsa":
+		return ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	case "ed25519":
+		_, priv, err := ed25519.GenerateKey(rand.Reader)
+		return priv, err
+	}
+	return nil, fmt.Errorf("invalid key type %q (expected ecdsa or ed25519)", keyType)
 }
 
 // NewCSR builds a PEM-encoded PKCS#10 CSR with the given common name
