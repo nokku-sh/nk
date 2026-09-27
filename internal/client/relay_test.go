@@ -2,7 +2,6 @@ package client
 
 import (
 	"bytes"
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -37,6 +36,6 @@ func TestRelayRequiresDaemon(t *testing.T) {
 	t.Parallel()
 
 	c := &Client{}
-	_, err := c.Relay(context.Background(), &state.Target{Name: "prod"})
+	_, err := c.Relay(t.Context(), &state.Target{Name: "prod"})
 	assert.ErrorContains(t, err, "not backed by a daemon")
 }

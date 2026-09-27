@@ -2,6 +2,7 @@ package ssh
 
 import (
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -11,251 +12,103 @@ import (
 	"github.com/nokku-sh/nk/internal/state"
 )
 
-func TestGenerateSSHConfig(t *testing.T) {
+func TestRenderSSHConfig(t *testing.T) {
 	setupSSHDir(t)
 	st := &state.State{
+		Workspaces: []state.Workspace{{ID: "ws-1", Name: "staging"}, {ID: "ws-2", Name: "prod uction"}},
 		Targets: []state.Target{
-			{
-				ID:        "t-1",
-				Name:      "prod",
-				CAID:      "ca-1",
-				Usernames: []string{"alice"},
-			},
-			{
-				ID:        "t-2",
-				Name:      "staging",
-				CAID:      "ca-2",
-				Usernames: []string{"bob"},
-			},
-			// Incomplete targets must be skipped.
-			{
-				ID:        "t-3",
-				Name:      "no-ca",
-				CAID:      "",
-				Usernames: []string{"c"},
-			},
-			{ID: "t-4", Name: "no-principals", CAID: "ca-3"},
-			{ID: "t-5", Name: "", CAID: "ca-3", Usernames: []string{"e"}},
-		},
-	}
-
-	require.NoError(t, GenerateSSHConfig(st))
-
-	content, err := os.ReadFile(paths.SSHConfigFile())
-	require.NoError(t, err)
-
-	certPath, err := paths.SSHCertificate("ca-1")
-	require.NoError(t, err)
+			{ID: "t-1", Name: "web", CAID: "ca-1", Usernames: []string{"alice", "bob"}},
+			{ID: "t-2", Name: "db", WorkspaceID: "ws-1", CAID: "ca-1", Usernames: []string{"alice"}},
+			{ID: "t-3", Name: "db", WorkspaceID: "ws-2", CAID: "ca-1", Usernames: []string{"alice"}},
+			{ID: "t-4", Name: "no-users", CAID: "ca-1"},
+			{ID: "t-5", Name: "prod\n    ProxyCommand curl evil", CAID: "ca-1", Usernames: []string{"a"}},
+			{ID: "t-6", Name: "ok", CAID: "ca-1", Usernames: []string{"a\n    ProxyCommand curl evil"}},
+			{ID: "t-7", Name: "a/b", CAID: "ca-1", Usernames: []string{"a"}},
+		}}
+	out := string(renderSSHConfig(st))
 
 	for _, want := range []string{
-		"# Managed by Nokku\n",
-		"Host prod\n",
-		"    User alice\n",
-		"    ProxyCommand nk proxy %h %p\n",
-		"    CertificateFile " + certPath + "\n",
-		"    IdentityFile " + paths.PubKeyFile() + "\n",
-		"    IdentityAgent " + paths.AgentSocket() + "\n",
-		"    HostKeyAlias t-1\n",
-		"    IdentitiesOnly yes\n",
-		"    PasswordAuthentication no\n",
-		"    StrictHostKeyChecking yes\n",
-		"    ConnectTimeout 30\n",
-		"Host staging\n",
-		"    User bob\n",
+		"Host web\n    User alice\n    ProxyCommand nk proxy t-1 %p\n    HostKeyAlias t-1\n",
+		"    CertificateFile " + configValue(paths.SSHCertificate("ca-1")) + "\n",
+		"    IdentityAgent " + configValue(paths.AgentSocket()) + "\n",
+		"Host staging/db\n",
+		"Host ws-2/db\n", // an unsafe workspace name falls back to its id
 	} {
-		assert.Contains(t, string(content), want)
+		assert.Contains(t, out, want)
 	}
-	for _, forbidden := range []string{"no-ca", "no-principals", "t-3", "t-4"} {
-		assert.NotContains(t, string(content), forbidden)
-	}
-}
-
-func TestGenerateSSHConfigTPMIdentity(t *testing.T) {
-	setupSSHDir(t)
-	// A TPM identity is detected by the absence of a private key file while
-	// the public key exists. ssh then uses the agent for the private key.
-	require.NoError(t, os.WriteFile(paths.PubKeyFile(), []byte("ssh-ed25519 AAAA\n"), 0o600))
-
-	st := &state.State{
-		Targets: []state.Target{
-			{
-				ID:        "t-1",
-				Name:      "prod",
-				CAID:      "ca-1",
-				Usernames: []string{"alice"},
-			},
-		},
-	}
-	require.NoError(t, GenerateSSHConfig(st))
-
-	content, err := os.ReadFile(paths.SSHConfigFile())
-	require.NoError(t, err)
-	assert.Contains(t, string(content), "    IdentityFile "+paths.PubKeyFile()+"\n",
-		"TPM identity must point IdentityFile at the public key")
-	assert.Contains(t, string(content), "    IdentityAgent "+paths.AgentSocket()+"\n",
-		"TPM identity must set IdentityAgent")
-}
-
-func TestGenerateSSHConfigDisambiguatesDuplicateNames(t *testing.T) {
-	setupSSHDir(t)
-	st := &state.State{
-		Workspaces: []state.Workspace{
-			{ID: "ws-1", Name: "staging"},
-			{ID: "ws-2", Name: "production"},
-		},
-		Targets: []state.Target{
-			{ID: "t-1", Name: "db", WorkspaceID: "ws-1", CAID: "ca-1",
-				Usernames: []string{"alice"}},
-			{ID: "t-2", Name: "db", WorkspaceID: "ws-2", CAID: "ca-2",
-				Usernames: []string{"bob"}},
-			{ID: "t-3", Name: "unique", WorkspaceID: "ws-1", CAID: "ca-1",
-				Usernames: []string{"carol"}},
-		},
-	}
-
-	require.NoError(t, GenerateSSHConfig(st))
-	content, err := os.ReadFile(paths.SSHConfigFile())
-	require.NoError(t, err)
-
-	assert.Contains(t, string(content), "Host staging/db\n",
-		"expected workspace-qualified host for duplicate name")
-	assert.Contains(t, string(content), "Host production/db\n",
-		"expected workspace-qualified host for duplicate name")
-	assert.Contains(t, string(content), "Host unique\n",
-		"expected bare host for unique name")
-	assert.NotContains(t, string(content), "\nHost db\n",
-		"duplicate bare name must not be emitted")
-}
-
-func TestGenerateSSHConfigRejectsControlCharacters(t *testing.T) {
-	setupSSHDir(t)
-	st := &state.State{
-		Targets: []state.Target{
-			{
-				ID:        "t-1",
-				Name:      "prod\n    ProxyCommand curl http://evil",
-				CAID:      "ca-1",
-				Usernames: []string{"alice"},
-			},
-			{
-				ID:   "t-2",
-				Name: "ok",
-				CAID: "ca-1",
-				Usernames: []string{
-					"alice\n    ProxyCommand curl http://evil2",
-				},
-			},
-			{
-				ID:        "t-3",
-				Name:      "ca-injection",
-				CAID:      "ca-1\n    ProxyCommand curl http://evil3",
-				Usernames: []string{"alice"},
-			},
-			{
-				ID:        "t-4\n    ProxyCommand curl http://evil4",
-				Name:      "id-injection",
-				CAID:      "ca-1",
-				Usernames: []string{"alice"},
-			},
-		},
-	}
-
-	require.NoError(t, GenerateSSHConfig(st))
-	content, err := os.ReadFile(paths.SSHConfigFile())
-	require.NoError(t, err)
-
-	for _, forbidden := range []string{"curl http://evil", "evil2", "ProxyCommand"} {
-		assert.NotContains(t, string(content), forbidden,
-			"injected content reached the generated config")
+	for _, forbidden := range []string{"no-users", "curl evil", "a/b", "\nHost db\n"} {
+		assert.NotContains(t, out, forbidden)
 	}
 }
 
-func TestGenerateKnownHosts(t *testing.T) {
-	setupSSHDir(t)
+func TestConfigValueQuotesPaths(t *testing.T) {
+	t.Parallel()
+	assert.Equal(t, `"/Users/Jane Doe/.config/nk/ssh_config"`, configValue("/Users/Jane Doe/.config/nk/ssh_config"))
+	assert.Equal(t, `"C:\\Users\\Jane Doe\\x"`, configValue(`C:\Users\Jane Doe\x`))
+	assert.Equal(t, `"\\\\.\\pipe\\nk-agent"`, configValue(`\\.\pipe\nk-agent`))
+}
+
+func TestRenderKnownHosts(t *testing.T) {
+	t.Parallel()
 	st := &state.State{
 		CAs: []state.CA{
-			{ID: "ca-1", Name: "Production CA", PublicKey: "ssh-ed25519 AAAACa1== production"},
-			{ID: "ca-2", Name: "Staging CA", PublicKey: "  ssh-rsa AAAACa2== staging\n"},
+			{ID: "ca-1", PublicKey: "ssh-ed25519 AAAACa1== production"},
+			{ID: "ca-2", PublicKey: "ssh-ed25519 AAAA==\nHost *\n    ProxyCommand curl evil"},
 		},
 		Targets: []state.Target{
-			{ID: "t-1", Name: "prod", CAID: "ca-1", DaemonID: "d-1"},
-			{ID: "t-2", Name: "stage", CAID: "ca-2", DaemonID: "d-2"},
-			{ID: "t-3", Name: "no-ca", DaemonID: "d-3"},
-			{ID: "t-4", Name: "orphan", CAID: "ca-missing", DaemonID: "d-4"},
-			// A manual target presents its own host key, so it is pinned by
-			// that raw key and never by the CA.
-			{ID: "t-5", Name: "manual", CAID: "ca-1", HostPublicKey: "ssh-ed25519 AAAAhost== host"},
-			// A manual target with no reported host key has nothing to pin.
-			{ID: "t-6", Name: "manual-keyless", CAID: "ca-1"},
-			// A daemon target's host key comes from a certificate, so a
-			// reported raw key must not become a pin.
-			{ID: "t-7", Name: "daemon-keyed", CAID: "ca-1", DaemonID: "d-7",
-				HostPublicKey: "ssh-ed25519 AAAAstray== host"},
-		},
-	}
+			{ID: "t-1", CAID: "ca-1", DaemonID: "d-1"},
+			{ID: "t-2", CAID: "ca-2", DaemonID: "d-2"},
+			{ID: "t-3", CAID: "ca-1", HostPublicKey: "ssh-ed25519 AAAAhost== host"},
+			{ID: "t-4", CAID: "ca-1"},
+			{ID: "t-5", CAID: "ca-1", DaemonID: "d-5", HostPublicKey: "ssh-ed25519 AAAAstray"},
+		}}
+	out := string(renderKnownHosts(st))
 
-	require.NoError(t, GenerateKnownHosts(st))
-	content, err := os.ReadFile(paths.KnownHostsPath())
-	require.NoError(t, err)
-
-	// Trust is scoped to the target ID (the HostKeyAlias in the generated
-	// config), never a global "*".
-	assert.Contains(t, string(content), "@cert-authority t-1 ssh-ed25519 AAAACa1== production\n")
-	assert.Contains(t, string(content), "@cert-authority t-2 ssh-rsa AAAACa2== staging\n")
-	assert.Contains(t, string(content), "t-5 ssh-ed25519 AAAAhost== host\n")
-	assert.NotContains(t, string(content), "@cert-authority t-5",
-		"a manual target must not be trusted through the CA")
-	assert.NotContains(t, string(content), "@cert-authority *",
-		"known_hosts must not trust a CA for every host")
-	assert.NotContains(t, string(content), "AAAAstray",
-		"a daemon target must not be pinned by a raw host key")
-	assert.NotContains(t, string(content), "t-6",
-		"target without a reported host key must not get a known_hosts line")
-	assert.NotContains(t, string(content), "t-3",
-		"target without a CA must not get a known_hosts line")
-	assert.NotContains(t, string(content), "t-4",
-		"target with an unknown CA must not get a known_hosts line")
+	assert.Contains(t, out, "@cert-authority t-1 ssh-ed25519 AAAACa1== production\n")
+	assert.Contains(t, out, "t-3 ssh-ed25519 AAAAhost== host\n")
+	assert.NotContains(t, out, "@cert-authority t-3", "manual targets are pinned, not CA trusted")
+	assert.NotContains(t, out, "t-4", "nothing to pin without a host key")
+	assert.NotContains(t, out, "AAAAstray", "daemon targets are never pinned by a raw key")
+	assert.NotContains(t, out, "curl evil")
 }
 
-// TestGenerateKnownHostsRejectsInjectedKeys covers the known_hosts sinks: the
-// CA public key and the reported host key are multi-word fields, so a newline
-// in either would start a new line in a file OpenSSH parses.
-func TestGenerateKnownHostsRejectsInjectedKeys(t *testing.T) {
+func TestInclude(t *testing.T) {
 	setupSSHDir(t)
-	st := &state.State{
-		CAs: []state.CA{
-			{ID: "ca-1", PublicKey: "ssh-ed25519 AAAACA==\nHost *\n    ProxyCommand curl http://evil"},
-		},
-		Targets: []state.Target{
-			{ID: "t-1", Name: "prod", CAID: "ca-1", DaemonID: "d-1"},
-			{ID: "t-2", Name: "manual", CAID: "ca-1",
-				HostPublicKey: "ssh-ed25519 AAAAhost==\nHost *\n    ProxyCommand curl http://evil2"},
-		},
-	}
+	cfg := paths.SSHUserConfig()
 
-	require.NoError(t, GenerateKnownHosts(st))
-	content, err := os.ReadFile(paths.KnownHostsPath())
+	require.NoError(t, EnsureInclude(), "a missing ~/.ssh/config is created")
+	data, err := os.ReadFile(cfg)
 	require.NoError(t, err)
+	assert.True(t, HasInclude(data))
 
-	for _, forbidden := range []string{"curl http://evil", "ProxyCommand", "Host *"} {
-		assert.NotContains(t, string(content), forbidden,
-			"injected content reached known_hosts")
-	}
+	original := "Host own\n    HostName example.com\n"
+	require.NoError(t, os.WriteFile(cfg, []byte(original), 0o600))
+	require.NoError(t, EnsureInclude())
+	require.NoError(t, EnsureInclude())
+	data, err = os.ReadFile(cfg)
+	require.NoError(t, err)
+	assert.Equal(t, IncludeLine()+"\n\n"+original, string(data), "include goes on top, once")
+
+	require.NoError(t, RemoveInclude())
+	data, err = os.ReadFile(cfg)
+	require.NoError(t, err)
+	assert.Equal(t, original, string(data))
 }
 
-func TestSafeConfigToken(t *testing.T) {
-	for _, ok := range []string{"prod", "prod-us-1", "staging", "ünïcode", "db.prod_1"} {
-		assert.True(t, safeConfigToken(ok), "safeConfigToken(%q) = false, want true", ok)
+func TestIncludeKeepsSymlink(t *testing.T) {
+	setupSSHDir(t)
+	target := filepath.Join(t.TempDir(), "dotfiles-ssh-config")
+	require.NoError(t, os.WriteFile(target, []byte("Host own\n"), 0o600))
+	require.NoError(t, os.MkdirAll(filepath.Dir(paths.SSHUserConfig()), 0o700))
+	if err := os.Symlink(target, paths.SSHUserConfig()); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
 	}
-	for _, bad := range []string{
-		"a\nb", "a\rb", "a\tb", "a\x00b", "a\x1bb", "a\x7fb",
-		"my host", "a#b", "",
-		// Wildcards would widen a Host or known_hosts pattern.
-		"*", "a?b", "[a-z]", "a!b",
-		// Shell metacharacters.
-		"a;b", "a&b", "a|b", "a$b", "a`b", "a'b", `a"b`, "a(b)",
-		"a{b}", "a<b", "a~b", `a\b`, "a>b",
-	} {
-		assert.False(t, safeConfigToken(bad), "safeConfigToken(%q) = true, want false", bad)
-	}
+
+	require.NoError(t, EnsureInclude())
+	fi, err := os.Lstat(paths.SSHUserConfig())
+	require.NoError(t, err)
+	assert.NotZero(t, fi.Mode()&os.ModeSymlink, "the dotfile link must survive")
+	data, err := os.ReadFile(target)
+	require.NoError(t, err)
+	assert.True(t, HasInclude(data))
 }

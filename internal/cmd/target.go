@@ -1,137 +1,211 @@
 package cmd
 
 import (
-	"bytes"
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
 	"net"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 
 	"github.com/urfave/cli/v3"
 
 	"github.com/nokku-sh/nk/internal/client"
-	nokkuv1 "github.com/nokku-sh/nk/internal/gen/nokku/v1"
 	"github.com/nokku-sh/nk/internal/manual"
+	"github.com/nokku-sh/nk/internal/paths"
 	"github.com/nokku-sh/nk/internal/state"
+	"github.com/nokku-sh/nk/internal/ui"
 )
 
-// hostKeyCommand prefers an ed25519 host key when the host has one.
-const hostKeyCommand = `for t in ed25519 ecdsa rsa; do
-  f=/etc/ssh/ssh_host_${t}_key.pub
-  if [ -r "$f" ]; then cat "$f"; break; fi
-done`
-
-// remote runs commands with the system ssh, so the operator's own key, agent,
-// and config apply.
-type remote struct {
-	host string
-	user string
-	port string
-}
-
-func targetCMD() *cli.Command {
-	return &cli.Command{
-		Name:     "target",
-		Usage:    "Manage targets",
-		Commands: []*cli.Command{syncCMD()},
-	}
-}
-
-// syncCMD is wired as both `nk sync` and `nk target sync`.
 func syncCMD() *cli.Command {
 	return &cli.Command{
-		Name:      "sync",
-		Usage:     "Create a target if needed, then write its trust files onto the host",
-		ArgsUsage: "<host | user@host>",
+		Name:  "sync",
+		Usage: "Add a server to Nokku without the daemon, or refresh one you added",
+		Description: "Connects as root with your own ssh, then writes the Nokku CA, an sshd drop-in, " +
+			"and one principals file per account. Run it again whenever access changes.",
+		ArgsUsage: "<host | root@host | target-name>",
 		Flags: []cli.Flag{
-			&cli.StringFlag{
-				Name:  "name",
-				Usage: "Target name. The server generates one when this is empty",
-			},
-			&cli.StringFlag{
-				Name:  "workspace",
-				Usage: "Workspace id or name, needed only when you belong to several",
-			},
+			&cli.StringFlag{Name: "name", Usage: "Name for a new target, generated when empty"},
+			&cli.StringFlag{Name: "workspace", Usage: "Workspace id or name, needed only when you belong to several"},
 			&cli.StringFlag{
 				Name:  "ca",
-				Usage: "Certificate authority id or name, defaults to the workspace default",
+				Usage: "Certificate authority id or name for a new target, defaults to the workspace default",
 			},
-			&cli.BoolFlag{
-				Name:  "dry-run",
-				Usage: "Print the files a manual sync would write and change nothing",
-			},
-			&cli.StringFlag{
-				Name:  "user",
-				Usage: "SSH user a manual sync connects as",
-				Value: "root",
-			},
-			&cli.StringFlag{
-				Name:  "port",
-				Usage: "SSH port a manual sync connects to",
-				Value: "22",
-			},
+			&cli.StringFlag{Name: "port", Usage: "SSH port of the server, defaults to your ssh config or 22"},
+			&cli.BoolFlag{Name: "dry-run", Usage: "Show what would be written and change nothing"},
 		},
 		Action: targetSync,
 	}
 }
 
 func targetSync(ctx context.Context, cmd *cli.Command) error {
-	arg := cmd.Args().Get(0)
+	arg := cmd.Args().First()
 	if arg == "" {
-		return errors.New("an ssh destination is required, for example: nk sync root@10.0.0.5")
+		return errors.New("which server? For example: nk sync 10.0.0.5")
+	}
+	user, host, found := strings.Cut(arg, "@")
+	if !found {
+		host, user = arg, "root"
+	}
+	if user != "root" {
+		return fmt.Errorf("nk sync connects as root, use root@%s", host)
 	}
 
-	c, s, err := connect(ctx, cmd, false)
+	c, err := connect(ctx, cmd, true)
 	if err != nil {
 		return err
 	}
+	s := c.State
+	dryRun := cmd.Bool("dry-run")
 
-	workspace, err := resolveWorkspace(s, cmd.String("workspace"))
+	target, err := findTarget(s, cmd.String("workspace"), host)
 	if err != nil {
 		return err
 	}
-	ca, caSource, err := resolveCA(s, workspace.ID, cmd.String("ca"))
-	if err != nil {
-		return err
-	}
-
-	// A known target name syncs that target, anything else is an ssh destination.
-	sshUser := cmd.String("user")
-	target := targetByName(s, workspace.ID, arg)
+	dest := remote{host: host, port: cmd.String("port")}
 	if target == nil {
-		dest := destination(arg, cmd.String("user"), cmd.IsSet("user"), cmd.String("port"))
-		sshUser = dest.user
-		target = targetByEndpoint(s, workspace.ID, dest.host)
-		if target == nil && cmd.Bool("dry-run") {
-			// A dry run previews the files without registering anything.
-			target = &state.Target{
-				WorkspaceID: workspace.ID,
-				CAID:        ca.ID,
-				Name:        cmd.String("name"),
-				Endpoints:   []string{dest.host},
-			}
-		} else if target == nil {
-			target, err = createTarget(ctx, c, workspace, ca, dest, cmd.String("name"))
-			if err != nil {
-				return err
-			}
+		if target, err = newTarget(ctx, s, cmd, dest); err != nil {
+			return err
+		}
+	} else if target.Name == host && len(target.Endpoints) > 0 {
+		// Reached by name, so connect to where the target lives.
+		dest = endpointRemote(target.Endpoints[0], dest.port)
+	}
+	ca := s.CAByID(target.CAID)
+	if ca == nil || strings.TrimSpace(ca.PublicKey) == "" {
+		return fmt.Errorf("the certificate authority of %s is missing, run nk login and try again", target.Name)
+	}
+
+	fmt.Printf("Connecting with: %s\n", dest)
+	out, err := dest.run(ctx, manual.ProbeCommand, "")
+	if err != nil {
+		return err
+	}
+	h, err := manual.ParseProbe(out)
+	if err != nil {
+		return fmt.Errorf("%s: %w", dest.host, err)
+	}
+	if target.HostPublicKey != "" && target.HostPublicKey != h.HostKey {
+		warnf("the host key of %s changed since the last sync, users will trust the new one", dest.host)
+	}
+
+	grants := map[string][]string{}
+	if target.ID == "" && !dryRun {
+		target.HostPublicKey = h.HostKey
+		if target, err = c.CreateTarget(ctx, target); err != nil {
+			return err
+		}
+		fmt.Printf("Added target %s\n", ui.Bold(target.Name))
+	}
+	if target.ID != "" {
+		if grants, err = c.TargetPrincipals(ctx, target); err != nil {
+			return err
 		}
 	}
+	plan := manual.NewPlan(ca.PublicKey, grants, h)
 
-	if target.DaemonID != "" {
-		return fmt.Errorf(
-			"target %s has a daemon, which syncs itself. Run this on a daemonless target",
-			target.Name,
-		)
+	if dryRun {
+		fmt.Println("Dry run, nothing was written. This sync would write:")
+		for _, f := range plan.Files {
+			fmt.Printf("\n%s\n%s", ui.Bold(f.Path), cmp.Or(f.Content, ui.Dim("(empty, nobody may log in)\n")))
+		}
+		for _, path := range plan.Stale {
+			fmt.Printf("\n%s %s\n", ui.Bold("remove"), path)
+		}
+		return nil
 	}
 
-	fmt.Printf("target %s in %s, ca %s (%s)\n",
-		target.Name, workspace.Name, ca.Name, caSource)
-	return syncManualTarget(ctx, cmd, c, s, target, sshUser)
+	return applyPlan(ctx, c, target, dest, h, plan)
+}
+
+// applyPlan writes the host first and reports to Nokku only once that worked.
+func applyPlan(
+	ctx context.Context,
+	c *client.Client,
+	target *state.Target,
+	dest remote,
+	h manual.Host,
+	plan manual.Plan,
+) error {
+	out, err := dest.run(ctx, "sh -s", plan.Script())
+	fmt.Print(ui.Dim(manual.Output(out)))
+	if err != nil {
+		return fmt.Errorf("writing to %s failed, nothing was reported to Nokku: %w", dest.host, err)
+	}
+	if err = c.ReportTarget(ctx, target, h.Accounts, h.HostKey); err != nil {
+		return fmt.Errorf("the host is up to date, but reporting to Nokku failed, run nk sync again: %w", err)
+	}
+
+	res := manual.ParseResult(out)
+	if !res.Reloaded {
+		warnf("could not reload sshd, restart it on the host to apply the changes")
+	}
+	if !res.Verified {
+		warnf("sshd is not using the Nokku drop-in. Make sure /etc/ssh/sshd_config has\n" +
+			"  Include /etc/ssh/sshd_config.d/*.conf\nnear the top, then run nk sync again")
+	}
+
+	// Refresh locally so nk ls, ssh_config, and the host key pin match at once.
+	if err = c.SyncOrCache(ctx, false); err != nil {
+		warnf("local refresh failed, run nk login to update your ssh config")
+	}
+	fmt.Printf("%s %s is synced. Users connect with: ssh <user>@%s\n", ui.Green("✔"), target.Name, target.Name)
+	return nil
+}
+
+// findTarget looks for an existing manual target by name or endpoint.
+func findTarget(s *state.State, workspace, host string) (*state.Target, error) {
+	var matches []*state.Target
+	for i := range s.Targets {
+		t := &s.Targets[i]
+		if workspace != "" && t.WorkspaceID != workspace && s.WorkspaceName(t.WorkspaceID) != workspace {
+			continue
+		}
+		if t.Name == host ||
+			slices.ContainsFunc(t.Endpoints, func(ep string) bool { return endpointHost(ep) == host }) {
+			matches = append(matches, t)
+		}
+	}
+	switch {
+	case len(matches) == 0:
+		return nil, nil //nolint:nilnil // no match means a new server
+	case len(matches) > 1:
+		return nil, fmt.Errorf("%s matches targets in several workspaces, pass --workspace", host)
+	case !matches[0].Manual():
+		return nil, fmt.Errorf("%s runs the Nokku daemon, which keeps itself in sync", matches[0].Name)
+	}
+	return matches[0], nil
+}
+
+// newTarget prepares a target for a server Nokku does not know yet. It is
+// created on the backend only once the host key is read.
+func newTarget(ctx context.Context, s *state.State, cmd *cli.Command, dest remote) (*state.Target, error) {
+	ws, err := resolveWorkspace(s, cmd.String("workspace"))
+	if err != nil {
+		return nil, err
+	}
+	ca, err := resolveCA(s, ws.ID, cmd.String("ca"))
+	if err != nil {
+		return nil, err
+	}
+	// Users dial the endpoint directly, so store the real address behind an
+	// alias from the operator's ssh config.
+	addr := dest.resolve(ctx)
+	endpoint := addr.host
+	if addr.port != "" && addr.port != "22" {
+		endpoint = net.JoinHostPort(addr.host, addr.port)
+	}
+	return &state.Target{
+		WorkspaceID: ws.ID,
+		CAID:        ca.ID,
+		Name:        strings.TrimSpace(cmd.String("name")),
+		Endpoints:   []string{endpoint},
+	}, nil
 }
 
 func resolveWorkspace(s *state.State, ref string) (state.Workspace, error) {
@@ -143,292 +217,128 @@ func resolveWorkspace(s *state.State, ref string) (state.Workspace, error) {
 		}
 		return state.Workspace{}, fmt.Errorf("workspace %q not found", ref)
 	}
-
 	switch len(s.Workspaces) {
 	case 0:
-		return state.Workspace{}, errors.New("you do not belong to any workspace")
+		return state.Workspace{}, errors.New("you do not belong to any workspace yet")
 	case 1:
 		return s.Workspaces[0], nil
 	}
-
 	names := make([]string, 0, len(s.Workspaces))
 	for _, w := range s.Workspaces {
 		names = append(names, w.Name)
 	}
 	return state.Workspace{}, fmt.Errorf(
-		"you belong to several workspaces, pass --workspace: %s", strings.Join(names, ", "),
+		"you belong to several workspaces, pass --workspace with one of: %s",
+		strings.Join(names, ", "),
 	)
 }
 
-// resolveCA picks the CA that signs a target's certificates and returns the
-// source label shown in the sync header.
-func resolveCA(s *state.State, workspaceID, ref string) (state.CA, string, error) {
-	var candidates []state.CA
+// resolveCA picks the named CA, else the workspace default, else the only one.
+func resolveCA(s *state.State, workspaceID, ref string) (state.CA, error) {
+	var cas []state.CA
 	for _, ca := range s.CAs {
 		if ca.WorkspaceID == workspaceID {
-			candidates = append(candidates, ca)
+			cas = append(cas, ca)
 		}
 	}
-
-	if ref != "" {
-		for _, ca := range candidates {
-			if ca.ID == ref || ca.Name == ref {
-				return ca, "selected", nil
-			}
-		}
-		return state.CA{}, "", fmt.Errorf("certificate authority %q not found in this workspace", ref)
+	if i := slices.IndexFunc(cas, func(ca state.CA) bool {
+		return ref != "" && (ca.ID == ref || ca.Name == ref) || ref == "" && ca.Default
+	}); i >= 0 {
+		return cas[i], nil
 	}
-
-	for _, ca := range candidates {
-		if ca.Default {
-			return ca, "default", nil
-		}
+	switch {
+	case ref != "":
+		return state.CA{}, fmt.Errorf("certificate authority %q not found in this workspace", ref)
+	case len(cas) == 1:
+		return cas[0], nil
+	case len(cas) == 0:
+		return state.CA{}, errors.New("this workspace has no certificate authority yet, create one in the Nokku UI")
 	}
-
-	switch len(candidates) {
-	case 0:
-		return state.CA{}, "", errors.New("this workspace has no certificate authority")
-	case 1:
-		return candidates[0], "only ca", nil
-	}
-	return state.CA{}, "", errors.New("this workspace has several certificate authorities, pass --ca")
+	return state.CA{}, errors.New("this workspace has several certificate authorities, pass --ca")
 }
 
-func targetByName(s *state.State, workspaceID, name string) *state.Target {
-	for i := range s.Targets {
-		if s.Targets[i].WorkspaceID == workspaceID && s.Targets[i].Name == name {
-			return &s.Targets[i]
-		}
+func endpointHost(ep string) string {
+	if h, _, err := net.SplitHostPort(ep); err == nil {
+		return h
 	}
-	return nil
+	return ep
 }
 
-// targetByEndpoint skips daemon targets, which sync themselves.
-func targetByEndpoint(s *state.State, workspaceID, host string) *state.Target {
-	for i := range s.Targets {
-		t := &s.Targets[i]
-		if t.WorkspaceID != workspaceID || t.DaemonID != "" {
-			continue
-		}
-		if slices.Contains(t.Endpoints, host) {
-			return t
-		}
+// endpointRemote uses the endpoint's own port unless --port was set.
+func endpointRemote(ep, port string) remote {
+	r := remote{host: ep, port: port}
+	if h, p, err := net.SplitHostPort(ep); err == nil {
+		r.host = h
+		r.port = cmp.Or(port, p)
 	}
-	return nil
+	return r
 }
 
-// destination splits user@host, an explicit --user wins over it.
-func destination(arg, user string, userSet bool, port string) remote {
-	dest := remote{host: arg, user: user, port: port}
-	if before, after, found := strings.Cut(arg, "@"); found {
-		if before != "" && !userSet {
-			dest.user = before
-		}
-		dest.host = after
-	}
-	return dest
+// remote runs commands as root with the system ssh, so the operator's own
+// keys, agent, and config apply.
+type remote struct {
+	host string
+	port string
 }
 
-// createTarget reads the host key over the operator's own ssh, so the pinned key
-// means this host.
-func createTarget(
-	ctx context.Context,
-	c *client.Client,
-	workspace state.Workspace,
-	ca state.CA,
-	dest remote,
-	name string,
-) (*state.Target, error) {
-	out, err := dest.run(ctx, hostKeyCommand)
-	if err != nil {
-		return nil, fmt.Errorf("read the host public key on %s: %w", dest.host, err)
+func (r remote) String() string {
+	if r.port == "" || r.port == "22" {
+		return "ssh root@" + r.host
 	}
-	hostKey := strings.TrimSpace(out)
-	if hostKey == "" {
-		return nil, fmt.Errorf("no host public key found on %s", dest.host)
-	}
-
-	created, err := c.CreateTarget(
-		ctx, workspace.ID, ca.ID, strings.TrimSpace(name), hostKey, []string{dest.host},
-	)
-	if err != nil {
-		return nil, err
-	}
-	fmt.Printf("created target %s for %s\n", created.GetName(), dest.host)
-
-	return &state.Target{
-		ID:            created.GetId(),
-		WorkspaceID:   workspace.ID,
-		CAID:          ca.ID,
-		Name:          created.GetName(),
-		Endpoints:     created.GetEndpoints(),
-		HostPublicKey: created.GetHostPublicKey(),
-	}, nil
+	return "ssh -p " + r.port + " root@" + r.host
 }
 
-func syncManualTarget(
-	ctx context.Context,
-	cmd *cli.Command,
-	c *client.Client,
-	s *state.State,
-	target *state.Target,
-	sshUser string,
-) error {
-	ca := s.CAByID(target.CAID)
-	if ca == nil {
-		return fmt.Errorf("target %s has no certificate authority %q", target.Name, target.CAID)
-	}
-	if strings.TrimSpace(ca.PublicKey) == "" {
-		return fmt.Errorf("certificate authority %q has no public key", ca.Name)
-	}
-
-	host, port := manualAddress(target, cmd.String("port"), cmd.IsSet("port"))
-	rd := remote{host: host, user: sshUser, port: port}
-
-	// The first sync runs before the host trusts Nokku, so use the operator's own ssh.
-	passwd, err := rd.run(ctx, "getent passwd")
-	if err != nil {
-		return fmt.Errorf("list local accounts on %s: %w", host, err)
-	}
-	accounts := manual.LocalAccounts(passwd)
-
-	hostKey, err := rd.run(ctx, hostKeyCommand)
-	if err != nil {
-		return fmt.Errorf("read the host public key on %s: %w", host, err)
-	}
-	hostKey = strings.TrimSpace(hostKey)
-	if hostKey == "" {
-		return fmt.Errorf("no host public key found on %s", host)
-	}
-
-	// The pin update rides the SyncTargetUsers call below, which sends this
-	// fresh key.
-	if target.HostPublicKey != "" && target.HostPublicKey != hostKey {
-		fmt.Fprintf(os.Stderr, "warning: host key for %s changed, the pin will be updated\n", host)
-	}
-
-	principals, err := c.GetTargetPrincipals(ctx, target.WorkspaceID, target.ID)
-	if err != nil {
-		return err
-	}
-	existing, err := rd.run(ctx, manual.PrincipalsListCommand)
-	if err != nil {
-		return fmt.Errorf("list principal files on %s: %w", host, err)
-	}
-
-	files := manual.HostFiles(ca.PublicKey, grantsByUser(principals), accounts)
-	stale := manual.StalePrincipals(strings.Fields(existing), accounts)
-
-	if cmd.Bool("dry-run") {
-		fmt.Println("Dry run, nothing written")
-		for _, f := range files {
-			fmt.Printf("\n%s (%04o)\n%s", f.Path, f.Mode, f.Content)
-		}
-		for _, path := range stale {
-			fmt.Printf("\nremoved %s\n", path)
-		}
+// portArgs leaves the port to the operator's ssh config unless one was given.
+func (r remote) portArgs() []string {
+	if r.port == "" {
 		return nil
 	}
+	return []string{"-p", r.port}
+}
 
-	// Backend writes, which the dry run above skips.
-	if err = c.SyncTargetUsers(ctx, target.WorkspaceID, target.ID, accounts, hostKey, target.Endpoints); err != nil {
-		return err
-	}
-
-	out, err := rd.runScript(ctx, manual.WriteScript(files, stale))
-	fmt.Print(out)
+// resolve asks ssh which host and port an alias from the operator's ssh
+// config points at, without connecting.
+func (r remote) resolve(ctx context.Context) remote {
+	//nolint:gosec // argv, not a shell, and -- ends the options
+	out, err := exec.CommandContext(ctx, "ssh", append(r.portArgs(), "-G", "--", r.host)...).Output()
 	if err != nil {
-		return err
+		return r
 	}
-
-	// A host without systemd reloads sshd by hand.
-	if !manual.Reloaded(out) {
-		fmt.Fprintln(os.Stderr, "warning: sshd was not reloaded, reload it to apply the drop-in")
-	}
-
-	if grantedRoot(principals) {
-		warnRootLogin(ctx, rd)
-	}
-
-	// Refresh locally so nk ls, ssh_config, and the known_hosts pin reflect
-	// this sync immediately.
-	if err = c.SyncOrCache(ctx, false); err != nil {
-		fmt.Fprintln(os.Stderr, "warning: local state refresh failed, run nk login to update ssh config")
-	}
-	return nil
-}
-
-func grantsByUser(principals []*nokkuv1.PrincipalUsers) map[string][]string {
-	grants := make(map[string][]string, len(principals))
-	for _, p := range principals {
-		grants[p.GetUsername()] = p.GetIds()
-	}
-	return grants
-}
-
-func grantedRoot(principals []*nokkuv1.PrincipalUsers) bool {
-	for _, p := range principals {
-		if p.GetUsername() == "root" {
-			return true
+	for line := range strings.SplitSeq(string(out), "\n") {
+		switch k, v, _ := strings.Cut(strings.TrimSpace(line), " "); k {
+		case "hostname":
+			r.host = v
+		case "port":
+			r.port = v
 		}
 	}
-	return false
+	return r
 }
 
-// Root login policy is the operator's call, so this only warns.
-func warnRootLogin(ctx context.Context, rd remote) {
-	cfg, err := rd.run(ctx, "sshd -T")
-	if err != nil || manual.RootLoginAllowed(cfg) {
-		return
+func (r remote) run(ctx context.Context, command, stdin string) (string, error) {
+	args := append(r.portArgs(), "-l", "root",
+		// Like answering yes on first contact, a changed key is still refused.
+		"-o", "StrictHostKeyChecking=accept-new",
+	)
+	if runtime.GOOS != "windows" {
+		// Share one connection, so a password or key prompt comes only once.
+		args = append(args,
+			"-o", "ControlMaster=auto",
+			"-o", `ControlPath="`+filepath.Join(paths.ConfigPath(), "cm-%C")+`"`,
+			"-o", "ControlPersist=30s",
+		)
 	}
-	fmt.Fprintln(os.Stderr, "warning: root is granted certificate login but sshd does not allow it")
-	fmt.Fprintln(os.Stderr, "         set PermitRootLogin prohibit-password (or yes) on the host")
-}
-
-// manualAddress bypasses the Nokku proxy, which cannot authenticate yet.
-func manualAddress(target *state.Target, port string, portSet bool) (host, resolvedPort string) {
-	if len(target.Endpoints) == 0 {
-		return target.Name, port
-	}
-	host, resolvedPort = target.Endpoints[0], port
-	if h, p, err := net.SplitHostPort(host); err == nil {
-		host = h
-		if p != "" && !portSet {
-			resolvedPort = p
-		}
-	}
-	return host, resolvedPort
-}
-
-func (r remote) run(ctx context.Context, command string) (string, error) {
-	return r.exec(ctx, command, "")
-}
-
-func (r remote) runScript(ctx context.Context, script string) (string, error) {
-	return r.exec(ctx, "sh -s", script)
-}
-
-func (r remote) exec(ctx context.Context, command, stdin string) (string, error) {
-	args := []string{"-o", "BatchMode=yes"}
-	if r.port != "" {
-		args = append(args, "-p", r.port)
-	}
-	// -- keeps a destination that starts with - from being read as an ssh flag.
-	args = append(args, "-l", r.user, "--", r.host, command)
+	// -- keeps a host that starts with - from being read as a flag.
+	args = append(args, "--", r.host, command)
 
 	cmd := exec.CommandContext(ctx, "ssh", args...)
-	if stdin != "" {
-		cmd.Stdin = strings.NewReader(stdin)
+	cmd.Stdin = strings.NewReader(stdin)
+	cmd.Stderr = os.Stderr
+	var out strings.Builder
+	cmd.Stdout = &out
+	err := cmd.Run()
+	if ee, ok := errors.AsType[*exec.ExitError](err); ok && ee.ExitCode() == 255 {
+		return out.String(), fmt.Errorf("could not connect as root, check that this works: %s", r)
 	}
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
-		detail := strings.TrimSpace(stderr.String())
-		if detail == "" {
-			detail = strings.TrimSpace(stdout.String())
-		}
-		return stdout.String(), fmt.Errorf("ssh %s: %w: %s", r.host, err, detail)
-	}
-	return stdout.String(), nil
+	return out.String(), err
 }

@@ -1,75 +1,57 @@
 package state
 
 import (
+	"log/slog"
+	"uuid"
+
 	nokkuv1 "github.com/nokku-sh/nk/internal/gen/nokku/v1"
 )
 
-func MapUser(u *nokkuv1.User) *User {
-	if u == nil {
-		return nil
+// FromAccess maps the backend access snapshot. IDs end up in file paths and
+// generated ssh files, so anything that is not a UUID is dropped here, once.
+func FromAccess(res *nokkuv1.GetMyAccessResponse) Cache {
+	var c Cache
+	switch subject := res.GetSubject().(type) {
+	case *nokkuv1.GetMyAccessResponse_User:
+		u := subject.User
+		c.User = &User{ID: u.GetId(), Name: u.GetName(), Email: u.GetEmail()}
+	case *nokkuv1.GetMyAccessResponse_ServiceAccount:
+		sa := subject.ServiceAccount
+		c.ServiceAccount = &ServiceAccount{ID: sa.GetId(), WorkspaceID: sa.GetWorkspaceId(), Name: sa.GetName()}
 	}
-	return &User{
-		ID:    u.GetId(),
-		Name:  u.GetName(),
-		Email: u.GetEmail(),
-	}
-}
 
-func MapServiceAccount(sa *nokkuv1.ServiceAccount) *ServiceAccount {
-	if sa == nil {
-		return nil
-	}
-	return &ServiceAccount{
-		ID:          sa.GetId(),
-		WorkspaceID: sa.GetWorkspaceId(),
-		Name:        sa.GetName(),
-		Description: sa.GetDescription(),
-		ExpiresAt:   sa.GetExpiresAt().AsTime(),
-	}
-}
-
-func MapWorkspace(ws *nokkuv1.Workspace) *Workspace {
-	if ws == nil {
-		return nil
-	}
-	return &Workspace{
-		ID:          ws.GetId(),
-		Name:        ws.GetName(),
-		Description: ws.GetDescription(),
-	}
-}
-
-func MapCA(ca *nokkuv1.CertificateAuthority) *CA {
-	if ca == nil {
-		return nil
-	}
-	return &CA{
-		ID:             ca.GetId(),
-		WorkspaceID:    ca.GetWorkspaceId(),
-		Name:           ca.GetName(),
-		PublicKey:      ca.GetPublicKey(),
-		Default:        ca.GetIsDefault(),
-		UserDefaultTTL: ca.GetUserDefaultTtl().AsDuration(),
-		UserMaxTTL:     ca.GetUserMaxTtl().AsDuration(),
-	}
-}
-
-func MapCAs(cas []*nokkuv1.CertificateAuthority) []CA {
-	res := make([]CA, 0, len(cas))
-	for _, ca := range cas {
-		// X.509 CAs are fetched separately and must never reach known_hosts.
-		if ca != nil && ca.GetAuthorityType() != nokkuv1.AuthorityType_AUTHORITY_TYPE_X509 {
-			res = append(res, *MapCA(ca))
+	for _, wa := range res.GetWorkspaces() {
+		if !validIDs(wa.GetWorkspaceId()) {
+			continue
+		}
+		c.Workspaces = append(c.Workspaces, Workspace{ID: wa.GetWorkspaceId(), Name: wa.GetWorkspaceName()})
+		for _, ca := range wa.GetCertificateAuthorities() {
+			// X.509 CAs are fetched separately and must never reach known_hosts.
+			if ca.GetAuthorityType() == nokkuv1.AuthorityType_AUTHORITY_TYPE_X509 || !validIDs(ca.GetId()) {
+				continue
+			}
+			c.CAs = append(c.CAs, CA{
+				ID:          ca.GetId(),
+				WorkspaceID: wa.GetWorkspaceId(),
+				Name:        ca.GetName(),
+				PublicKey:   ca.GetPublicKey(),
+				Default:     ca.GetIsDefault(),
+			})
+		}
+		for _, t := range wa.GetTargets() {
+			if !validIDs(t.GetId(), t.GetCaId()) || t.GetDaemonId() != "" && !validIDs(t.GetDaemonId()) {
+				continue
+			}
+			tgt := MapTarget(t)
+			tgt.WorkspaceID = wa.GetWorkspaceId()
+			c.Targets = append(c.Targets, tgt)
 		}
 	}
-	return res
+	return c
 }
 
-func MapTarget(t *nokkuv1.Target) *Target {
-	if t == nil {
-		return nil
-	}
-	return &Target{
+func MapTarget(t *nokkuv1.Target) Target {
+	return Target{
 		ID:            t.GetId(),
 		WorkspaceID:   t.GetWorkspaceId(),
 		CAID:          t.GetCaId(),
@@ -82,12 +64,13 @@ func MapTarget(t *nokkuv1.Target) *Target {
 	}
 }
 
-func MapTargets(targets []*nokkuv1.Target) []Target {
-	res := make([]Target, 0, len(targets))
-	for _, t := range targets {
-		if t != nil {
-			res = append(res, *MapTarget(t))
+func validIDs(ids ...string) bool {
+	for _, id := range ids {
+		// Only the canonical form, which is safe as a path segment and ssh token.
+		if u, err := uuid.Parse(id); err != nil || u.String() != id {
+			slog.Warn("ignoring backend entry with an invalid id", "id", id)
+			return false
 		}
 	}
-	return res
+	return true
 }

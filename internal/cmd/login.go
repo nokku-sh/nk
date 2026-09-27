@@ -8,16 +8,21 @@ import (
 
 	"github.com/nokku-sh/nk/internal/client"
 	"github.com/nokku-sh/nk/internal/paths"
+	"github.com/nokku-sh/nk/internal/ssh"
 	"github.com/nokku-sh/nk/internal/state"
+	"github.com/nokku-sh/nk/internal/ui"
 )
 
 func loginCMD() *cli.Command {
 	return &cli.Command{
 		Name:    "login",
-		Usage:   "Authenticate or refresh credentials",
+		Usage:   "Sign in and set up ssh for your servers",
 		Aliases: []string{"refresh"},
 		Action: func(ctx context.Context, cmd *cli.Command) error {
-			s := state.FromCommand(cmd)
+			s, err := state.FromCommand(cmd)
+			if err != nil {
+				return err
+			}
 			c, err := client.New(s)
 			if err != nil {
 				return err
@@ -26,7 +31,13 @@ func loginCMD() *cli.Command {
 				return err
 			}
 			c.PrewarmCerts(ctx)
-			fmt.Println("Signed in and synced")
+
+			who := "service account"
+			if s.User != nil {
+				who = s.User.Email
+			}
+			fmt.Printf("%s Signed in as %s, %d servers available\n", ui.Green("✔"), who, len(s.Targets))
+			fmt.Println("  List them with nk ls, connect with ssh <server>")
 			return nil
 		},
 	}
@@ -35,15 +46,15 @@ func loginCMD() *cli.Command {
 func logoutCMD() *cli.Command {
 	return &cli.Command{
 		Name:  "logout",
-		Usage: "Logout and remove local credentials and cached state",
-		Action: func(_ context.Context, _ *cli.Command) error {
+		Usage: "Sign out and remove local credentials, certificates, and cached state",
+		Action: func(context.Context, *cli.Command) error {
+			if err := ssh.RemoveInclude(); err != nil {
+				return err
+			}
 			if err := paths.RemoveConfigDir(); err != nil {
 				return err
 			}
-			if err := paths.RemoveSSHConfigInclude(); err != nil {
-				return err
-			}
-			fmt.Println("Logged out. Removed credentials, certificates, and cached state")
+			fmt.Println("Signed out. Removed credentials, certificates, and cached state")
 			return nil
 		},
 	}

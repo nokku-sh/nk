@@ -108,9 +108,9 @@ func TestAgentSSHDInterop(t *testing.T) {
 		0o600,
 	))
 
-	// Serve the TPM key on the agent socket, as ServeAgent does.
+	// Serve the TPM key on the agent socket, as RunAgent does.
 	lc := net.ListenConfig{}
-	ln, err := lc.Listen(context.Background(), "unix", sockFile)
+	ln, err := lc.Listen(t.Context(), "unix", sockFile)
 	require.NoError(t, err, "listen")
 	defer func() { _ = ln.Close() }()
 	ring := agent.NewKeyring()
@@ -192,11 +192,14 @@ func TestAgentSSHDInteropSoftwareKey(t *testing.T) {
 	// SetupKey loads the soft state and never consults the TPM.
 	require.NoError(t, SetupKey(false))
 
-	ctx, cancel := context.WithCancel(context.Background())
-	t.Cleanup(cancel)
-	stop, err := ServeAgent(ctx)
-	require.NoError(t, err, "serve agent")
-	t.Cleanup(func() { _ = stop() })
+	ctx, cancel := context.WithCancel(t.Context())
+	done := make(chan error, 1)
+	go func() { done <- RunAgent(ctx) }()
+	t.Cleanup(func() {
+		cancel()
+		<-done
+	})
+	require.Eventually(t, func() bool { return agentAlive(ctx) }, 5*time.Second, 50*time.Millisecond)
 
 	pubLine, err := os.ReadFile(paths.PubKeyFile())
 	require.NoError(t, err, "read public key")

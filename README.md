@@ -42,7 +42,7 @@ ssh user@target   # Connect using standard OpenSSH!
 
 ## Hardware Security (TPM 2.0)
 
-On Linux and Windows, `nk` automatically uses a TPM 2.0 when one is available. Your SSH private key becomes a deterministic primary key that never leaves the TPM; signing happens via an embedded SSH agent (`agent.sock`). Without a TPM, `nk` falls back to a software ECDSA P-256 key wrapped with a key derived from the machine fingerprint: the state file is useless on another machine, and ssh reads the key only through the agent socket, never directly. Pass `--require-tpm` to refuse that fallback.
+On Linux and Windows, `nk` automatically uses a TPM 2.0 when one is available. Your SSH private key becomes a deterministic primary key that never leaves the TPM; signing happens in a small background agent that `nk` starts on the first ssh connection and stops after 30 idle minutes. Without a TPM, `nk` falls back to a software ECDSA P-256 key wrapped with a key derived from the machine fingerprint: the state file is useless on another machine, and ssh reads the key only through the agent socket, never directly. Pass `--require-tpm` to refuse that fallback.
 
 _(Check `nk doctor` to see if a TPM is available and in use.)_
 
@@ -59,8 +59,7 @@ nk login
 ssh user@target
 ```
 
-The `nokku_sa_` prefix is required. Without it the value is treated as a device
-session and `nk login` tries the browser flow.
+The `nokku_sa_` prefix is required, `nk` refuses any other token.
 
 ## X.509 certificates (experimental)
 
@@ -82,8 +81,7 @@ The command generates a key pair, requests a signed certificate, and saves the c
 | `nk doctor`                  | Check API reachability, TPM availability, and local SSH setup     |
 | `nk pki list`                | List active X.509 certificate authorities                         |
 | `nk pki issue <cn>`          | Issue an X.509 certificate                                        |
-| `nk sync <host>`             | Create a daemonless target for a host, then write its trust files |
-| `nk target sync <host>`      | Same as `nk sync`                                                 |
+| `nk sync <host>`             | Add a server without the daemon, or refresh one you added         |
 | `nk logout`                  | Remove local credentials and cached state                         |
 
 ### Command flags
@@ -94,7 +92,7 @@ The command generates a key pair, requests a signed certificate, and saves the c
 | `nk doctor`    | `--fix` to repair permissions and regenerate files, `--json` for output   |
 | `nk pki list`  | `--json` for machine-readable output                                      |
 | `nk pki issue` | `--san dns:name`, `--usage client\|server\|both`, `--ca`, `--output`/`-o` |
-| `nk sync`      | `--name`, `--workspace`, `--ca`, `--user`, `--port`, `--dry-run`          |
+| `nk sync`      | `--name`, `--workspace`, `--ca`, `--port`, `--dry-run`                    |
 
 ## Configuration
 
@@ -107,9 +105,27 @@ The command generates a key pair, requests a signed certificate, and saves the c
 | `--insecure`    | `NK_INSECURE`    | Disable TLS verification; testing only                                           |
 | `--debug`       | `NK_DEBUG`       | Enable debug logging                                                             |
 
-Local state lives under `~/.config/nk/` on Linux, `~/Library/Application
-Support/nk/` on macOS, and `%AppData%\nk\` on Windows. Your private key and
+`--api` is remembered after the first use, so a self-hosted instance only needs
+it once. Switching to another server drops the old session. The other flags
+apply to one run only.
+
+Local state lives under `~/.config/nk/` on every OS. Your private key and
 tokens are credentials. Keep service-account tokens out of source control.
+
+## Servers without the daemon
+
+`nk sync` sets up a server you manage yourself, without installing `nokkud`:
+
+```bash
+nk sync 10.0.0.5            # or root@10.0.0.5, or an alias from ~/.ssh/config
+nk sync web --dry-run       # show what would change on a known target
+```
+
+It connects as root with your own ssh, so your keys and ssh config apply and a
+password is asked at most once. It writes the Nokku CA, an sshd drop-in, and one
+principals file per account, checks the result with `sshd -t`, and rolls every
+file back if sshd rejects it. Nokku only hears about the sync once the server is
+written. Run it again whenever access changes.
 
 ## Uninstall
 

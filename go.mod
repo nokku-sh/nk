@@ -5,15 +5,16 @@ go 1.27.0
 require (
 	buf.build/gen/go/bufbuild/protovalidate/protocolbuffers/go v1.36.12-20260825204119-511051f7f437.2
 	connectrpc.com/connect v1.21.0
-	github.com/cenkalti/backoff/v7 v7.0.0
+	github.com/Microsoft/go-winio v0.6.2
 	github.com/google/go-tpm v0.9.8
-	github.com/mizuchilabs/kata v0.1.13
+	github.com/mizuchilabs/kata v0.1.14
 	github.com/nokku-sh/mon v0.1.2
 	github.com/pkg/browser v0.0.0-20240102092130-5ac0b6a4141c
 	github.com/stretchr/testify v1.12.1
 	github.com/urfave/cli/v3 v3.13.0
 	golang.org/x/crypto v0.57.0
 	golang.org/x/sync v0.23.0
+	golang.org/x/sys v0.48.0
 	golang.org/x/term v0.46.0
 	google.golang.org/genproto/googleapis/api v0.0.0-20260921155816-b14227669459
 	google.golang.org/protobuf v1.36.12
@@ -23,5 +24,4 @@ require (
 	github.com/go-jose/go-jose/v4 v4.1.5 // indirect
 	github.com/google/go-tpm-tools v0.3.13-0.20230620182252-4639ecce2aba // indirect
 	go.yaml.in/yaml/v3 v3.0.5 // indirect
-	golang.org/x/sys v0.48.0 // indirect
 )
