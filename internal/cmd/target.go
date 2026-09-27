@@ -56,7 +56,7 @@ func targetSync(ctx context.Context, cmd *cli.Command) error {
 		return fmt.Errorf("nk sync connects as root, use root@%s", host)
 	}
 
-	c, err := connect(ctx, cmd, true)
+	c, err := connect(ctx, cmd)
 	if err != nil {
 		return err
 	}

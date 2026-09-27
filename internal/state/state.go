@@ -76,6 +76,7 @@ type Config struct {
 
 // Cache is the last access snapshot, persisted in cache.json for offline use.
 type Cache struct {
+	SyncedAt       time.Time       `json:"synced_at,omitzero"`
 	User           *User           `json:"user,omitempty"`
 	ServiceAccount *ServiceAccount `json:"service_account,omitempty"`
 	Workspaces     []Workspace     `json:"workspaces,omitempty"`

@@ -3,6 +3,7 @@ package ssh
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -25,7 +26,7 @@ func TestRenderSSHConfig(t *testing.T) {
 			{ID: "t-6", Name: "ok", CAID: "ca-1", Usernames: []string{"a\n    ProxyCommand curl evil"}},
 			{ID: "t-7", Name: "a/b", CAID: "ca-1", Usernames: []string{"a"}},
 		}}
-	out := string(renderSSHConfig(st))
+	out := string(renderSSHConfig(st, "nk"))
 
 	for _, want := range []string{
 		"Host web\n    User alice\n    ProxyCommand nk proxy t-1 %p\n    HostKeyAlias t-1\n",
@@ -111,4 +112,13 @@ func TestIncludeKeepsSymlink(t *testing.T) {
 	data, err := os.ReadFile(target)
 	require.NoError(t, err)
 	assert.True(t, HasInclude(data))
+}
+
+func TestNKCommandIsAbsolute(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("windows paths fall back to a PATH lookup")
+	}
+	self, err := os.Executable()
+	require.NoError(t, err)
+	assert.Equal(t, self, nkCommand(), "ProxyCommand must name this binary")
 }

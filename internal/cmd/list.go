@@ -19,7 +19,7 @@ func listCMD() *cli.Command {
 		Usage:   "List the servers you can connect to",
 		Flags:   []cli.Flag{jsonFlag},
 		Action: func(ctx context.Context, cmd *cli.Command) error {
-			c, err := connect(ctx, cmd, true)
+			c, err := connect(ctx, cmd)
 			if err != nil {
 				return err
 			}

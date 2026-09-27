@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"os/user"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"testing"
 	"time"
@@ -39,7 +40,7 @@ func e2eSigner(t *testing.T) tpm.Signer {
 	t.Helper()
 
 	opts := tpm.SignerOptions{
-		Salt:      sshSalt,
+		Salt:      []byte(sshSalt),
 		StatePath: filepath.Join(t.TempDir(), "ssh-signer.json"),
 	}
 	if err := tpm.Available(); err == nil {
@@ -179,7 +180,7 @@ func TestAgentSSHDInteropSoftwareKey(t *testing.T) {
 	// Force the software path: create the identity with an unusable TPM, so
 	// the signer never touches the real device.
 	soft, err := tpm.NewSigner(tpm.SignerOptions{
-		Salt:      sshSalt,
+		Salt:      []byte(sshSalt),
 		StatePath: paths.SSHSignerFile(),
 		OpenTPM: func() (transport.TPMCloser, error) {
 			return nil, errors.New("no TPM in this test")
@@ -324,4 +325,40 @@ func readFile(t *testing.T, path string) string {
 		return err.Error()
 	}
 	return string(data)
+}
+
+func TestAgentSignOnlyAndShutdown(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("named pipe agent")
+	}
+	must := require.New(t)
+	t.Setenv("HOME", t.TempDir())
+	must.NoError(paths.EnsurePaths())
+	must.NoError(SetupKey(false))
+
+	done := make(chan error, 1)
+	go func() { done <- RunAgent(t.Context()) }()
+	must.Eventually(func() bool { return agentAlive(t.Context()) }, 5*time.Second, 20*time.Millisecond)
+
+	conn, err := dialAgent(t.Context())
+	must.NoError(err)
+	defer conn.Close()
+	client := agent.NewClient(conn)
+	keys, err := client.List()
+	must.NoError(err)
+	must.Len(keys, 1, "the agent serves exactly the Nokku identity")
+
+	_, extra, err := ed25519.GenerateKey(rand.Reader)
+	must.NoError(err)
+	must.Error(client.Add(agent.AddedKey{PrivateKey: extra}), "ssh-add must not load keys into nk's agent")
+	must.Error(client.RemoveAll(), "ssh-add -D must not empty nk's agent")
+	must.Error(client.Lock([]byte("x")), "ssh-add -x must not lock nk's agent")
+
+	StopAgent(t.Context())
+	select {
+	case err = <-done:
+		must.NoError(err)
+	case <-time.After(5 * time.Second):
+		t.Fatal("agent did not stop on the shutdown extension")
+	}
 }

@@ -47,7 +47,13 @@ func logoutCMD() *cli.Command {
 	return &cli.Command{
 		Name:  "logout",
 		Usage: "Sign out and remove local credentials, certificates, and cached state",
-		Action: func(context.Context, *cli.Command) error {
+		Action: func(ctx context.Context, cmd *cli.Command) error {
+			if s, err := state.FromCommand(cmd); err == nil {
+				if c, cerr := client.New(s); cerr == nil {
+					c.Logout(ctx)
+				}
+			}
+			ssh.StopAgent(ctx)
 			if err := ssh.RemoveInclude(); err != nil {
 				return err
 			}

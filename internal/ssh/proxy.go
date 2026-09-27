@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log/slog"
 	"net"
 	"os"
 	"time"
@@ -20,40 +19,85 @@ import (
 // backend.
 type RelayDialer func(ctx context.Context, target *state.Target) (io.ReadWriteCloser, error)
 
-// Proxy pipes an ssh ProxyCommand connection to the target. Endpoints are
-// tried in order, a daemon target falls back to the relay. forceRelay skips
+// relayHeadStart is how long direct dials run alone before the relay joins
+// the race. A reachable endpoint answers well within it.
+const relayHeadStart = 300 * time.Millisecond
+
+type dialResult struct {
+	conn io.ReadWriteCloser
+	err  error
+}
+
+// Proxy pipes an ssh ProxyCommand connection to the target. All endpoints are
+// dialed at once and a daemon target races the relay against them, so an
+// unreachable private address never delays the connection. forceRelay skips
 // the direct dials.
 func Proxy(ctx context.Context, target *state.Target, port string, relay RelayDialer, forceRelay bool) error {
 	if forceRelay && target.Manual() {
 		return fmt.Errorf("%s has no daemon, so it cannot be reached through the relay", target.Name)
 	}
+	if target.Manual() && len(target.Endpoints) == 0 {
+		return fmt.Errorf("%s has no address, run nk sync on it again", target.Name)
+	}
 
-	var errs []error
+	// Direct dials stop once a winner is picked. The relay gets ctx itself,
+	// its stream lives as long as ctx does.
+	dialCtx, stopDials := context.WithCancel(ctx)
+	defer stopDials()
+	results := make(chan dialResult)
+	pending := 0
 	if !forceRelay {
 		dialer := net.Dialer{Timeout: 2 * time.Second}
 		for _, ep := range target.Endpoints {
-			conn, err := dialer.DialContext(ctx, "tcp", endpointAddr(ep, port))
-			if err == nil {
-				return pipe(ctx, conn)
-			}
-			errs = append(errs, err)
+			pending++
+			go func() {
+				conn, err := dialer.DialContext(dialCtx, "tcp", endpointAddr(ep, port))
+				results <- dialResult{conn, err}
+			}()
+		}
+	}
+	var relayStart <-chan time.Time
+	if !target.Manual() {
+		relayStart = time.After(relayHeadStart)
+		if pending == 0 {
+			relayStart = time.After(0)
 		}
 	}
 
-	if target.Manual() {
-		if len(errs) == 0 {
-			return fmt.Errorf("%s has no address, run nk sync on it again", target.Name)
+	var errs []error
+	for pending > 0 || relayStart != nil {
+		select {
+		case <-relayStart:
+			relayStart = nil
+			pending++
+			go func() {
+				conn, err := relay(ctx, target)
+				results <- dialResult{conn, err}
+			}()
+		case r := <-results:
+			pending--
+			if r.err != nil {
+				errs = append(errs, r.err)
+				if pending == 0 && relayStart != nil {
+					relayStart = time.After(0)
+				}
+				continue
+			}
+			stopDials()
+			go closeLosers(results, pending)
+			return pipe(ctx, r.conn)
 		}
-		return fmt.Errorf("cannot reach %s: %w", target.Name, errors.Join(errs...))
 	}
-	if len(errs) > 0 {
-		slog.Info("direct connection failed, using relay", "target", target.Name)
+	return fmt.Errorf("cannot reach %s: %w", target.Name, errors.Join(errs...))
+}
+
+// closeLosers closes connections that won their dial after another one did.
+func closeLosers(results <-chan dialResult, n int) {
+	for range n {
+		if r := <-results; r.conn != nil {
+			_ = r.conn.Close()
+		}
 	}
-	rc, err := relay(ctx, target)
-	if err != nil {
-		return fmt.Errorf("cannot reach %s: %w", target.Name, errors.Join(append(errs, err)...))
-	}
-	return pipe(ctx, rc)
 }
 
 // endpointAddr keeps an endpoint's own port and uses port otherwise.

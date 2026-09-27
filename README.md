@@ -38,7 +38,7 @@ ssh user@target   # Connect using standard OpenSSH!
 ```
 
 > [!NOTE]
-> Access is synced just in time: every `nk ls` and every SSH connection refreshes what you can reach, so grants and revocations apply immediately. When the backend is unreachable, `nk` fails fast and works seamlessly from cached data and existing valid certificates.
+> Access is synced just in time: every `nk ls` refreshes what you can reach, and an SSH connection refreshes it when the last sync is more than a minute old. Revocations apply immediately, since the daemon enforces them on the server. When the backend is unreachable, `nk` fails fast and works from cached data and existing valid certificates. Direct addresses and the Nokku relay are tried in parallel, so an unreachable private address never slows a connection down.
 
 ## Hardware Security (TPM 2.0)
 
@@ -70,7 +70,7 @@ nk pki list
 nk pki issue api-client --usage client --san dns:api.example.com
 ```
 
-The command generates a key pair, requests a signed certificate, and saves the certificate, private key, and CA certificate to the output directory.
+The command generates an ECDSA P-256 key pair (`--key-type ed25519` for ed25519), requests a signed certificate, and saves the certificate, private key, and CA certificate to the output directory. It never overwrites an existing key.
 
 ## Commands
 
@@ -82,7 +82,7 @@ The command generates a key pair, requests a signed certificate, and saves the c
 | `nk pki list`                | List active X.509 certificate authorities                         |
 | `nk pki issue <cn>`          | Issue an X.509 certificate                                        |
 | `nk sync <host>`             | Add a server without the daemon, or refresh one you added         |
-| `nk logout`                  | Remove local credentials and cached state                         |
+| `nk logout`                  | Sign out, stop the agent, and remove local credentials and state  |
 
 ### Command flags
 
@@ -91,7 +91,7 @@ The command generates a key pair, requests a signed certificate, and saves the c
 | `nk ls`        | `--json` for machine-readable output                                      |
 | `nk doctor`    | `--fix` to repair permissions and regenerate files, `--json` for output   |
 | `nk pki list`  | `--json` for machine-readable output                                      |
-| `nk pki issue` | `--san dns:name`, `--usage client\|server\|both`, `--ca`, `--output`/`-o` |
+| `nk pki issue` | `--san dns:name`, `--usage client\|server\|both`, `--ca`, `--key-type`, `--output`/`-o` |
 | `nk sync`      | `--name`, `--workspace`, `--ca`, `--port`, `--dry-run`                    |
 
 ## Configuration
