@@ -25,6 +25,7 @@ var Commands = []*cli.Command{
 	pkiCMD(),
 	doctorCMD(),
 	proxyCMD(),
+	prepareCMD(),
 	agentCMD(),
 }
 

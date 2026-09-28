@@ -30,7 +30,6 @@ func loginCMD() *cli.Command {
 			if err = c.Sync(ctx, true); err != nil {
 				return err
 			}
-			c.PrewarmCerts(ctx)
 
 			who := "service account"
 			if s.User != nil {

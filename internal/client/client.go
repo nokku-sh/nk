@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"slices"
 	"strings"
 	"time"
 
@@ -15,7 +14,6 @@ import (
 	"github.com/mizuchilabs/kata/fsutil"
 	"github.com/nokku-sh/mon/dpopclient"
 	"github.com/nokku-sh/mon/tpm"
-	"golang.org/x/sync/errgroup"
 	"google.golang.org/protobuf/types/known/durationpb"
 
 	nokkuv1 "github.com/nokku-sh/nk/internal/gen/nokku/v1"
@@ -170,24 +168,6 @@ func (c *Client) Logout(ctx context.Context) {
 	if _, err := c.ac.Logout(ctx, &nokkuv1.LogoutRequest{}); err != nil {
 		slog.Debug("revoke session on the backend", "err", err)
 	}
-}
-
-// PrewarmCerts signs every missing or expiring certificate in parallel.
-func (c *Client) PrewarmCerts(ctx context.Context) {
-	var g errgroup.Group
-	g.SetLimit(4)
-	for _, ca := range c.State.CAs {
-		if !slices.ContainsFunc(c.State.Targets, func(t state.Target) bool { return t.CAID == ca.ID }) {
-			continue
-		}
-		g.Go(func() error {
-			if err := c.EnsureCert(ctx, ca, false); err != nil {
-				slog.Warn("certificate signing failed", "ca", ca.Name, "err", err)
-			}
-			return nil
-		})
-	}
-	_ = g.Wait()
 }
 
 // EnsureCert makes sure a certificate from ca is on disk that stays valid for
