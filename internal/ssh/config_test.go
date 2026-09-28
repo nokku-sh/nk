@@ -29,7 +29,7 @@ func TestRenderSSHConfig(t *testing.T) {
 	out := string(renderSSHConfig(st, "nk"))
 
 	for _, want := range []string{
-		"Host web\n    User alice\n    ProxyCommand nk proxy t-1 %p\n    HostKeyAlias t-1\n",
+		"Match originalhost web exec \"nk prepare t-1\"\n\nHost web\n    User alice\n    ProxyCommand nk proxy t-1 %p\n    HostKeyAlias t-1\n",
 		"    CertificateFile " + configValue(paths.SSHCertificate("ca-1")) + "\n",
 		"    IdentityAgent " + configValue(paths.AgentSocket()) + "\n",
 		"Host staging/db\n",
@@ -47,6 +47,7 @@ func TestConfigValueQuotesPaths(t *testing.T) {
 	assert.Equal(t, `"/Users/Jane Doe/.config/nk/ssh_config"`, configValue("/Users/Jane Doe/.config/nk/ssh_config"))
 	assert.Equal(t, `"C:\\Users\\Jane Doe\\x"`, configValue(`C:\Users\Jane Doe\x`))
 	assert.Equal(t, `"\\\\.\\pipe\\nk-agent"`, configValue(`\\.\pipe\nk-agent`))
+	assert.Equal(t, `"\"C:\\Program Files\\nk.exe\" prepare t-1"`, configValue(`"C:\Program Files\nk.exe" prepare t-1`))
 }
 
 func TestRenderKnownHosts(t *testing.T) {

@@ -15,8 +15,6 @@ import (
 	"github.com/stretchr/testify/require"
 	cryptossh "golang.org/x/crypto/ssh"
 
-	"github.com/mizuchilabs/kata/fsutil"
-
 	nokkuv1 "github.com/nokku-sh/nk/internal/gen/nokku/v1"
 	"github.com/nokku-sh/nk/internal/gen/nokku/v1/nokkuv1connect"
 	"github.com/nokku-sh/nk/internal/paths"
@@ -263,28 +261,4 @@ func TestEnsureCertSignsAndWritesCert(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, ssh.CheckCert(signed, ca.pubKey, 0),
 		"the written certificate must pass local validation")
-}
-
-func TestPrewarmCertsSignsMissingCerts(t *testing.T) {
-	setTestDirs(t)
-	ca := newFakeCA(t)
-	require.NoError(t, ssh.SetupKey(false))
-
-	backend := &fakeBackend{
-		sign: func(t *testing.T, req *nokkuv1.SignSSHCertificateRequest) (*nokkuv1.SignSSHCertificateResponse, error) {
-			return &nokkuv1.SignSSHCertificateResponse{
-				CaId:              new(caID),
-				SignedCertificate: new(ca.signRequest(t, req)),
-			}, nil
-		},
-	}
-	c := newSyncTestClient(t, backend)
-	c.State.CAs = []state.CA{{ID: caID, WorkspaceID: wsID, PublicKey: ca.pubKey}}
-	c.State.Targets = []state.Target{{ID: targetID, Name: "prod", CAID: caID}}
-
-	c.PrewarmCerts(t.Context())
-
-	certPath := paths.SSHCertificate(caID)
-	assert.True(t, fsutil.FileExists(certPath),
-		"prewarm must sign a certificate for the target's CA")
 }

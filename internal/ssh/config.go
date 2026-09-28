@@ -58,11 +58,15 @@ func renderSSHConfig(st *state.State, nk string) []byte {
 			host = ws + "/" + t.Name
 		}
 
-		// The private key lives in the TPM or the wrapped signer state, so
-		// IdentityFile is the public half and the agent signs. Only the first
-		// account is the default, others work with ssh <user>@<host>. The
-		// proxy gets the target id, since ssh lowercases %h.
-		fmt.Fprintf(&b, `Host %s
+		// ssh loads CertificateFile before it starts the ProxyCommand, so the
+		// Match exec renews the certificate first. The private key lives in
+		// the TPM or the wrapped signer state, so IdentityFile is the public
+		// half and the agent signs. Only the first account is the default,
+		// others work with ssh <user>@<host>. The proxy gets the target id,
+		// since ssh lowercases %h.
+		fmt.Fprintf(&b, `Match originalhost %s exec %s
+
+Host %s
     User %s
     ProxyCommand %s proxy %s %%p
     HostKeyAlias %s
@@ -76,7 +80,7 @@ func renderSSHConfig(st *state.State, nk string) []byte {
     ServerAliveInterval 60
     LogLevel ERROR
 
-`, host, t.Usernames[0], nk, t.ID, t.ID,
+`, host, configValue(nk+" prepare "+t.ID), host, t.Usernames[0], nk, t.ID, t.ID,
 			configValue(paths.SSHCertificate(t.CAID)), configValue(paths.PubKeyFile()),
 			configValue(paths.AgentSocket()), configValue(paths.KnownHostsPath()))
 	}
@@ -149,10 +153,10 @@ func safeLine(s string) bool {
 	return s != "" && !strings.ContainsFunc(s, func(r rune) bool { return r < 0x20 || r == 0x7f })
 }
 
-// configValue quotes a path for ssh_config. Quotes cover spaces, and ssh
-// unescapes doubled backslashes, which Windows paths and pipes need.
-func configValue(p string) string {
-	return `"` + strings.ReplaceAll(p, `\`, `\\`) + `"`
+// configValue quotes a value for ssh_config. Quotes cover spaces, and ssh
+// unescapes \\ and \", which Windows paths, pipes, and quoted commands need.
+func configValue(v string) string {
+	return `"` + strings.NewReplacer(`\`, `\\`, `"`, `\"`).Replace(v) + `"`
 }
 
 // IncludeLine is the line nk puts on top of ~/.ssh/config.

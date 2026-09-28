@@ -64,17 +64,17 @@ func proxyCMD() *cli.Command {
 				return fmt.Errorf("the certificate authority of %s is missing, run nk login", target.Name)
 			}
 
-			if !ssh.CertValid(*ca, client.CertRenewWindow) {
+			// nk prepare renewed the certificate before ssh read it. Signing
+			// here only happens when that failed or this sync brought a new CA.
+			if !ssh.CertValid(*ca, 0) {
 				c, cerr := backend()
 				if cerr == nil {
 					cerr = c.EnsureCert(ctx, *ca, false)
 				}
 				if cerr != nil {
-					if !ssh.CertValid(*ca, 0) {
-						return fmt.Errorf("no valid certificate for %s, run nk login: %w", target.Name, cerr)
-					}
-					slog.Warn("certificate renewal failed, using the cached one", "target", target.Name, "err", cerr)
+					return fmt.Errorf("no valid certificate for %s, run nk login: %w", target.Name, cerr)
 				}
+				warnf("certificate for %s renewed, if ssh fails run it again", target.Name)
 			}
 			if err = ssh.EnsureAgent(ctx); err != nil {
 				return err
@@ -89,6 +89,45 @@ func proxyCMD() *cli.Command {
 			return ssh.Proxy(ctx, target, port, relay, cmd.Bool("relay"))
 		},
 	}
+}
+
+// prepareCMD is the Match exec hook in the generated ssh_config. ssh runs it
+// before it reads CertificateFile, so a missing or expiring certificate is
+// renewed in time for this connection.
+func prepareCMD() *cli.Command {
+	return &cli.Command{
+		Name:      "prepare",
+		Usage:     "Renew the certificate for a target (used by ssh)",
+		ArgsUsage: "<target-id>",
+		Hidden:    true,
+		Action: func(ctx context.Context, cmd *cli.Command) error {
+			// nk proxy runs right after and reports anything that went wrong.
+			if err := renewCert(ctx, cmd); err != nil {
+				slog.Debug("renew certificate before ssh", "err", err)
+			}
+			return nil
+		},
+	}
+}
+
+func renewCert(ctx context.Context, cmd *cli.Command) error {
+	s, err := state.FromCommand(cmd)
+	if err != nil {
+		return err
+	}
+	target := s.TargetByID(cmd.Args().First())
+	if target == nil {
+		return errors.New("unknown target")
+	}
+	ca := s.CAByID(target.CAID)
+	if ca == nil || ssh.CertValid(*ca, client.CertRenewWindow) {
+		return nil
+	}
+	c, err := client.New(s)
+	if err != nil {
+		return err
+	}
+	return c.EnsureCert(ctx, *ca, false)
 }
 
 func agentCMD() *cli.Command {
