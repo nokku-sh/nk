@@ -66,15 +66,15 @@ func TestNewPlan(t *testing.T) {
 		byPath[f.Path] = f.Content
 	}
 	require.Len(t, byPath, 4, "the CA, the drop-in, and one file per account")
-	assert.Equal(t, "ca-key\n", byPath[CAPath])
+	assert.Equal(t, "ca-key\n", byPath[caPath])
 	assert.Equal(
 		t,
 		"TrustedUserCAKeys /etc/ssh/nokku_ca.pub\nAuthorizedPrincipalsFile /etc/ssh/nokku_principals/%u\n",
-		byPath[DropInPath],
+		byPath[dropInPath],
 	)
-	assert.Equal(t, "id-a\nid-b\n", byPath[PrincipalsDir+"/root"])
-	assert.Empty(t, byPath[PrincipalsDir+"/alice"], "no grants means an empty deny file")
-	assert.Equal(t, []string{PrincipalsDir + "/gone"}, p.Stale)
+	assert.Equal(t, "id-a\nid-b\n", byPath[principalsDir+"/root"])
+	assert.Empty(t, byPath[principalsDir+"/alice"], "no grants means an empty deny file")
+	assert.Equal(t, []string{principalsDir + "/gone"}, p.Stale)
 }
 
 func TestScriptIsValidShell(t *testing.T) {

@@ -13,10 +13,10 @@ import (
 
 // Host layout shared with the daemon and the web UI.
 const (
-	CAPath        = "/etc/ssh/nokku_ca.pub"
-	PrincipalsDir = "/etc/ssh/nokku_principals"
-	DropInDir     = "/etc/ssh/sshd_config.d"
-	DropInPath    = DropInDir + "/60-nokku.conf"
+	caPath        = "/etc/ssh/nokku_ca.pub"
+	principalsDir = "/etc/ssh/nokku_principals"
+	dropInDir     = "/etc/ssh/sshd_config.d"
+	dropInPath    = dropInDir + "/60-nokku.conf"
 
 	// maxLocalAccounts caps what one sync reports, so a pathological passwd
 	// file cannot flood the backend. Matches nokkud sysutil.maxReportedUsers.
@@ -44,7 +44,7 @@ for t in ed25519 ecdsa rsa; do
   if [ -r "$f" ]; then cat "$f"; break; fi
 done
 echo '` + sectionPrincipals + `'
-for f in ` + PrincipalsDir + `/*; do
+for f in ` + principalsDir + `/*; do
   if [ -f "$f" ]; then basename "$f"; fi
 done
 `

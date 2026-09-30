@@ -30,18 +30,18 @@ type Plan struct {
 // grant denies by default.
 func NewPlan(caKey string, grants map[string][]string, h Host) Plan {
 	p := Plan{Files: []File{
-		{Path: CAPath, Content: strings.TrimSpace(caKey) + "\n"},
+		{Path: caPath, Content: strings.TrimSpace(caKey) + "\n"},
 		{
-			Path:    DropInPath,
-			Content: "TrustedUserCAKeys " + CAPath + "\nAuthorizedPrincipalsFile " + PrincipalsDir + "/%u\n",
+			Path:    dropInPath,
+			Content: "TrustedUserCAKeys " + caPath + "\nAuthorizedPrincipalsFile " + principalsDir + "/%u\n",
 		},
 	}}
 	for _, name := range h.Accounts {
-		p.Files = append(p.Files, File{Path: PrincipalsDir + "/" + name, Content: renderPrincipals(grants[name])})
+		p.Files = append(p.Files, File{Path: principalsDir + "/" + name, Content: renderPrincipals(grants[name])})
 	}
 	for _, name := range h.Principals {
 		if safeName(name) && !slices.Contains(h.Accounts, name) {
-			p.Stale = append(p.Stale, PrincipalsDir+"/"+name)
+			p.Stale = append(p.Stale, principalsDir+"/"+name)
 		}
 	}
 	return p
@@ -54,7 +54,7 @@ func (p Plan) Script() string {
 	var b strings.Builder
 	b.WriteString("set -e\n" + requireRoot)
 	b.WriteString("sshd -t || { echo 'the sshd config on this host is already invalid, fix it first' >&2; exit 1; }\n")
-	fmt.Fprintf(&b, "mkdir -p %s %s\nchmod 0755 %s\n", q(PrincipalsDir), q(DropInDir), q(PrincipalsDir))
+	fmt.Fprintf(&b, "mkdir -p %s %s\nchmod 0755 %s\n", q(principalsDir), q(dropInDir), q(principalsDir))
 
 	paths := make([]string, len(p.Files))
 	for i, f := range p.Files {
@@ -100,7 +100,7 @@ func (p Plan) Script() string {
 	// Include line, or one that sets these options first, ignores it.
 	fmt.Fprintf(&b, "nk_cfg=$(sshd -T 2>/dev/null || true)\n")
 	fmt.Fprintf(&b, "if echo \"$nk_cfg\" | grep -qi %s && echo \"$nk_cfg\" | grep -qi %s; then\n",
-		q("^trustedusercakeys "+CAPath), q("^authorizedprincipalsfile "+PrincipalsDir+"/%u"))
+		q("^trustedusercakeys "+caPath), q("^authorizedprincipalsfile "+principalsDir+"/%u"))
 	fmt.Fprintf(&b, "  echo '%s'\nfi\n", verifyMarker)
 	return b.String()
 }

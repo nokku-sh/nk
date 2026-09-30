@@ -13,26 +13,26 @@ var colorEnabled = func() bool {
 	if os.Getenv("NO_COLOR") != "" {
 		return false
 	}
-	return IsTerminal(os.Stdout)
+	return isTerminal(os.Stdout)
 }()
 
-// Color wraps s in an SGR code when colors are enabled. The code must exclude
+// color wraps s in an SGR code when colors are enabled. The code must exclude
 // the leading ESC[ and trailing m.
-func Color(code, s string) string {
+func color(code, s string) string {
 	if !colorEnabled {
 		return s
 	}
 	return "\x1b[" + code + "m" + s + "\x1b[0m"
 }
 
-func Bold(s string) string   { return Color("1", s) }
-func Dim(s string) string    { return Color("2", s) }
-func Red(s string) string    { return Color("31", s) }
-func Green(s string) string  { return Color("32", s) }
-func Yellow(s string) string { return Color("33", s) }
+func Bold(s string) string   { return color("1", s) }
+func Dim(s string) string    { return color("2", s) }
+func Red(s string) string    { return color("31", s) }
+func Green(s string) string  { return color("32", s) }
+func Yellow(s string) string { return color("33", s) }
 
-// IsTerminal reports whether f is an interactive terminal.
-func IsTerminal(f *os.File) bool {
+// isTerminal reports whether f is an interactive terminal.
+func isTerminal(f *os.File) bool {
 	return term.IsTerminal(int(f.Fd()))
 }
 
