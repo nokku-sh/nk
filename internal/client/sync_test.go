@@ -15,8 +15,9 @@ import (
 	"github.com/stretchr/testify/require"
 	cryptossh "golang.org/x/crypto/ssh"
 
-	nokkuv1 "github.com/nokku-sh/nk/internal/gen/nokku/v1"
-	"github.com/nokku-sh/nk/internal/gen/nokku/v1/nokkuv1connect"
+	nokkuv1 "github.com/nokku-sh/protos/gen/nokku/v1"
+	"github.com/nokku-sh/protos/gen/nokku/v1/nokkuv1connect"
+
 	"github.com/nokku-sh/nk/internal/paths"
 	"github.com/nokku-sh/nk/internal/ssh"
 	"github.com/nokku-sh/nk/internal/state"

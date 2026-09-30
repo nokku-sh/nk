@@ -11,7 +11,8 @@ import (
 
 	"github.com/urfave/cli/v3"
 
-	nokkuv1 "github.com/nokku-sh/nk/internal/gen/nokku/v1"
+	nokkuv1 "github.com/nokku-sh/protos/gen/nokku/v1"
+
 	"github.com/nokku-sh/nk/internal/pki"
 )
 
