@@ -54,7 +54,7 @@ _(Check `nk doctor` to see if a TPM is available and in use.)_
 Use a service-account API key in CI or other headless environments:
 
 ```bash
-export NK_TOKEN=nokku_sa_<KEY_ID>.<SECRET>
+export NK_TOKEN=nokku_sa_<SECRET>
 nk login
 ssh user@target
 ```
@@ -99,9 +99,9 @@ The command generates an ECDSA P-256 key pair (`--key-type ed25519` for ed25519)
 | Flag            | Environment      | Purpose                                                                          |
 | --------------- | ---------------- | -------------------------------------------------------------------------------- |
 | `--api`         | `NK_API_URL`     | Backend URL                                                                      |
-| `--token`       | `NK_TOKEN`       | Service-account API key (`nokku_sa_keyID.secret`); skips browser login for CI/CD |
+| `--token`       | `NK_TOKEN`       | Service-account API key (`nokku_sa_...`), skips browser login for CI/CD          |
 | `--ttl`         | `NK_TTL`         | Requested SSH certificate lifetime                                               |
-| `--require-tpm` | `NK_REQUIRE_TPM` | Require a TPM 2.0; refuse the software key fallback                              |
+| `--require-tpm` | `NK_REQUIRE_TPM` | Require a TPM 2.0, refuse the software key fallback                              |
 | `--insecure`    | `NK_INSECURE`    | Disable TLS verification; testing only                                           |
 | `--debug`       | `NK_DEBUG`       | Enable debug logging                                                             |
 
