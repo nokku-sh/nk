@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	nokkuv1 "github.com/nokku-sh/nk/internal/gen/nokku/v1"
+	nokkuv1 "github.com/nokku-sh/protos/gen/nokku/v1"
 )
 
 // MatchCA picks the CA for nameOrID from cas. An empty nameOrID selects the

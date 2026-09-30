@@ -9,8 +9,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	nokkuv1 "github.com/nokku-sh/nk/internal/gen/nokku/v1"
-	"github.com/nokku-sh/nk/internal/gen/nokku/v1/nokkuv1connect"
+	nokkuv1 "github.com/nokku-sh/protos/gen/nokku/v1"
+	"github.com/nokku-sh/protos/gen/nokku/v1/nokkuv1connect"
+
 	"github.com/nokku-sh/nk/internal/state"
 )
 

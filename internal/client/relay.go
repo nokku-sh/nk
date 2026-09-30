@@ -8,7 +8,8 @@ import (
 
 	"connectrpc.com/connect"
 
-	nokkuv1 "github.com/nokku-sh/nk/internal/gen/nokku/v1"
+	nokkuv1 "github.com/nokku-sh/protos/gen/nokku/v1"
+
 	"github.com/nokku-sh/nk/internal/state"
 )
 

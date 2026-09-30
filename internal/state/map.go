@@ -4,7 +4,7 @@ import (
 	"log/slog"
 	"uuid"
 
-	nokkuv1 "github.com/nokku-sh/nk/internal/gen/nokku/v1"
+	nokkuv1 "github.com/nokku-sh/protos/gen/nokku/v1"
 )
 
 // FromAccess maps the backend access snapshot. IDs end up in file paths and
