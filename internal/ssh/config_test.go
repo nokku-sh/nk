@@ -78,18 +78,18 @@ func TestInclude(t *testing.T) {
 	setupSSHDir(t)
 	cfg := paths.SSHUserConfig()
 
-	require.NoError(t, EnsureInclude(), "a missing ~/.ssh/config is created")
+	require.NoError(t, ensureInclude(), "a missing ~/.ssh/config is created")
 	data, err := os.ReadFile(cfg)
 	require.NoError(t, err)
 	assert.True(t, HasInclude(data))
 
 	original := "Host own\n    HostName example.com\n"
 	require.NoError(t, os.WriteFile(cfg, []byte(original), 0o600))
-	require.NoError(t, EnsureInclude())
-	require.NoError(t, EnsureInclude())
+	require.NoError(t, ensureInclude())
+	require.NoError(t, ensureInclude())
 	data, err = os.ReadFile(cfg)
 	require.NoError(t, err)
-	assert.Equal(t, IncludeLine()+"\n\n"+original, string(data), "include goes on top, once")
+	assert.Equal(t, includeLine()+"\n\n"+original, string(data), "include goes on top, once")
 
 	require.NoError(t, RemoveInclude())
 	data, err = os.ReadFile(cfg)
@@ -106,7 +106,7 @@ func TestIncludeKeepsSymlink(t *testing.T) {
 		t.Skipf("symlinks unavailable: %v", err)
 	}
 
-	require.NoError(t, EnsureInclude())
+	require.NoError(t, ensureInclude())
 	fi, err := os.Lstat(paths.SSHUserConfig())
 	require.NoError(t, err)
 	assert.NotZero(t, fi.Mode()&os.ModeSymlink, "the dotfile link must survive")

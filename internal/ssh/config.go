@@ -32,7 +32,7 @@ func WriteConfigs(st *state.State) error {
 	if err := fsutil.WriteIfChanged(paths.KnownHostsPath(), renderKnownHosts(st), 0o600); err != nil {
 		return err
 	}
-	return EnsureInclude()
+	return ensureInclude()
 }
 
 func renderSSHConfig(st *state.State, nk string) []byte {
@@ -159,14 +159,14 @@ func configValue(v string) string {
 	return `"` + strings.NewReplacer(`\`, `\\`, `"`, `\"`).Replace(v) + `"`
 }
 
-// IncludeLine is the line nk puts on top of ~/.ssh/config.
-func IncludeLine() string {
+// includeLine is the line nk puts on top of ~/.ssh/config.
+func includeLine() string {
 	return "Include " + configValue(paths.SSHConfigFile())
 }
 
-// EnsureInclude prepends IncludeLine to ~/.ssh/config when it is missing. It
+// ensureInclude prepends includeLine to ~/.ssh/config when it is missing. It
 // goes on top because an Include after a Host line would be scoped to it.
-func EnsureInclude() error {
+func ensureInclude() error {
 	path := userConfig()
 	data, err := os.ReadFile(path)
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
@@ -175,14 +175,14 @@ func EnsureInclude() error {
 	if HasInclude(data) {
 		return nil
 	}
-	out := append([]byte(IncludeLine()+"\n\n"), data...)
+	out := append([]byte(includeLine()+"\n\n"), data...)
 	if err = fsutil.WriteFile(path, out, 0o600); err != nil {
-		return fmt.Errorf("cannot update %s (%w), add this line at its top yourself:\n  %s", path, err, IncludeLine())
+		return fmt.Errorf("cannot update %s (%w), add this line at its top yourself:\n  %s", path, err, includeLine())
 	}
 	return nil
 }
 
-// RemoveInclude undoes EnsureInclude.
+// RemoveInclude undoes ensureInclude.
 func RemoveInclude() error {
 	path := userConfig()
 	data, err := os.ReadFile(path)
@@ -217,7 +217,7 @@ func HasInclude(data []byte) bool {
 
 func isInclude(line string) bool {
 	return strings.ReplaceAll(strings.TrimSpace(line), `"`, "") ==
-		strings.ReplaceAll(IncludeLine(), `"`, "")
+		strings.ReplaceAll(includeLine(), `"`, "")
 }
 
 // userConfig resolves ~/.ssh/config through symlinks, so dotfile managers
