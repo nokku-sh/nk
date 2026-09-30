@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"os"
 	"strings"
 	"time"
 
@@ -90,7 +91,8 @@ type State struct {
 	Config
 	Cache
 
-	// Token is a service account token from --token or NK_TOKEN.
+	// Token is a service account token. It is read from NK_TOKEN only, never
+	// argv, so it stays out of shell history and the process list.
 	Token      string
 	TTL        time.Duration
 	RequireTPM bool
@@ -100,13 +102,13 @@ type State struct {
 // FromCommand loads the persisted state and applies the global flags.
 func FromCommand(cmd *cli.Command) (*State, error) {
 	s := Load()
-	s.Token = cmd.String("token")
+	s.Token = os.Getenv("NK_TOKEN")
 	s.TTL = cmd.Duration("ttl")
 	s.RequireTPM = cmd.Bool("require-tpm")
 	s.Insecure = cmd.Bool("insecure")
 
 	if s.Token != "" && !strings.HasPrefix(s.Token, saPrefix) {
-		return nil, errors.New("--token (NK_TOKEN) must be a service account token starting with " + saPrefix)
+		return nil, errors.New("NK_TOKEN must be a service account token starting with " + saPrefix)
 	}
 	if api := cmd.String("api"); s.APIURL != api && (s.APIURL == "" || cmd.IsSet("api")) {
 		// Another server never gets this session or shows its targets.
