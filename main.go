@@ -36,11 +36,6 @@ func main() {
 				Value:   "https://app.nokku.sh",
 				Sources: cli.EnvVars("NK_API_URL"),
 			},
-			&cli.StringFlag{
-				Name:    "token",
-				Usage:   "Service account token (skips browser login, for CI/CD)",
-				Sources: cli.EnvVars("NK_TOKEN"),
-			},
 			&cli.DurationFlag{
 				Name:    "ttl",
 				Usage:   "Certificate TTL",

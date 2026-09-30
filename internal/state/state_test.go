@@ -31,7 +31,6 @@ func runFlags(t *testing.T, args ...string) (*State, error) {
 	cmd := &cli.Command{
 		Flags: []cli.Flag{
 			&cli.StringFlag{Name: "api", Value: "https://app.nokku.sh"},
-			&cli.StringFlag{Name: "token"},
 			&cli.DurationFlag{Name: "ttl"},
 			&cli.BoolFlag{Name: "require-tpm"},
 			&cli.BoolFlag{Name: "insecure"},
@@ -100,10 +99,12 @@ func TestFromCommandNewAPIDropsSession(t *testing.T) {
 
 func TestFromCommandRejectsNonServiceToken(t *testing.T) {
 	setHome(t)
-	_, err := runFlags(t, "--token", "sess-abc")
+	t.Setenv("NK_TOKEN", "sess-abc")
+	_, err := runFlags(t)
 	require.ErrorContains(t, err, "nokku_sa_")
 
-	s, err := runFlags(t, "--token", "nokku_sa_abc")
+	t.Setenv("NK_TOKEN", "nokku_sa_abc")
+	s, err := runFlags(t)
 	require.NoError(t, err)
 	assert.True(t, s.IsServiceAccount())
 	assert.True(t, s.SessionValid())

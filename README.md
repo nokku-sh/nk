@@ -99,7 +99,7 @@ The command generates an ECDSA P-256 key pair (`--key-type ed25519` for ed25519)
 | Flag            | Environment      | Purpose                                                                          |
 | --------------- | ---------------- | -------------------------------------------------------------------------------- |
 | `--api`         | `NK_API_URL`     | Backend URL                                                                      |
-| `--token`       | `NK_TOKEN`       | Service-account API key (`nokku_sa_...`), skips browser login for CI/CD          |
+|                 | `NK_TOKEN`       | Service-account key (`nokku_sa_...`) for CI/CD. Env only, never a flag           |
 | `--ttl`         | `NK_TTL`         | Requested SSH certificate lifetime                                               |
 | `--require-tpm` | `NK_REQUIRE_TPM` | Require a TPM 2.0, refuse the software key fallback                              |
 | `--insecure`    | `NK_INSECURE`    | Disable TLS verification; testing only                                           |
