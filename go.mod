@@ -6,7 +6,7 @@ require (
 	connectrpc.com/connect v1.21.0
 	github.com/Microsoft/go-winio v0.6.2
 	github.com/google/go-tpm v0.9.8
-	github.com/mizuchilabs/kata v0.1.14
+	github.com/mizuchilabs/kata v0.1.15
 	github.com/nokku-sh/mon v0.1.4
 	github.com/nokku-sh/protos v0.1.0
 	github.com/pkg/browser v0.0.0-20240102092130-5ac0b6a4141c
