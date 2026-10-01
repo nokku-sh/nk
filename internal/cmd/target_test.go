@@ -1,11 +1,13 @@
 package cmd
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/nokku-sh/nk/internal/manual"
 	"github.com/nokku-sh/nk/internal/state"
 )
 
@@ -100,4 +102,40 @@ func TestEndpointRemote(t *testing.T) {
 	assert.Equal(t, remote{host: "web.lan"}, endpointRemote("web.lan", ""))
 	assert.Equal(t, "ssh -p 2222 root@10.0.0.5", remote{host: "10.0.0.5", port: "2222"}.String())
 	assert.Equal(t, "ssh root@web.lan", remote{host: "web.lan"}.String())
+}
+
+func TestSyncResultJSON(t *testing.T) {
+	t.Parallel()
+	target := &state.Target{Name: "web"}
+	plan := manual.NewPlan(
+		"ssh-ed25519 AAAA ca",
+		map[string][]string{"root": {"user-1"}},
+		manual.Host{Accounts: []string{"root"}, Principals: []string{"root", "gone"}},
+	)
+
+	for _, dryRun := range []bool{true, false} {
+		b, err := json.Marshal(newSyncResult(target, plan, dryRun))
+		require.NoError(t, err)
+		var got struct {
+			Target string `json:"target"`
+			DryRun bool   `json:"dry_run"`
+			Files  []struct {
+				Path    string `json:"path"`
+				Content string `json:"content"`
+			} `json:"files"`
+			Removed []string `json:"removed"`
+		}
+		require.NoError(t, json.Unmarshal(b, &got))
+
+		assert.Equal(t, "web", got.Target)
+		assert.Equal(t, dryRun, got.DryRun)
+		require.Len(t, got.Files, 3, "CA, drop-in, and one principals file")
+		assert.Equal(t, "/etc/ssh/nokku_principals/root", got.Files[2].Path)
+		assert.Equal(t, "user-1\n", got.Files[2].Content)
+		assert.Equal(t, []string{"/etc/ssh/nokku_principals/gone"}, got.Removed)
+	}
+
+	b, err := json.Marshal(newSyncResult(target, manual.Plan{}, false))
+	require.NoError(t, err)
+	assert.Contains(t, string(b), `"removed":[]`, "scripts get a list, never null")
 }

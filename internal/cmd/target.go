@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"os/exec"
@@ -46,6 +47,7 @@ func syncCMD() *cli.Command {
 			},
 			portFlag,
 			&cli.BoolFlag{Name: "dry-run", Usage: "Show what would be written and change nothing"},
+			jsonFlag,
 		},
 		Action: targetSync,
 	}
@@ -63,6 +65,12 @@ func targetSync(ctx context.Context, cmd *cli.Command) error {
 	}
 	s := c.State
 	dryRun := cmd.Bool("dry-run")
+	asJSON := cmd.Bool(jsonFlag.Name)
+	// With --json stdout carries only the result, progress goes to stderr.
+	var progress io.Writer = os.Stdout
+	if asJSON {
+		progress = os.Stderr
+	}
 
 	target, err := findTarget(s, cmd.String("workspace"), host)
 	if err != nil {
@@ -82,7 +90,7 @@ func targetSync(ctx context.Context, cmd *cli.Command) error {
 		return fmt.Errorf("the certificate authority of %s is missing, run nk login and try again", target.Name)
 	}
 
-	fmt.Printf("Connecting with: %s\n", dest)
+	fmt.Fprintf(progress, "Connecting with: %s\n", dest)
 	out, err := dest.run(ctx, manual.ProbeCommand, "")
 	if err != nil {
 		return err
@@ -101,7 +109,7 @@ func targetSync(ctx context.Context, cmd *cli.Command) error {
 		if target, err = c.CreateTarget(ctx, target); err != nil {
 			return err
 		}
-		fmt.Printf("Added target %s\n", ui.Bold(target.Name))
+		fmt.Fprintf(progress, "Added target %s\n", ui.Bold(target.Name))
 	}
 	if target.ID != "" {
 		if grants, err = c.TargetPrincipals(ctx, target); err != nil {
@@ -110,18 +118,44 @@ func targetSync(ctx context.Context, cmd *cli.Command) error {
 	}
 	plan := manual.NewPlan(ca.PublicKey, grants, h)
 
-	if dryRun {
-		fmt.Println("Dry run, nothing was written. This sync would write:")
-		for _, f := range plan.Files {
-			fmt.Printf("\n%s\n%s", ui.Bold(f.Path), cmp.Or(f.Content, ui.Dim("(empty, nobody may log in)\n")))
+	if !dryRun {
+		if err = applyPlan(ctx, c, target, dest, h, plan, progress); err != nil {
+			return err
 		}
-		for _, path := range plan.Stale {
-			fmt.Printf("\n%s %s\n", ui.Bold("remove"), path)
-		}
-		return nil
 	}
+	if asJSON {
+		return printJSON(newSyncResult(target, plan, dryRun))
+	}
+	if dryRun {
+		printPlan(plan)
+	}
+	return nil
+}
 
-	return applyPlan(ctx, c, target, dest, h, plan)
+func printPlan(plan manual.Plan) {
+	fmt.Println("Dry run, nothing was written. This sync would write:")
+	for _, f := range plan.Files {
+		fmt.Printf("\n%s\n%s", ui.Bold(f.Path), cmp.Or(f.Content, ui.Dim("(empty, nobody may log in)\n")))
+	}
+	for _, path := range plan.Stale {
+		fmt.Printf("\n%s %s\n", ui.Bold("remove"), path)
+	}
+}
+
+type syncResult struct {
+	Target  string        `json:"target"`
+	DryRun  bool          `json:"dry_run"`
+	Files   []manual.File `json:"files"`
+	Removed []string      `json:"removed"`
+}
+
+func newSyncResult(target *state.Target, plan manual.Plan, dryRun bool) syncResult {
+	return syncResult{
+		Target:  target.Name,
+		DryRun:  dryRun,
+		Files:   plan.Files,
+		Removed: append([]string{}, plan.Stale...),
+	}
 }
 
 // applyPlan writes the host first and reports to Nokku only once that worked.
@@ -132,9 +166,10 @@ func applyPlan(
 	dest remote,
 	h manual.Host,
 	plan manual.Plan,
+	progress io.Writer,
 ) error {
 	out, err := dest.run(ctx, "sh -s", plan.Script())
-	fmt.Print(ui.Dim(manual.Output(out)))
+	fmt.Fprint(progress, ui.Dim(manual.Output(out)))
 	if err != nil {
 		return fmt.Errorf("writing to %s failed, nothing was reported to Nokku: %w", dest.host, err)
 	}
@@ -155,7 +190,11 @@ func applyPlan(
 	if err = c.SyncOrCache(ctx, false); err != nil {
 		warnf("local refresh failed, run nk login to update your ssh config")
 	}
-	fmt.Printf("%s %s is synced. Users connect with: ssh <user>@%s\n", ui.Green("✔"), target.Name, target.Name)
+	fmt.Fprintf(
+		progress,
+		"%s %s is synced. Users connect with: ssh <user>@%s\n",
+		ui.Green("✔"), target.Name, target.Name,
+	)
 	return nil
 }
 
