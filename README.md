@@ -93,7 +93,7 @@ The command generates an ECDSA P-256 key pair (`--key-type ed25519` for ed25519)
 | `nk doctor`    | `--fix` to repair permissions and regenerate files, `--json` for output   |
 | `nk pki list`  | `--json` for machine-readable output                                      |
 | `nk pki issue` | `--san dns:name`, `--usage client\|server\|both`, `--ca`, `--key-type`, `--output`/`-o` |
-| `nk sync`      | `--name`, `--workspace`, `--ca`, `--port`, `--dry-run`                    |
+| `nk sync`      | `--name`, `--workspace`, `--ca`, `--port`, `--dry-run`, `--json`          |
 | `nk target delete` | `--workspace`, `--port`, `--keep-host` to leave the server untouched  |
 
 ## Configuration
@@ -128,6 +128,10 @@ password is asked at most once. It writes the Nokku CA, an sshd drop-in, and one
 principals file per account, checks the result with `sshd -t`, and rolls every
 file back if sshd rejects it. Nokku only hears about the sync once the server is
 written. Run it again whenever access changes.
+
+For scripts, `--json` prints one object with the target, the files written,
+and the stale principals files removed. Progress goes to stderr. With
+`--dry-run` it is the same object and nothing is written.
 
 `nk target delete` undoes it:
 

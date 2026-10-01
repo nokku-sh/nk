@@ -47,8 +47,8 @@ fi
 // File is one file a manual sync writes. Every file is 0644, which is what
 // sshd wants for all of them.
 type File struct {
-	Path    string
-	Content string
+	Path    string `json:"path"`
+	Content string `json:"content"`
 }
 
 // Plan is everything one sync changes on a host.
