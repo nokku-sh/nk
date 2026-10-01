@@ -31,7 +31,7 @@ const (
 
 // requireRoot stops a script early with a clear message. Writing /etc/ssh
 // needs root, and a manual target is managed by its root operator.
-const requireRoot = `[ "$(id -u)" = 0 ] || { echo "nk sync must connect as root" >&2; exit 1; }` + "\n"
+const requireRoot = `[ "$(id -u)" = 0 ] || { echo "nk must connect as root" >&2; exit 1; }` + "\n"
 
 // ProbeCommand gathers the local accounts, the host key (ed25519 first), and
 // the existing principals files in one ssh round trip.

@@ -11,6 +11,39 @@ const (
 	verifyMarker = "#nk verified"
 )
 
+// reloadSSHD prints reloadMarker when sshd took the reload. systemd calls the
+// unit sshd on RHEL and ssh on Debian, the pid file covers hosts without
+// systemd.
+const reloadSSHD = `if systemctl reload sshd 2>/dev/null || systemctl reload ssh 2>/dev/null ||
+  { [ -f /run/sshd.pid ] && kill -HUP "$(cat /run/sshd.pid)"; } ||
+  { [ -f /var/run/sshd.pid ] && kill -HUP "$(cat /var/run/sshd.pid)"; }; then
+  echo '` + reloadMarker + `'
+fi
+`
+
+// RemoveScript undoes a manual sync. The drop-in goes first and comes back
+// when sshd rejects the config without it, so a failed run changes nothing.
+const RemoveScript = "set -e\n" + requireRoot +
+	`if [ -f ` + dropInPath + ` ]; then
+  mv -f ` + dropInPath + ` ` + dropInPath + `.nokku-bak
+  if ! sshd -t; then
+    mv -f ` + dropInPath + `.nokku-bak ` + dropInPath + `
+    echo 'sshd rejects its config without the Nokku drop-in, nothing was removed' >&2
+    exit 1
+  fi
+  rm -f ` + dropInPath + `.nokku-bak
+  echo "removed   ` + dropInPath + `"
+fi
+if [ -f ` + caPath + ` ]; then
+  rm -f ` + caPath + `
+  echo "removed   ` + caPath + `"
+fi
+if [ -d ` + principalsDir + ` ]; then
+  rm -rf ` + principalsDir + `
+  echo "removed   ` + principalsDir + `"
+fi
+` + reloadSSHD
+
 // File is one file a manual sync writes. Every file is 0644, which is what
 // sshd wants for all of them.
 type File struct {
@@ -89,12 +122,7 @@ func (p Plan) Script() string {
 		fmt.Fprintf(&b, "rm -f %s\necho \"removed   %s\"\n", q(path), path)
 	}
 
-	// systemd calls the unit sshd on RHEL and ssh on Debian, the pid file
-	// covers hosts without systemd.
-	b.WriteString("if systemctl reload sshd 2>/dev/null || systemctl reload ssh 2>/dev/null ||\n")
-	b.WriteString("  { [ -f /run/sshd.pid ] && kill -HUP \"$(cat /run/sshd.pid)\"; } ||\n")
-	b.WriteString("  { [ -f /var/run/sshd.pid ] && kill -HUP \"$(cat /var/run/sshd.pid)\"; }; then\n")
-	fmt.Fprintf(&b, "  echo '%s'\nfi\n", reloadMarker)
+	b.WriteString(reloadSSHD)
 
 	// A reload does not prove sshd read the drop-in. A config without the
 	// Include line, or one that sets these options first, ignores it.

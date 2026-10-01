@@ -254,6 +254,14 @@ func (c *Client) CreateTarget(ctx context.Context, t *state.Target) (*state.Targ
 	return &created, nil
 }
 
+func (c *Client) DeleteTarget(ctx context.Context, t *state.Target) error {
+	_, err := c.tc.DeleteTarget(ctx, &nokkuv1.DeleteTargetRequest{
+		WorkspaceId: new(t.WorkspaceID),
+		Id:          new(t.ID),
+	})
+	return err
+}
+
 // ListX509CAs returns the active X.509 CAs across the workspaces. They are
 // not linked to targets, so they are fetched separately from the access sync.
 func (c *Client) ListX509CAs(ctx context.Context) ([]*nokkuv1.CertificateAuthority, error) {

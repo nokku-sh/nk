@@ -2,7 +2,9 @@ package manual
 
 import (
 	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -87,6 +89,61 @@ func TestScriptIsValidShell(t *testing.T) {
 	cmd.Stdin = strings.NewReader(p.Script())
 	out, err := cmd.CombinedOutput()
 	require.NoError(t, err, "generated script must parse: %s", out)
+}
+
+// runRemoveScript runs RemoveScript against a fake /etc/ssh, with id, sshd,
+// and systemctl stubbed on PATH. It returns the fake dir.
+func runRemoveScript(t *testing.T, sshdExit int) (dir, out string, err error) {
+	t.Helper()
+	if _, lookErr := exec.LookPath("sh"); lookErr != nil {
+		t.Skip("sh not available")
+	}
+	dir = t.TempDir()
+	bin := filepath.Join(dir, "bin")
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "sshd_config.d"), 0o755))
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "nokku_principals"), 0o755))
+	require.NoError(t, os.Mkdir(bin, 0o755))
+	for name, body := range map[string]string{
+		"sshd_config.d/60-nokku.conf": "TrustedUserCAKeys x\n",
+		"nokku_ca.pub":                "ca\n",
+		"nokku_principals/root":       "id\n",
+		"bin/id":                      "#!/bin/sh\necho 0\n",
+		"bin/sshd":                    fmt.Sprintf("#!/bin/sh\nexit %d\n", sshdExit),
+		"bin/systemctl":               "#!/bin/sh\nexit 0\n",
+	} {
+		require.NoError(t, os.WriteFile(filepath.Join(dir, name), []byte(body), 0o755))
+	}
+
+	cmd := exec.Command("sh", "-s")
+	cmd.Stdin = strings.NewReader(strings.ReplaceAll(RemoveScript, "/etc/ssh", dir))
+	cmd.Env = []string{"PATH=" + bin + string(os.PathListSeparator) + os.Getenv("PATH")}
+	b, err := cmd.CombinedOutput()
+	return dir, string(b), err
+}
+
+func TestRemoveScript(t *testing.T) {
+	t.Parallel()
+	dir, out, err := runRemoveScript(t, 0)
+	require.NoError(t, err, out)
+
+	assert.NoFileExists(t, filepath.Join(dir, "sshd_config.d/60-nokku.conf"))
+	assert.NoFileExists(t, filepath.Join(dir, "sshd_config.d/60-nokku.conf.nokku-bak"))
+	assert.NoFileExists(t, filepath.Join(dir, "nokku_ca.pub"))
+	assert.NoDirExists(t, filepath.Join(dir, "nokku_principals"))
+	assert.DirExists(t, filepath.Join(dir, "sshd_config.d"), "the drop-in dir belongs to the host")
+	assert.True(t, ParseResult(out).Reloaded)
+}
+
+func TestRemoveScriptRollsBack(t *testing.T) {
+	t.Parallel()
+	dir, out, err := runRemoveScript(t, 1)
+	require.Error(t, err)
+
+	assert.Contains(t, out, "nothing was removed")
+	assert.FileExists(t, filepath.Join(dir, "sshd_config.d/60-nokku.conf"))
+	assert.FileExists(t, filepath.Join(dir, "nokku_ca.pub"))
+	assert.FileExists(t, filepath.Join(dir, "nokku_principals/root"))
+	assert.False(t, ParseResult(out).Reloaded, "a rejected config is never reloaded")
 }
 
 func TestParseResult(t *testing.T) {
