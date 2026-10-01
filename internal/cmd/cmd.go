@@ -22,6 +22,7 @@ var Commands = []*cli.Command{
 	logoutCMD(),
 	listCMD(),
 	syncCMD(),
+	targetCMD(),
 	pkiCMD(),
 	doctorCMD(),
 	proxyCMD(),

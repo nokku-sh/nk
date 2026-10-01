@@ -22,6 +22,14 @@ import (
 	"github.com/nokku-sh/nk/internal/ui"
 )
 
+var (
+	workspaceFlag = &cli.StringFlag{
+		Name:  "workspace",
+		Usage: "Workspace id or name, needed only when you belong to several",
+	}
+	portFlag = &cli.StringFlag{Name: "port", Usage: "SSH port of the server, defaults to your ssh config or 22"}
+)
+
 func syncCMD() *cli.Command {
 	return &cli.Command{
 		Name:  "sync",
@@ -31,12 +39,12 @@ func syncCMD() *cli.Command {
 		ArgsUsage: "<host | root@host | target-name>",
 		Flags: []cli.Flag{
 			&cli.StringFlag{Name: "name", Usage: "Name for a new target, generated when empty"},
-			&cli.StringFlag{Name: "workspace", Usage: "Workspace id or name, needed only when you belong to several"},
+			workspaceFlag,
 			&cli.StringFlag{
 				Name:  "ca",
 				Usage: "Certificate authority id or name for a new target, defaults to the workspace default",
 			},
-			&cli.StringFlag{Name: "port", Usage: "SSH port of the server, defaults to your ssh config or 22"},
+			portFlag,
 			&cli.BoolFlag{Name: "dry-run", Usage: "Show what would be written and change nothing"},
 		},
 		Action: targetSync,
@@ -44,16 +52,9 @@ func syncCMD() *cli.Command {
 }
 
 func targetSync(ctx context.Context, cmd *cli.Command) error {
-	arg := cmd.Args().First()
-	if arg == "" {
-		return errors.New("which server? For example: nk sync 10.0.0.5")
-	}
-	user, host, found := strings.Cut(arg, "@")
-	if !found {
-		host, user = arg, "root"
-	}
-	if user != "root" {
-		return fmt.Errorf("nk sync connects as root, use root@%s", host)
+	host, err := rootHost(cmd)
+	if err != nil {
+		return err
 	}
 
 	c, err := connect(ctx, cmd)
@@ -158,6 +159,91 @@ func applyPlan(
 	return nil
 }
 
+func targetCMD() *cli.Command {
+	return &cli.Command{
+		Name:  "target",
+		Usage: "Manage the servers you added with nk sync",
+		Commands: []*cli.Command{{
+			Name:  "delete",
+			Usage: "Remove a server without the daemon from Nokku",
+			Description: "Connects as root with your own ssh, removes the Nokku CA, the sshd drop-in, " +
+				"and the principals files, then deletes the target in Nokku.",
+			ArgsUsage: "<host | root@host | target-name>",
+			Flags: []cli.Flag{
+				workspaceFlag,
+				portFlag,
+				&cli.BoolFlag{Name: "keep-host", Usage: "Delete the target only and leave the server as it is"},
+			},
+			Action: targetDelete,
+		}},
+	}
+}
+
+// targetDelete cleans the host first, so a target never disappears from
+// Nokku while its server still trusts the CA.
+func targetDelete(ctx context.Context, cmd *cli.Command) error {
+	host, err := rootHost(cmd)
+	if err != nil {
+		return err
+	}
+
+	c, err := connect(ctx, cmd)
+	if err != nil {
+		return err
+	}
+	target, err := findTarget(c.State, cmd.String("workspace"), host)
+	if err != nil {
+		return err
+	}
+	if target == nil {
+		return fmt.Errorf("no target matches %s, run nk ls to see yours", host)
+	}
+
+	if !cmd.Bool("keep-host") {
+		dest := remote{host: host, port: cmd.String("port")}
+		if target.Name == host && len(target.Endpoints) > 0 {
+			dest = endpointRemote(target.Endpoints[0], dest.port)
+		}
+		fmt.Printf("Connecting with: %s\n", dest)
+		out, runErr := dest.run(ctx, "sh -s", manual.RemoveScript)
+		fmt.Print(ui.Dim(manual.Output(out)))
+		if runErr != nil {
+			return fmt.Errorf(
+				"cleaning up %s failed, the target was not deleted. Pass --keep-host to delete it anyway: %w",
+				dest.host, runErr,
+			)
+		}
+		if !manual.ParseResult(out).Reloaded {
+			warnf("could not reload sshd, restart it on the host to apply the changes")
+		}
+	}
+
+	if err = c.DeleteTarget(ctx, target); err != nil {
+		return fmt.Errorf("deleting %s in Nokku failed, run it again with --keep-host: %w", target.Name, err)
+	}
+	if err = c.SyncOrCache(ctx, false); err != nil {
+		warnf("local refresh failed, run nk login to update your ssh config")
+	}
+	fmt.Printf("%s %s is deleted\n", ui.Green("✔"), target.Name)
+	return nil
+}
+
+// rootHost reads the host argument, which may be written as root@host.
+func rootHost(cmd *cli.Command) (string, error) {
+	arg := cmd.Args().First()
+	if arg == "" {
+		return "", fmt.Errorf("which server? For example: %s 10.0.0.5", cmd.FullName())
+	}
+	user, host, found := strings.Cut(arg, "@")
+	if found && user != "root" {
+		return "", fmt.Errorf("%s connects as root, use root@%s", cmd.FullName(), host)
+	}
+	if !found {
+		host = arg
+	}
+	return host, nil
+}
+
 // findTarget looks for an existing manual target by name or endpoint.
 func findTarget(s *state.State, workspace, host string) (*state.Target, error) {
 	var matches []*state.Target
@@ -177,7 +263,7 @@ func findTarget(s *state.State, workspace, host string) (*state.Target, error) {
 	case len(matches) > 1:
 		return nil, fmt.Errorf("%s matches targets in several workspaces, pass --workspace", host)
 	case !matches[0].Manual():
-		return nil, fmt.Errorf("%s runs the Nokku daemon, which keeps itself in sync", matches[0].Name)
+		return nil, fmt.Errorf("%s runs the Nokku daemon, this command is for servers without it", matches[0].Name)
 	}
 	return matches[0], nil
 }

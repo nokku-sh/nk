@@ -82,6 +82,7 @@ The command generates an ECDSA P-256 key pair (`--key-type ed25519` for ed25519)
 | `nk pki list`                | List active X.509 certificate authorities                         |
 | `nk pki issue <cn>`          | Issue an X.509 certificate                                        |
 | `nk sync <host>`             | Add a server without the daemon, or refresh one you added         |
+| `nk target delete <host>`    | Clean up a server you added with `nk sync` and delete its target  |
 | `nk logout`                  | Sign out, stop the agent, and remove local credentials and state  |
 
 ### Command flags
@@ -93,6 +94,7 @@ The command generates an ECDSA P-256 key pair (`--key-type ed25519` for ed25519)
 | `nk pki list`  | `--json` for machine-readable output                                      |
 | `nk pki issue` | `--san dns:name`, `--usage client\|server\|both`, `--ca`, `--key-type`, `--output`/`-o` |
 | `nk sync`      | `--name`, `--workspace`, `--ca`, `--port`, `--dry-run`                    |
+| `nk target delete` | `--workspace`, `--port`, `--keep-host` to leave the server untouched  |
 
 ## Configuration
 
@@ -126,6 +128,17 @@ password is asked at most once. It writes the Nokku CA, an sshd drop-in, and one
 principals file per account, checks the result with `sshd -t`, and rolls every
 file back if sshd rejects it. Nokku only hears about the sync once the server is
 written. Run it again whenever access changes.
+
+`nk target delete` undoes it:
+
+```bash
+nk target delete web        # or the address, like nk sync
+```
+
+It removes the drop-in, the CA, and the principals files over the same root
+ssh, reloads sshd, and only then deletes the target in Nokku. If sshd rejects
+its config without the drop-in, everything is put back and the target stays.
+Pass `--keep-host` when the server is already gone.
 
 ## Uninstall
 

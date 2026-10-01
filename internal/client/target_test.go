@@ -15,12 +15,21 @@ import (
 	"github.com/nokku-sh/nk/internal/state"
 )
 
-// captureTargetService records the create request and answers with the target
-// the backend would have made.
+// captureTargetService records the requests and answers a create with the
+// target the backend would have made.
 type captureTargetService struct {
 	nokkuv1connect.UnimplementedTargetServiceHandler
 
-	got *nokkuv1.CreateTargetRequest
+	got     *nokkuv1.CreateTargetRequest
+	deleted *nokkuv1.DeleteTargetRequest
+}
+
+func (s *captureTargetService) DeleteTarget(
+	_ context.Context,
+	req *nokkuv1.DeleteTargetRequest,
+) (*nokkuv1.DeleteTargetResponse, error) {
+	s.deleted = req
+	return &nokkuv1.DeleteTargetResponse{}, nil
 }
 
 func (s *captureTargetService) CreateTarget(
@@ -59,4 +68,22 @@ func TestCreateTarget(t *testing.T) {
 	assert.Equal(t, "ca-1", svc.got.GetCaId())
 	assert.Equal(t, []string{"10.0.0.5"}, svc.got.GetEndpoints())
 	assert.Equal(t, "ssh-ed25519 AAAA", svc.got.GetHostPublicKey())
+}
+
+func TestDeleteTarget(t *testing.T) {
+	t.Parallel()
+
+	svc := &captureTargetService{}
+	mux := http.NewServeMux()
+	mux.Handle(nokkuv1connect.NewTargetServiceHandler(svc))
+	server := httptest.NewServer(mux)
+	t.Cleanup(server.Close)
+
+	c := &Client{State: &state.State{APIURL: server.URL, SessionToken: "sess-token"}}
+	c.tc = nokkuv1connect.NewTargetServiceClient(http.DefaultClient, server.URL)
+
+	require.NoError(t, c.DeleteTarget(t.Context(), &state.Target{ID: "target-1", WorkspaceID: "ws-1"}))
+	require.NotNil(t, svc.deleted)
+	assert.Equal(t, "ws-1", svc.deleted.GetWorkspaceId())
+	assert.Equal(t, "target-1", svc.deleted.GetId())
 }
