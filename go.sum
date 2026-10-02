@@ -22,8 +22,8 @@ github.com/mizuchilabs/kata v0.1.15 h1:elUyxJghTH+Ig25IEbHwSNMm3F4bHJPQOau+2vgs9
 github.com/mizuchilabs/kata v0.1.15/go.mod h1:s24K0qob5pRZAE57lWKnInhl2qGScuWmAOrLh9Zd4Oo=
 github.com/nokku-sh/mon v0.1.4 h1:RpYdIexquRHgLqGsP/57CnOagurXYR7aF9oBg7JuC9E=
 github.com/nokku-sh/mon v0.1.4/go.mod h1:idArKxyw27A0bAMeNI01CA+OygEg/TK7V0gIsPeuS78=
-github.com/nokku-sh/protos v0.1.0 h1:BagBSWOsUIWeDpCEqqkVCAS90Yb8P6sP2c4h2x8OnMk=
-github.com/nokku-sh/protos v0.1.0/go.mod h1:9dVDl1kk5txhm7OtPB1vCfnOKdPYKOYB7FA5QALath8=
+github.com/nokku-sh/protos v0.2.0 h1:ihmRiAOxAUVg/rciiAmSpGHfS0B32CP1fbE0lPKdeCM=
+github.com/nokku-sh/protos v0.2.0/go.mod h1:9dVDl1kk5txhm7OtPB1vCfnOKdPYKOYB7FA5QALath8=
 github.com/pborman/uuid v1.2.0 h1:J7Q5mO4ysT1dv8hyrUGHb9+ooztCXu1D8MY8DZYsu3g=
 github.com/pborman/uuid v1.2.0/go.mod h1:X/NO0urCmaxf9VXbdlT7C2Yzkj2IKimNn4k+gtPdI/k=
 github.com/pkg/browser v0.0.0-20240102092130-5ac0b6a4141c h1:+mdjkGKdHQG3305AYmdv1U2eRNDiU2ErMBj1gwrq8eQ=
