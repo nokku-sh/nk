@@ -75,11 +75,6 @@ jobs:
         with:
           go-version-file: go.mod
 
-      - name: Install UPX
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y upx
-
       - uses: sigstore/cosign-installer@v4.1.2
 
       - uses: anchore/sbom-action@v0

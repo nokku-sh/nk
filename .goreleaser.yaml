@@ -30,12 +30,6 @@ builds:
       - arm64
       - riscv64
 
-upx:
-  - enabled: true
-    lzma: true
-    compress: best
-    goos: [linux]
-
 signs:
   - cmd: cosign
     artifacts: checksum
