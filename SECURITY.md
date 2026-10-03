@@ -72,6 +72,9 @@ backend.
 - Releases are built via GoReleaser. Each release publishes `nk_checksums.txt`,
   a cosign signature bundle for it (`nk_checksums.txt.sigstore.json`), and a
   CycloneDX SBOM per binary. `install.sh` verifies the SHA-256 of the binary it
-  downloads against the checksum manifest and stops on a mismatch. The manifest
-  itself can be checked with `cosign verify-blob` against the attached bundle and
-  the GitHub Actions OIDC issuer.
+  downloads against the checksum manifest, verifies the manifest with cosign
+  when it is available, and stops on a mismatch. The manifest can also be
+  checked by hand with `cosign verify-blob` against the attached bundle and the
+  GitHub Actions OIDC issuer. The deb, rpm and apk packages come from the
+  Cloudsmith repository and are checked by the package manager against the
+  repository key.

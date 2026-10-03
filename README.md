@@ -22,10 +22,10 @@ Install the CLI:
 curl -fsSL https://get.nokku.sh/nk | sh
 ```
 
-The installer prefers your distro's package (deb/rpm/apk) via the Cloudsmith
-repository and falls back to the GitHub release binary. Pass `--version <x.y.z>`
-or `NK_VERSION=<x.y.z>` to pin a version, and `--system` to install into
-`/usr/local/bin` instead of `~/.local/bin`.
+On Linux the installer adds the Cloudsmith repository and installs your
+distro's package (deb, rpm, apk). macOS, other distros and pinned versions
+(`--version <x.y.z>` or `NK_VERSION=<x.y.z>`) get the release binary from
+GitHub, in `~/.local/bin` or with `--system` in `/usr/local/bin`.
 
 Prefer manual packages? See the [package repository](https://broadcasts.cloudsmith.com/nokku/nk) for apt/dnf/apk install instructions.
 
