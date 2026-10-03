@@ -362,3 +362,28 @@ func TestAgentSignOnlyAndShutdown(t *testing.T) {
 		t.Fatal("agent did not stop on the shutdown extension")
 	}
 }
+
+// Two agents starting at once must not both listen. The loser used to remove
+// the winner's socket and unlink it again on its own exit.
+func TestAgentSocketHasOneOwner(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("named pipes are exclusive already")
+	}
+	must := require.New(t)
+	t.Setenv("HOME", t.TempDir())
+	must.NoError(paths.EnsurePaths())
+
+	first, err := listenAgent(t.Context())
+	must.NoError(err)
+
+	_, err = listenAgent(t.Context())
+	must.Error(err, "a second agent took over a live socket")
+	conn, err := dialAgent(t.Context())
+	must.NoError(err, "the first agent's socket is gone")
+	_ = conn.Close()
+
+	must.NoError(first.Close())
+	again, err := listenAgent(t.Context())
+	must.NoError(err, "the socket stayed locked after its owner left")
+	_ = again.Close()
+}
