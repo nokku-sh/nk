@@ -97,6 +97,12 @@ func (c *Client) beginDeviceAuth(ctx context.Context) (deviceAuth, error) {
 	if d.DeviceCode == "" || d.UserCode == "" || d.VerificationURI == "" {
 		return d, errors.New("device authorization: incomplete response")
 	}
+	// The link goes to the OS opener, which also launches files and custom
+	// schemes.
+	u, err := url.Parse(d.VerificationURI)
+	if err != nil || (u.Scheme != "https" && u.Scheme != "http") {
+		return d, errors.New("device authorization: the sign-in link is not a web address")
+	}
 	return d, nil
 }
 
