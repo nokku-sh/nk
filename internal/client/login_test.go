@@ -234,3 +234,20 @@ func TestDeviceFlowTwoConsecutiveLogins(t *testing.T) {
 		assert.NotEmpty(t, token, "login %d: empty token", i+1)
 	}
 }
+
+// The link is handed to the OS opener, which also launches files and custom
+// schemes. A backend must only be able to send a web page.
+func TestDeviceFlowRejectsNonWebLink(t *testing.T) {
+	f, srv := newFakeDeviceFlow(t)
+	f.baseURL = "file:///etc/passwd"
+	c := &Client{State: &state.State{APIURL: srv.URL}, httpc: srv.Client()}
+	c.dpop = dpopclient.New(
+		newTestProofer(t),
+		srv.Client(),
+		func() string { return c.State.SessionToken },
+		dpopclient.Options{BaseURL: c.State.APIURL},
+	)
+
+	_, err := c.beginDeviceAuth(t.Context())
+	require.Error(t, err, "a file link was accepted")
+}
