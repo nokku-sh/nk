@@ -8,7 +8,7 @@ require (
 	github.com/google/go-tpm v0.9.8
 	github.com/mizuchilabs/kata v0.1.15
 	github.com/nokku-sh/mon v0.1.4
-	github.com/nokku-sh/protos v0.2.0
+	github.com/nokku-sh/protos v0.2.1
 	github.com/pkg/browser v0.0.0-20240102092130-5ac0b6a4141c
 	github.com/stretchr/testify v1.12.1
 	github.com/urfave/cli/v3 v3.14.0
@@ -24,5 +24,4 @@ require (
 	github.com/go-jose/go-jose/v4 v4.1.5 // indirect
 	github.com/google/go-tpm-tools v0.3.13-0.20230620182252-4639ecce2aba // indirect
 	go.yaml.in/yaml/v3 v3.0.5 // indirect
-	google.golang.org/genproto/googleapis/api v0.0.0-20260928230214-8a89bd6388cc // indirect
 )
