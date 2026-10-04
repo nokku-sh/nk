@@ -116,7 +116,7 @@ func targetSync(ctx context.Context, cmd *cli.Command) error {
 			return err
 		}
 	}
-	plan := manual.NewPlan(ca.PublicKey, grants, h)
+	plan := manual.NewPlan(strings.Join(ca.TrustedKeys(), "\n"), grants, h)
 
 	if !dryRun {
 		if err = applyPlan(ctx, c, target, dest, h, plan, progress); err != nil {

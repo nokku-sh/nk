@@ -37,7 +37,7 @@ func listCMD() *cli.Command {
 				if len(t.Usernames) > 0 {
 					users = strings.Join(t.Usernames, ", ")
 				}
-				fmt.Printf("  %-24s %s %s\n", t.Name, users, ui.Dim(manualNote(t)))
+				fmt.Printf("  %-24s %s %s\n", t.Name, users, ui.Dim(manualNote(t, s.CAByID(t.CAID))))
 			}
 			fmt.Println("\nConnect with: ssh <server> or ssh <user>@<server>")
 			return nil
@@ -46,13 +46,16 @@ func listCMD() *cli.Command {
 }
 
 // manualNote shows how fresh a daemonless target's access is.
-func manualNote(t state.Target) string {
+func manualNote(t state.Target, ca *state.CA) string {
 	if !t.Manual() {
 		return ""
 	}
 	last := t.LastManualSync()
 	if last.IsZero() {
 		return "(manual, never synced)"
+	}
+	if t.NeedsSync(ca) {
+		return "(manual, needs nk sync, its certificate authority was rotated)"
 	}
 	return "(manual, synced " + ui.HumanizeDuration(time.Since(last)) + " ago)"
 }
@@ -64,6 +67,7 @@ func printTargetsJSON(s *state.State) error {
 		Users      []string `json:"users"`
 		Manual     bool     `json:"manual"`
 		LastSynced string   `json:"last_synced,omitempty"`
+		NeedsSync  bool     `json:"needs_sync,omitzero"`
 	}
 	out := struct {
 		Targets []target `json:"targets"`
@@ -75,6 +79,7 @@ func printTargetsJSON(s *state.State) error {
 			Users:      t.Usernames,
 			Manual:     t.Manual(),
 			LastSynced: t.Metadata["last_manual_sync"],
+			NeedsSync:  t.NeedsSync(s.CAByID(t.CAID)),
 		})
 	}
 	return printJSON(out)

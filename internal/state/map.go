@@ -30,13 +30,22 @@ func FromAccess(res *nokkuv1.GetMyAccessResponse) Cache {
 			if ca.GetAuthorityType() == nokkuv1.AuthorityType_AUTHORITY_TYPE_X509 || !validIDs(ca.GetId()) {
 				continue
 			}
-			c.CAs = append(c.CAs, CA{
+			entry := CA{
 				ID:          ca.GetId(),
 				WorkspaceID: wa.GetWorkspaceId(),
 				Name:        ca.GetName(),
 				PublicKey:   ca.GetPublicKey(),
 				Default:     ca.GetIsDefault(),
-			})
+			}
+			// AsTime turns an unset timestamp into 1970, not the zero time.
+			if ca.GetNotBefore() != nil {
+				entry.RotatedAt = ca.GetNotBefore().AsTime()
+			}
+			if ca.GetPreviousTrustedUntil() != nil {
+				entry.PreviousPublicKey = ca.GetPreviousPublicKey()
+				entry.PreviousTrustedUntil = ca.GetPreviousTrustedUntil().AsTime()
+			}
+			c.CAs = append(c.CAs, entry)
 		}
 		for _, t := range wa.GetTargets() {
 			if !validIDs(t.GetId(), t.GetCaId()) || t.GetDaemonId() != "" && !validIDs(t.GetDaemonId()) {

@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -54,7 +55,14 @@ func TestRenderKnownHosts(t *testing.T) {
 	t.Parallel()
 	st := &state.State{
 		CAs: []state.CA{
-			{ID: "ca-1", PublicKey: "ssh-ed25519 AAAACa1== production"},
+			{
+				ID: "ca-1", PublicKey: "ssh-ed25519 AAAACa1== production",
+				PreviousPublicKey: "ssh-ed25519 AAAAOld1==", PreviousTrustedUntil: time.Now().Add(time.Hour),
+			},
+			{
+				ID: "ca-3", PublicKey: "ssh-ed25519 AAAACa3==",
+				PreviousPublicKey: "ssh-ed25519 AAAAOld3==", PreviousTrustedUntil: time.Now().Add(-time.Hour),
+			},
 			{ID: "ca-2", PublicKey: "ssh-ed25519 AAAA==\nHost *\n    ProxyCommand curl evil"},
 		},
 		Targets: []state.Target{
@@ -63,10 +71,19 @@ func TestRenderKnownHosts(t *testing.T) {
 			{ID: "t-3", CAID: "ca-1", HostPublicKey: "ssh-ed25519 AAAAhost== host"},
 			{ID: "t-4", CAID: "ca-1"},
 			{ID: "t-5", CAID: "ca-1", DaemonID: "d-5", HostPublicKey: "ssh-ed25519 AAAAstray"},
+			{ID: "t-6", CAID: "ca-3", DaemonID: "d-6"},
 		}}
 	out := string(renderKnownHosts(st))
 
 	assert.Contains(t, out, "@cert-authority t-1 ssh-ed25519 AAAACa1== production\n")
+	assert.Contains(
+		t,
+		out,
+		"@cert-authority t-1 ssh-ed25519 AAAAOld1==\n",
+		"a replaced key stays trusted until its deadline",
+	)
+	assert.Contains(t, out, "@cert-authority t-6 ssh-ed25519 AAAACa3==\n")
+	assert.NotContains(t, out, "AAAAOld3", "a replaced key past its deadline is dropped")
 	assert.Contains(t, out, "t-3 ssh-ed25519 AAAAhost== host\n")
 	assert.NotContains(t, out, "@cert-authority t-3", "manual targets are pinned, not CA trusted")
 	assert.NotContains(t, out, "t-4", "nothing to pin without a host key")

@@ -101,8 +101,12 @@ func renderKnownHosts(st *state.State) []byte {
 			continue
 		}
 		if ca := st.CAByID(t.CAID); ca != nil {
-			if key := strings.TrimSpace(ca.PublicKey); safeLine(key) {
-				fmt.Fprintf(&b, "@cert-authority %s %s\n", t.ID, key)
+			// A daemon that missed a rollover still shows a host
+			// certificate from the replaced key.
+			for _, key := range ca.TrustedKeys() {
+				if safeLine(key) {
+					fmt.Fprintf(&b, "@cert-authority %s %s\n", t.ID, key)
+				}
 			}
 		}
 	}
