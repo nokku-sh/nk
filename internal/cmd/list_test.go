@@ -17,6 +17,7 @@ func TestManualNote(t *testing.T) {
 	tests := []struct {
 		name   string
 		target state.Target
+		ca     *state.CA
 		want   string
 	}{
 		{
@@ -30,6 +31,18 @@ func TestManualNote(t *testing.T) {
 				Metadata: map[string]string{"last_manual_sync": stamp},
 			},
 			want: "(manual, synced 3h12m ago)",
+		},
+		{
+			name:   "a key rotated after the last sync needs a sync",
+			target: state.Target{Metadata: map[string]string{"last_manual_sync": stamp}},
+			ca:     &state.CA{RotatedAt: time.Now().Add(-time.Hour)},
+			want:   "(manual, needs nk sync, its certificate authority was rotated)",
+		},
+		{
+			name:   "a key older than the last sync is fine",
+			target: state.Target{Metadata: map[string]string{"last_manual_sync": stamp}},
+			ca:     &state.CA{RotatedAt: time.Now().Add(-24 * time.Hour)},
+			want:   "(manual, synced 3h12m ago)",
 		},
 		{
 			name: "an unparsable stamp reads as never synced",
@@ -48,7 +61,7 @@ func TestManualNote(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			assert.Equal(t, tt.want, manualNote(tt.target))
+			assert.Equal(t, tt.want, manualNote(tt.target, tt.ca))
 		})
 	}
 }

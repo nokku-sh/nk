@@ -42,6 +42,22 @@ type CA struct {
 	Name        string `json:"name"`
 	PublicKey   string `json:"public_key"`
 	Default     bool   `json:"default,omitzero"`
+	// RotatedAt is when the current key was issued.
+	RotatedAt time.Time `json:"rotated_at,omitzero"`
+	// PreviousPublicKey is the key before the last rollover. Its certificates
+	// stay trusted until PreviousTrustedUntil.
+	PreviousPublicKey    string    `json:"previous_public_key,omitempty"`
+	PreviousTrustedUntil time.Time `json:"previous_trusted_until,omitzero"`
+}
+
+// TrustedKeys returns the current key and, while it is still trusted, the one
+// it replaced.
+func (ca CA) TrustedKeys() []string {
+	keys := []string{strings.TrimSpace(ca.PublicKey)}
+	if prev := strings.TrimSpace(ca.PreviousPublicKey); prev != "" && time.Now().Before(ca.PreviousTrustedUntil) {
+		keys = append(keys, prev)
+	}
+	return keys
 }
 
 type Target struct {
@@ -60,6 +76,12 @@ type Target struct {
 
 // Manual reports whether the target has no daemon and is synced by hand.
 func (t Target) Manual() bool { return t.DaemonID == "" }
+
+// NeedsSync reports whether the server of a manual target has not seen the
+// current key of ca yet. Certificates signed by that key are rejected there.
+func (t Target) NeedsSync(ca *CA) bool {
+	return t.Manual() && ca != nil && ca.RotatedAt.After(t.LastManualSync())
+}
 
 // LastManualSync is when an operator last ran nk sync, zero when never.
 func (t Target) LastManualSync() time.Time {
