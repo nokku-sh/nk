@@ -16,8 +16,14 @@ import (
 	"github.com/nokku-sh/nk/internal/state"
 )
 
-// proxyFreshFor is how long nk proxy trusts the cached access snapshot.
-const proxyFreshFor = time.Minute
+const (
+	// proxyFreshFor is how long nk proxy trusts the cached access snapshot.
+	proxyFreshFor = time.Minute
+	// backendRetryAfter is how long nk under ssh leaves a backend alone that
+	// was out of reach. Without it every connection of an outage waits for
+	// the timeout first.
+	backendRetryAfter = 30 * time.Second
+)
 
 // proxyCMD is the ProxyCommand in the generated ssh_config. ssh runs it, users
 // do not.
@@ -45,7 +51,8 @@ func proxyCMD() *cli.Command {
 
 			// The daemon enforces revocation itself, so a young snapshot only
 			// delays new grants, and fan-out over many hosts syncs once.
-			if time.Since(s.SyncedAt) > proxyFreshFor || s.TargetByID(id) == nil {
+			stale := time.Since(s.SyncedAt) > proxyFreshFor && !s.BackendDown(backendRetryAfter)
+			if stale || s.TargetByID(id) == nil {
 				c, cerr := backend()
 				if cerr != nil {
 					return cerr
@@ -120,14 +127,22 @@ func renewCert(ctx context.Context, cmd *cli.Command) error {
 		return errors.New("unknown target")
 	}
 	ca := s.CAByID(target.CAID)
-	if ca == nil || ssh.CertValid(*ca, client.CertRenewWindow) {
+	if ca == nil || ssh.CertFresh(*ca) {
+		return nil
+	}
+	// A certificate that still works is not worth a timeout while the
+	// backend is down.
+	if ssh.CertValid(*ca, 0) && s.BackendDown(backendRetryAfter) {
 		return nil
 	}
 	c, err := client.New(s)
 	if err != nil {
 		return err
 	}
-	return c.EnsureCert(ctx, *ca, false)
+	if err = c.EnsureCert(ctx, *ca, false); err != nil {
+		s.MarkBackendDown()
+	}
+	return err
 }
 
 func agentCMD() *cli.Command {

@@ -60,6 +60,22 @@ func CertValid(ca state.CA, margin time.Duration) bool {
 	return err == nil && CheckCert(data, ca.PublicKey, margin) == nil
 }
 
+// CertFresh reports whether the cached certificate for ca is valid and still
+// in the first half of its life. It is renewed from there on, so a backend
+// outage finds an active user with at least half a lifetime left.
+func CertFresh(ca state.CA) bool {
+	data, err := os.ReadFile(paths.SSHCertificate(ca.ID))
+	if err != nil {
+		return false
+	}
+	cert, err := ParseCert(data)
+	if err != nil {
+		return false
+	}
+	after, before := CertWindow(cert)
+	return CheckCert(data, ca.PublicKey, before.Sub(after)/2) == nil
+}
+
 func unixTime(t uint64) time.Time {
 	return time.Unix(int64(min(t, math.MaxInt64)), 0)
 }

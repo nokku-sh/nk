@@ -25,10 +25,8 @@ import (
 )
 
 const (
-	// CertRenewWindow renews a certificate this long before it expires.
-	CertRenewWindow = 15 * time.Minute
-	syncTimeout     = 5 * time.Second
-	dialTimeout     = 3 * time.Second
+	syncTimeout = 5 * time.Second
+	dialTimeout = 3 * time.Second
 )
 
 // signerSalt namespaces the CLI's DPoP key. Salt registry: mon/README.md.
@@ -132,6 +130,7 @@ func (c *Client) SyncOrCache(ctx context.Context, interactive bool) error {
 		return fmt.Errorf("cannot reach Nokku and nothing is cached yet: %w", err)
 	}
 	slog.Warn("cannot reach Nokku, using cached access", "err", err)
+	c.State.MarkBackendDown()
 	return nil
 }
 
@@ -171,10 +170,11 @@ func (c *Client) Logout(ctx context.Context) {
 	}
 }
 
-// EnsureCert makes sure a certificate from ca is on disk that stays valid for
-// the renewal window. A valid one is kept, so ssh works offline.
+// EnsureCert makes sure a fresh certificate from ca is on disk, see
+// ssh.CertFresh. When signing fails the one on disk stays, so ssh keeps
+// working offline for as long as it is valid.
 func (c *Client) EnsureCert(ctx context.Context, ca state.CA, interactive bool) error {
-	if ssh.CertValid(ca, CertRenewWindow) {
+	if ssh.CertFresh(ca) {
 		return nil
 	}
 	if err := c.ensureSession(ctx, interactive); err != nil {
@@ -194,7 +194,9 @@ func (c *Client) EnsureCert(ctx context.Context, ca state.CA, interactive bool) 
 	if c.State.TTL > 0 {
 		req.Ttl = durationpb.New(c.State.TTL)
 	}
-	res, err := c.cc.SignSSHCertificate(ctx, req)
+	signCtx, cancel := context.WithTimeout(ctx, syncTimeout)
+	defer cancel()
+	res, err := c.cc.SignSSHCertificate(signCtx, req)
 	if err != nil {
 		return err
 	}

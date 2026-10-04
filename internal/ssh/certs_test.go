@@ -64,6 +64,37 @@ func TestCheckCert(t *testing.T) {
 	}
 }
 
+func TestCertFresh(t *testing.T) {
+	setupSSHDir(t)
+	signer := newSigner(t)
+	ca := state.CA{
+		ID:        "0199a0a0-0000-7000-8000-000000000002",
+		PublicKey: string(ssh.MarshalAuthorizedKey(signer.PublicKey())),
+	}
+	assert.False(t, CertFresh(ca), "no certificate yet")
+
+	now := time.Now()
+	tests := []struct {
+		name          string
+		after, before time.Time
+		signer        ssh.Signer
+		fresh         bool
+	}{
+		{"first half of its life", now.Add(-time.Hour), now.Add(119 * time.Hour), signer, true},
+		{"second half, still valid", now.Add(-61 * time.Hour), now.Add(59 * time.Hour), signer, false},
+		{"expired", now.Add(-2 * time.Hour), now.Add(-time.Hour), signer, false},
+		{"other ca", now.Add(-time.Hour), now.Add(119 * time.Hour), newSigner(t), false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.NoError(t, os.WriteFile(
+				paths.SSHCertificate(ca.ID), signCert(t, tt.signer, tt.after, tt.before), 0o600,
+			))
+			assert.Equal(t, tt.fresh, CertFresh(ca))
+		})
+	}
+}
+
 func TestCertValidAndCleanup(t *testing.T) {
 	setupSSHDir(t)
 	signer := newSigner(t)

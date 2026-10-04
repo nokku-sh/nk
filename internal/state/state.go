@@ -99,7 +99,9 @@ type Config struct {
 
 // Cache is the last access snapshot, persisted in cache.json for offline use.
 type Cache struct {
-	SyncedAt       time.Time       `json:"synced_at,omitzero"`
+	SyncedAt time.Time `json:"synced_at,omitzero"`
+	// FailedAt is when the backend was last out of reach. A sync clears it.
+	FailedAt       time.Time       `json:"failed_at,omitzero"`
 	User           *User           `json:"user,omitempty"`
 	ServiceAccount *ServiceAccount `json:"service_account,omitempty"`
 	Workspaces     []Workspace     `json:"workspaces,omitempty"`
@@ -166,6 +168,21 @@ func (s *State) Save() error {
 		return fmt.Errorf("saving cache: %w", err)
 	}
 	return nil
+}
+
+// MarkBackendDown notes that the backend was out of reach just now. nk under
+// ssh then leaves it alone for a while, so an outage costs one timeout and
+// not one per connection.
+func (s *State) MarkBackendDown() {
+	s.FailedAt = time.Now()
+	if err := fsutil.SaveJSON(paths.CacheFile(), s.Cache, 0o600); err != nil {
+		slog.Debug("failed to note the backend outage", "err", err)
+	}
+}
+
+// BackendDown reports whether the backend was out of reach within d.
+func (s *State) BackendDown(d time.Duration) bool {
+	return time.Since(s.FailedAt) < d
 }
 
 // IsServiceAccount reports whether a service account token is in use.
