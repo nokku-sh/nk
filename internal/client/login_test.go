@@ -46,6 +46,7 @@ type fakeGrant struct {
 	deviceCode string
 	userCode   string
 	status     string
+	userAgent  string
 }
 
 func newFakeDeviceFlow(t *testing.T) (*fakeDeviceFlow, *httptest.Server) {
@@ -68,13 +69,14 @@ func newFakeDeviceFlow(t *testing.T) (*fakeDeviceFlow, *httptest.Server) {
 	return f, srv
 }
 
-func (f *fakeDeviceFlow) begin(w http.ResponseWriter, _ *http.Request) {
+func (f *fakeDeviceFlow) begin(w http.ResponseWriter, r *http.Request) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	g := &fakeGrant{
 		deviceCode: fmt.Sprintf("dev-%d", len(f.grants)),
 		userCode:   fmt.Sprintf("USER-%d", len(f.grants)),
 		status:     "pending",
+		userAgent:  r.Header.Get("User-Agent"),
 	}
 	f.grants[g.deviceCode] = g
 	writeJSON(w, map[string]any{
@@ -232,6 +234,13 @@ func TestDeviceFlowTwoConsecutiveLogins(t *testing.T) {
 		token, err := runDeviceLogin(t, c, f)
 		require.NoError(t, err, "login %d", i+1)
 		assert.NotEmpty(t, token, "login %d: empty token", i+1)
+	}
+
+	// The approval page shows who asked, so the request has to say it is nk.
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, g := range f.grants {
+		assert.True(t, strings.HasPrefix(g.userAgent, "nk/"), "device request user agent = %q", g.userAgent)
 	}
 }
 
