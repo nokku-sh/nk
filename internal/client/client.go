@@ -188,7 +188,6 @@ func (c *Client) EnsureCert(ctx context.Context, ca state.CA, interactive bool) 
 	req := &nokkuv1.SignSSHCertificateRequest{
 		WorkspaceId: new(ca.WorkspaceID),
 		CaId:        new(ca.ID),
-		Type:        nokkuv1.SignSSHCertificateRequest_CERTIFICATE_TYPE_USER.Enum(),
 		PublicKey:   new(pubKey),
 	}
 	if c.State.TTL > 0 {
