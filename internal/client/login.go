@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/mizuchilabs/kata/buildinfo"
 	"github.com/pkg/browser"
 
 	"github.com/nokku-sh/mon/dpopclient"
@@ -213,6 +214,8 @@ func (c *Client) postForm(
 		return nil, err
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	// The approval page shows it, so the user recognizes their own terminal.
+	req.Header.Set("User-Agent", buildinfo.UserAgent("nk"))
 
 	if c.dpop != nil {
 		proof, perr := c.dpop.Proof(http.MethodPost, c.dpop.HtuBase()+path)
