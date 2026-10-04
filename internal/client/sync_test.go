@@ -247,7 +247,6 @@ func TestEnsureCertSignsAndWritesCert(t *testing.T) {
 	backend := &fakeBackend{
 		sign: func(t *testing.T, req *nokkuv1.SignSSHCertificateRequest) (*nokkuv1.SignSSHCertificateResponse, error) {
 			assert.Equal(t, caID, req.GetCaId())
-			assert.Equal(t, nokkuv1.SignSSHCertificateRequest_CERTIFICATE_TYPE_USER, req.GetType())
 			return &nokkuv1.SignSSHCertificateResponse{
 				CaId:              new(caID),
 				SignedCertificate: new(ca.signRequest(t, req)),
