@@ -11,20 +11,23 @@ import (
 	"github.com/mizuchilabs/kata/fsutil"
 	"github.com/nokku-sh/mon/tpm"
 
+	"github.com/nokku-sh/nk/internal/enclave"
 	"github.com/nokku-sh/nk/internal/paths"
 )
 
 // sshSalt namespaces the SSH identity. Salt registry: mon/README.md.
 const sshSalt = "nokku-cli-ssh"
 
-// newSSHSigner loads or creates the machine's SSH identity: TPM-resident when
-// a TPM is usable, otherwise a software key wrapped to this machine.
+// newSSHSigner loads or creates the machine's SSH identity: in the TPM or the
+// Secure Enclave when one is usable, otherwise a software key wrapped to this
+// machine.
 func newSSHSigner(requireTPM bool) (tpm.Signer, error) {
 	return tpm.NewSigner(tpm.SignerOptions{
 		Salt:       []byte(sshSalt),
 		StatePath:  paths.SSHSignerFile(),
 		RequireTPM: requireTPM,
 		Recreate:   true,
+		Enclave:    enclave.New(),
 	})
 }
 

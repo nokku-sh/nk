@@ -18,6 +18,7 @@ import (
 	nokkuv1 "github.com/nokku-sh/protos/gen/nokku/v1"
 	"github.com/nokku-sh/protos/gen/nokku/v1/nokkuv1connect"
 
+	"github.com/nokku-sh/nk/internal/enclave"
 	"github.com/nokku-sh/nk/internal/paths"
 	"github.com/nokku-sh/nk/internal/ssh"
 	"github.com/nokku-sh/nk/internal/state"
@@ -61,6 +62,7 @@ func New(s *state.State) (*Client, error) {
 			StatePath:  paths.SignerStateFile(),
 			RequireTPM: s.RequireTPM,
 			Recreate:   true,
+			Enclave:    enclave.New(),
 		})
 		if perr != nil {
 			return nil, perr

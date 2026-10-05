@@ -60,7 +60,9 @@ jobs:
   release:
     needs: tag
     if: startsWith(github.ref, 'refs/tags/') || needs.tag.outputs.bump == 'true'
-    runs-on: ubuntu-latest
+    # A Mac, because the darwin binaries link the Swift Secure Enclave bridge.
+    # It cross-builds every other target.
+    runs-on: macos-latest
     permissions:
       contents: write
       packages: write

@@ -7,12 +7,14 @@ on:
       - "**/*.go"
       - "go.mod"
       - "go.sum"
+      - "internal/enclave/**"
   pull_request:
     branches: [main]
     paths:
       - "**/*.go"
       - "go.mod"
       - "go.sum"
+      - "internal/enclave/**"
   workflow_dispatch:
 
 env:
@@ -44,3 +46,32 @@ jobs:
 
       - name: Build
         run: go build -ldflags="-s -w" -o bin/
+
+  # The Secure Enclave bridge is Swift linked through cgo and only builds on
+  # a Mac. Runners are VMs without an enclave, so the tests drive the bridge
+  # with a software key.
+  macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: "go.mod"
+
+      - name: Build the Secure Enclave bridge
+        run: ./internal/enclave/build.sh
+
+      - name: Test
+        run: |
+          CGO_ENABLED=1 go test -race -count=1 -v -tags enclave ./internal/enclave/
+          CGO_ENABLED=1 go test -race -count=1 -tags enclave ./...
+
+      - name: Build
+        run: |
+          for arch in arm64 amd64; do
+            CGO_ENABLED=1 GOARCH="$arch" go build -tags enclave -ldflags="-s -w" -o "bin/nk_darwin_$arch"
+          done
+
+      - name: Doctor
+        run: NK_SECURE_ENCLAVE=1 ./bin/nk_darwin_arm64 doctor || true

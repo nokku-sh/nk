@@ -43,7 +43,7 @@ func main() {
 			},
 			&cli.BoolFlag{
 				Name:    "require-tpm",
-				Usage:   "Require a TPM 2.0 and refuse the software key fallback",
+				Usage:   "Require a TPM 2.0 or the Secure Enclave and refuse the software key fallback",
 				Sources: cli.EnvVars("NK_REQUIRE_TPM"),
 			},
 			&cli.BoolFlag{

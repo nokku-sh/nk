@@ -43,7 +43,8 @@ The following are in scope for security reports:
   `%AppData%\nk\` on Windows):
   - `config.json` and `cache.json`
   - `ssh-signer.json` (the SSH signing identity) and `signer.json` (the DPoP
-    signing identity). On a TPM machine these hold TPM-backed state, otherwise a
+    signing identity). On a TPM machine these hold TPM-backed state, with the
+    Secure Enclave an opaque key blob only that Mac can use, otherwise a
     private key wrapped with a key derived from the machine fingerprint
   - `agent.sock`, the local agent socket `ssh` uses for signing
   - `ssh_config`, `known_hosts`, `nokku.pub`
