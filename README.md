@@ -74,38 +74,38 @@ The command generates an ECDSA P-256 key pair (`--key-type ed25519` for ed25519)
 
 ## Commands
 
-| Command                      | Purpose                                                           |
-| ---------------------------- | ----------------------------------------------------------------- |
-| `nk login` (alias `refresh`) | Authenticate and synchronize local state                          |
-| `nk ls` / `nk list`          | List available machines across all workspaces                     |
-| `nk doctor`                  | Check API reachability, TPM availability, and local SSH setup     |
-| `nk pki list`                | List active X.509 certificate authorities                         |
-| `nk pki issue <cn>`          | Issue an X.509 certificate                                        |
-| `nk sync <host>`             | Add a server without the daemon, or refresh one you added         |
-| `nk target delete <host>`    | Clean up a server you added with `nk sync` and delete its target  |
-| `nk logout`                  | Sign out, stop the agent, and remove local credentials and state  |
+| Command                      | Purpose                                                          |
+| ---------------------------- | ---------------------------------------------------------------- |
+| `nk login` (alias `refresh`) | Authenticate and synchronize local state                         |
+| `nk ls` / `nk list`          | List available machines across all workspaces                    |
+| `nk doctor`                  | Check API reachability, TPM availability, and local SSH setup    |
+| `nk pki list`                | List active X.509 certificate authorities                        |
+| `nk pki issue <cn>`          | Issue an X.509 certificate                                       |
+| `nk sync <host>`             | Add a server without the daemon, or refresh one you added        |
+| `nk target delete <host>`    | Clean up a server you added with `nk sync` and delete its target |
+| `nk logout`                  | Sign out, stop the agent, and remove local credentials and state |
 
 ### Command flags
 
-| Command        | Flags                                                                     |
-| -------------- | ------------------------------------------------------------------------- |
-| `nk ls`        | `--json` for machine-readable output                                      |
-| `nk doctor`    | `--fix` to repair permissions and regenerate files, `--json` for output   |
-| `nk pki list`  | `--json` for machine-readable output                                      |
-| `nk pki issue` | `--san dns:name`, `--usage client\|server\|both`, `--ca`, `--key-type`, `--output`/`-o` |
-| `nk sync`      | `--name`, `--workspace`, `--ca`, `--port`, `--dry-run`, `--json`          |
-| `nk target delete` | `--workspace`, `--port`, `--keep-host` to leave the server untouched  |
+| Command            | Flags                                                                                   |
+| ------------------ | --------------------------------------------------------------------------------------- |
+| `nk ls`            | `--json` for machine-readable output                                                    |
+| `nk doctor`        | `--fix` to repair permissions and regenerate files, `--json` for output                 |
+| `nk pki list`      | `--json` for machine-readable output                                                    |
+| `nk pki issue`     | `--san dns:name`, `--usage client\|server\|both`, `--ca`, `--key-type`, `--output`/`-o` |
+| `nk sync`          | `--name`, `--workspace`, `--ca`, `--port`, `--dry-run`, `--accept-host-key`, `--json`   |
+| `nk target delete` | `--workspace`, `--port`, `--keep-host` to leave the server untouched                    |
 
 ## Configuration
 
-| Flag            | Environment      | Purpose                                                                          |
-| --------------- | ---------------- | -------------------------------------------------------------------------------- |
-| `--api`         | `NK_API_URL`     | Backend URL                                                                      |
-|                 | `NK_TOKEN`       | Service-account key (`nokku_sa_...`) for CI/CD. Env only, never a flag           |
-| `--ttl`         | `NK_TTL`         | Requested SSH certificate lifetime                                               |
-| `--require-tpm` | `NK_REQUIRE_TPM` | Require a TPM 2.0, refuse the software key fallback                              |
-| `--insecure`    | `NK_INSECURE`    | Disable TLS verification; testing only                                           |
-| `--debug`       | `NK_DEBUG`       | Enable debug logging                                                             |
+| Flag            | Environment      | Purpose                                                                |
+| --------------- | ---------------- | ---------------------------------------------------------------------- |
+| `--api`         | `NK_API_URL`     | Backend URL                                                            |
+|                 | `NK_TOKEN`       | Service-account key (`nokku_sa_...`) for CI/CD. Env only, never a flag |
+| `--ttl`         | `NK_TTL`         | Requested SSH certificate lifetime                                     |
+| `--require-tpm` | `NK_REQUIRE_TPM` | Require a TPM 2.0, refuse the software key fallback                    |
+| `--insecure`    | `NK_INSECURE`    | Disable TLS verification; testing only                                 |
+| `--debug`       | `NK_DEBUG`       | Enable debug logging                                                   |
 
 `--api` is remembered after the first use, so a self-hosted instance only needs
 it once. Switching to another server drops the old session. The other flags
@@ -128,6 +128,10 @@ password is asked at most once. It writes the Nokku CA, an sshd drop-in, and one
 principals file per account, checks the result with `sshd -t`, and rolls every
 file back if sshd rejects it. Nokku only hears about the sync once the server is
 written. Run it again whenever access changes.
+
+Every user pins the host key that the last sync saw. When it changed, the
+sync stops and writes nothing. If you reinstalled the server, run it again
+with `--accept-host-key` to pin the new one.
 
 For scripts, `--json` prints one object with the target, the files written,
 and the stale principals files removed. Progress goes to stderr. With
