@@ -332,8 +332,7 @@ func TestAgentSignOnlyAndShutdown(t *testing.T) {
 		t.Skip("named pipe agent")
 	}
 	must := require.New(t)
-	t.Setenv("HOME", t.TempDir())
-	must.NoError(paths.EnsureDirs())
+	setupSSHDir(t)
 	must.NoError(SetupKey(false))
 
 	done := make(chan error, 1)
@@ -370,8 +369,7 @@ func TestAgentSocketHasOneOwner(t *testing.T) {
 		t.Skip("named pipes are exclusive already")
 	}
 	must := require.New(t)
-	t.Setenv("HOME", t.TempDir())
-	must.NoError(paths.EnsureDirs())
+	setupSSHDir(t)
 
 	first, err := listenAgent(t.Context())
 	must.NoError(err)
