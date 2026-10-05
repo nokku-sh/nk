@@ -25,19 +25,19 @@ const unsafeChars = " ,/#\"'`$&|;<>(){}[]*?!~\\%="
 
 // WriteConfigs regenerates ssh_config and known_hosts from the snapshot and
 // makes sure ~/.ssh/config includes them.
-func WriteConfigs(st *state.State) error {
-	if err := fsutil.WriteIfChanged(paths.SSHConfigFile(), renderSSHConfig(st, nkCommand()), 0o600); err != nil {
+func WriteConfigs(s *state.State) error {
+	if err := fsutil.WriteIfChanged(paths.SSHConfigFile(), renderSSHConfig(s, nkCommand()), 0o600); err != nil {
 		return err
 	}
-	if err := fsutil.WriteIfChanged(paths.KnownHostsPath(), renderKnownHosts(st), 0o600); err != nil {
+	if err := fsutil.WriteIfChanged(paths.KnownHostsFile(), renderKnownHosts(s), 0o600); err != nil {
 		return err
 	}
 	return ensureInclude()
 }
 
-func renderSSHConfig(st *state.State, nk string) []byte {
+func renderSSHConfig(s *state.State, nk string) []byte {
 	nameCount := make(map[string]int)
-	for _, t := range st.Targets {
+	for _, t := range s.Targets {
 		if usable(t) {
 			nameCount[t.Name]++
 		}
@@ -45,13 +45,13 @@ func renderSSHConfig(st *state.State, nk string) []byte {
 
 	var b bytes.Buffer
 	b.WriteString(header)
-	for _, t := range st.Targets {
+	for _, t := range s.Targets {
 		if !usable(t) {
 			continue
 		}
 		host := t.Name
 		if nameCount[t.Name] > 1 {
-			ws := st.WorkspaceName(t.WorkspaceID)
+			ws := s.WorkspaceName(t.WorkspaceID)
 			if !safeToken(ws) {
 				ws = t.WorkspaceID
 			}
@@ -82,17 +82,17 @@ Host %s
 
 `, host, configValue(nk+" prepare "+t.ID), host, t.Usernames[0], nk, t.ID, t.ID,
 			configValue(paths.SSHCertificate(t.CAID)), configValue(paths.PubKeyFile()),
-			configValue(paths.AgentSocket()), configValue(paths.KnownHostsPath()))
+			configValue(paths.AgentSocket()), configValue(paths.KnownHostsFile()))
 	}
 	return b.Bytes()
 }
 
 // renderKnownHosts scopes trust to the target id, which is the HostKeyAlias
 // in ssh_config, never a global "*".
-func renderKnownHosts(st *state.State) []byte {
+func renderKnownHosts(s *state.State) []byte {
 	var b bytes.Buffer
 	b.WriteString(header)
-	for _, t := range st.Targets {
+	for _, t := range s.Targets {
 		if t.Manual() {
 			// A manual host presents its own key, not a CA-signed one.
 			if key := strings.TrimSpace(t.HostPublicKey); safeLine(key) {
@@ -100,13 +100,15 @@ func renderKnownHosts(st *state.State) []byte {
 			}
 			continue
 		}
-		if ca := st.CAByID(t.CAID); ca != nil {
-			// A daemon that missed a rollover still shows a host
-			// certificate from the replaced key.
-			for _, key := range ca.TrustedKeys() {
-				if safeLine(key) {
-					fmt.Fprintf(&b, "@cert-authority %s %s\n", t.ID, key)
-				}
+		ca := s.CAByID(t.CAID)
+		if ca == nil {
+			continue
+		}
+		// A daemon that missed a rollover still shows a host certificate
+		// from the replaced key.
+		for _, key := range ca.TrustedKeys() {
+			if safeLine(key) {
+				fmt.Fprintf(&b, "@cert-authority %s %s\n", t.ID, key)
 			}
 		}
 	}

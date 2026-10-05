@@ -29,7 +29,7 @@ func TestRepairKeepsCertsWithoutCache(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home)
-	require.NoError(t, paths.EnsurePaths())
+	require.NoError(t, paths.EnsureDirs())
 	cert := paths.SSHCertificate("0199a0a0-0000-7000-8000-000000000002")
 	require.NoError(t, os.WriteFile(cert, []byte("cert"), 0o600))
 

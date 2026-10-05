@@ -41,7 +41,7 @@ func proxyCMD() *cli.Command {
 			if id == "" || port == "" {
 				return errors.New("usage: nk proxy <target-id> <port>")
 			}
-			s, err := state.FromCommand(cmd)
+			s, err := loadState(cmd)
 			if err != nil {
 				return err
 			}
@@ -76,7 +76,7 @@ func proxyCMD() *cli.Command {
 			if !ssh.CertValid(*ca, 0) {
 				c, cerr := backend()
 				if cerr == nil {
-					cerr = c.EnsureCert(ctx, *ca, false)
+					cerr = c.EnsureCert(ctx, *ca)
 				}
 				if cerr != nil {
 					return fmt.Errorf("no valid certificate for %s, run nk login: %w", target.Name, cerr)
@@ -118,7 +118,7 @@ func prepareCMD() *cli.Command {
 }
 
 func renewCert(ctx context.Context, cmd *cli.Command) error {
-	s, err := state.FromCommand(cmd)
+	s, err := loadState(cmd)
 	if err != nil {
 		return err
 	}
@@ -139,7 +139,7 @@ func renewCert(ctx context.Context, cmd *cli.Command) error {
 	if err != nil {
 		return err
 	}
-	if err = c.EnsureCert(ctx, *ca, false); err != nil {
+	if err = c.EnsureCert(ctx, *ca); err != nil {
 		s.MarkBackendDown()
 	}
 	return err

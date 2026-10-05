@@ -15,9 +15,9 @@ func TestConfigPathIsUnderHome(t *testing.T) {
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home)
 
-	assert.Equal(t, filepath.Join(home, ".config", "nk"), ConfigPath())
-	require.NoError(t, EnsurePaths())
-	fi, err := os.Stat(SSHCertPath())
+	assert.Equal(t, filepath.Join(home, ".config", "nk"), ConfigDir())
+	require.NoError(t, EnsureDirs())
+	fi, err := os.Stat(SSHCertDir())
 	require.NoError(t, err)
 	assert.True(t, fi.IsDir())
 }
@@ -27,5 +27,5 @@ func TestEnsurePathsWithoutHome(t *testing.T) {
 		t.Skip("home does not derive from HOME on windows")
 	}
 	t.Setenv("HOME", "")
-	assert.Error(t, EnsurePaths(), "startup must stop when no home resolves")
+	assert.Error(t, EnsureDirs(), "startup must stop when no home resolves")
 }

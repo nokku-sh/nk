@@ -28,7 +28,7 @@ func (c *Client) Relay(ctx context.Context, target *state.Target) (io.ReadWriteC
 		return nil, fmt.Errorf("target %s is not backed by a daemon", target.Name)
 	}
 
-	stream, err := c.dc.Relay(ctx)
+	stream, err := c.daemons.Relay(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("open relay stream: %w", err)
 	}

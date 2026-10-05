@@ -1,7 +1,6 @@
 package doctor
 
 import (
-	"encoding/json"
 	"fmt"
 	"io"
 
@@ -30,22 +29,8 @@ func color(status Status) func(string) string {
 	}
 }
 
-// Print writes the report to w, as JSON when jsonOut is set.
-func Print(w io.Writer, r Report, jsonOut bool) error {
-	if jsonOut {
-		return printJSON(w, r)
-	}
-	printText(w, r)
-	return nil
-}
-
-func printJSON(w io.Writer, r Report) error {
-	enc := json.NewEncoder(w)
-	enc.SetIndent("", "  ")
-	return enc.Encode(r)
-}
-
-func printText(w io.Writer, r Report) {
+// Print writes the report to w as text.
+func Print(w io.Writer, r Report) {
 	for _, f := range r.Fixes {
 		fmt.Fprintf(w, "  %s %s\n", ui.Green("✔"), f)
 	}
@@ -53,7 +38,10 @@ func printText(w io.Writer, r Report) {
 		fmt.Fprintln(w)
 	}
 
-	width := maxNameWidth(r.Checks)
+	width := 0
+	for _, c := range r.Checks {
+		width = max(width, len(c.Name))
+	}
 	var lastSection string
 	for _, c := range r.Checks {
 		if c.Section != lastSection {
@@ -75,16 +63,6 @@ func printText(w io.Writer, r Report) {
 
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, summarize(r))
-}
-
-func maxNameWidth(checks []Check) int {
-	w := 0
-	for _, c := range checks {
-		if n := len(c.Name); n > w {
-			w = n
-		}
-	}
-	return w
 }
 
 func summarize(r Report) string {

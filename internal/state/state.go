@@ -2,22 +2,15 @@
 package state
 
 import (
-	"errors"
 	"fmt"
 	"log/slog"
-	"os"
 	"strings"
 	"time"
 
 	"github.com/mizuchilabs/kata/fsutil"
-	"github.com/urfave/cli/v3"
 
 	"github.com/nokku-sh/nk/internal/paths"
 )
-
-// saPrefix marks service-account tokens. Unlike device sessions they
-// authenticate with a plain Bearer header, without DPoP binding.
-const saPrefix = "nokku_sa_"
 
 type Workspace struct {
 	ID   string `json:"id"`
@@ -121,25 +114,6 @@ type State struct {
 	TTL        time.Duration
 	RequireTPM bool
 	Insecure   bool
-}
-
-// FromCommand loads the persisted state and applies the global flags.
-func FromCommand(cmd *cli.Command) (*State, error) {
-	s := Load()
-	s.Token = os.Getenv("NK_TOKEN")
-	s.TTL = cmd.Duration("ttl")
-	s.RequireTPM = cmd.Bool("require-tpm")
-	s.Insecure = cmd.Bool("insecure")
-
-	if s.Token != "" && !strings.HasPrefix(s.Token, saPrefix) {
-		return nil, errors.New("NK_TOKEN must be a service account token starting with " + saPrefix)
-	}
-	if api := cmd.String("api"); s.APIURL != api && (s.APIURL == "" || cmd.IsSet("api")) {
-		// Another server never gets this session or shows its targets.
-		s.Config = Config{APIURL: api}
-		s.Cache = Cache{}
-	}
-	return s, nil
 }
 
 // Load reads config and cache. A missing or corrupt file starts empty.

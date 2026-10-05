@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"strings"
 	"time"
 
 	"connectrpc.com/connect"
@@ -37,10 +36,10 @@ type Client struct {
 	httpc *http.Client
 	dpop  *dpopclient.Client
 
-	ac nokkuv1connect.AuthServiceClient
-	cc nokkuv1connect.CertificateServiceClient
-	tc nokkuv1connect.TargetServiceClient
-	dc nokkuv1connect.DaemonServiceClient
+	auth    nokkuv1connect.AuthServiceClient
+	certs   nokkuv1connect.CertificateServiceClient
+	targets nokkuv1connect.TargetServiceClient
+	daemons nokkuv1connect.DaemonServiceClient
 }
 
 func New(s *state.State) (*Client, error) {
@@ -73,34 +72,11 @@ func New(s *state.State) (*Client, error) {
 		auth = c.dpop
 	}
 	opts := connect.WithInterceptors(auth)
-	c.ac = nokkuv1connect.NewAuthServiceClient(httpc, s.APIURL, opts)
-	c.cc = nokkuv1connect.NewCertificateServiceClient(httpc, s.APIURL, opts)
-	c.tc = nokkuv1connect.NewTargetServiceClient(httpc, s.APIURL, opts)
-	c.dc = nokkuv1connect.NewDaemonServiceClient(httpc, s.APIURL, opts)
+	c.auth = nokkuv1connect.NewAuthServiceClient(httpc, s.APIURL, opts)
+	c.certs = nokkuv1connect.NewCertificateServiceClient(httpc, s.APIURL, opts)
+	c.targets = nokkuv1connect.NewTargetServiceClient(httpc, s.APIURL, opts)
+	c.daemons = nokkuv1connect.NewDaemonServiceClient(httpc, s.APIURL, opts)
 	return c, nil
-}
-
-// Reachable reports whether the backend answers a plain HTTP request within a
-// short timeout. It is a diagnostic signal only.
-func Reachable(ctx context.Context, st *state.State) bool {
-	httpc, err := dpopclient.NewHTTPClient(st.Insecure, dialTimeout)
-	if err != nil {
-		return false
-	}
-	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
-	defer cancel()
-
-	u := strings.TrimRight(st.APIURL, "/") + "/auth/device/nonce"
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
-	if err != nil {
-		return false
-	}
-	resp, err := httpc.Do(req)
-	if err != nil {
-		return false
-	}
-	_ = resp.Body.Close()
-	return true
 }
 
 // Sync refreshes the access snapshot and regenerates the ssh files. When
@@ -140,7 +116,7 @@ func (c *Client) sync(ctx context.Context, interactive bool) error {
 	}
 	syncCtx, cancel := context.WithTimeout(ctx, syncTimeout)
 	defer cancel()
-	res, err := c.tc.GetMyAccess(syncCtx, &nokkuv1.GetMyAccessRequest{})
+	res, err := c.targets.GetMyAccess(syncCtx, &nokkuv1.GetMyAccessRequest{})
 	if err != nil {
 		return err
 	}
@@ -165,7 +141,7 @@ func (c *Client) Logout(ctx context.Context) {
 	}
 	ctx, cancel := context.WithTimeout(ctx, syncTimeout)
 	defer cancel()
-	if _, err := c.ac.Logout(ctx, &nokkuv1.LogoutRequest{}); err != nil {
+	if _, err := c.auth.Logout(ctx, &nokkuv1.LogoutRequest{}); err != nil {
 		slog.Debug("revoke session on the backend", "err", err)
 	}
 }
@@ -173,14 +149,14 @@ func (c *Client) Logout(ctx context.Context) {
 // EnsureCert makes sure a fresh certificate from ca is on disk, see
 // ssh.CertFresh. When signing fails the one on disk stays, so ssh keeps
 // working offline for as long as it is valid.
-func (c *Client) EnsureCert(ctx context.Context, ca state.CA, interactive bool) error {
+func (c *Client) EnsureCert(ctx context.Context, ca state.CA) error {
 	if ssh.CertFresh(ca) {
 		return nil
 	}
-	if err := c.ensureSession(ctx, interactive); err != nil {
+	if err := c.ensureSession(ctx, false); err != nil {
 		return err
 	}
-	pubKey, err := ssh.GetPubKey()
+	pubKey, err := ssh.PubKey()
 	if err != nil {
 		return err
 	}
@@ -195,7 +171,7 @@ func (c *Client) EnsureCert(ctx context.Context, ca state.CA, interactive bool) 
 	}
 	signCtx, cancel := context.WithTimeout(ctx, syncTimeout)
 	defer cancel()
-	res, err := c.cc.SignSSHCertificate(signCtx, req)
+	res, err := c.certs.SignSSHCertificate(signCtx, req)
 	if err != nil {
 		return err
 	}
@@ -210,7 +186,7 @@ func (c *Client) EnsureCert(ctx context.Context, ca state.CA, interactive bool) 
 // TargetPrincipals returns the subject UUIDs allowed per account on a manual
 // target, with teams expanded.
 func (c *Client) TargetPrincipals(ctx context.Context, t *state.Target) (map[string][]string, error) {
-	res, err := c.tc.GetTargetPrincipals(ctx, &nokkuv1.GetTargetPrincipalsRequest{
+	res, err := c.targets.GetTargetPrincipals(ctx, &nokkuv1.GetTargetPrincipalsRequest{
 		WorkspaceId: new(t.WorkspaceID),
 		TargetId:    new(t.ID),
 	})
@@ -227,7 +203,7 @@ func (c *Client) TargetPrincipals(ctx context.Context, t *state.Target) (map[str
 // ReportTarget reports a manual target's accounts, host key, and endpoints,
 // which also stamps its last sync.
 func (c *Client) ReportTarget(ctx context.Context, t *state.Target, accounts []string, hostKey string) error {
-	_, err := c.tc.SyncTargetUsers(ctx, &nokkuv1.SyncTargetUsersRequest{
+	_, err := c.targets.SyncTargetUsers(ctx, &nokkuv1.SyncTargetUsersRequest{
 		WorkspaceId:   new(t.WorkspaceID),
 		TargetId:      new(t.ID),
 		Usernames:     accounts,
@@ -240,7 +216,7 @@ func (c *Client) ReportTarget(ctx context.Context, t *state.Target, accounts []s
 // CreateTarget registers a manual target. An empty name asks the server to
 // generate one.
 func (c *Client) CreateTarget(ctx context.Context, t *state.Target) (*state.Target, error) {
-	res, err := c.tc.CreateTarget(ctx, &nokkuv1.CreateTargetRequest{
+	res, err := c.targets.CreateTarget(ctx, &nokkuv1.CreateTargetRequest{
 		WorkspaceId:   new(t.WorkspaceID),
 		CaId:          new(t.CAID),
 		Name:          new(t.Name),
@@ -256,7 +232,7 @@ func (c *Client) CreateTarget(ctx context.Context, t *state.Target) (*state.Targ
 }
 
 func (c *Client) DeleteTarget(ctx context.Context, t *state.Target) error {
-	_, err := c.tc.DeleteTarget(ctx, &nokkuv1.DeleteTargetRequest{
+	_, err := c.targets.DeleteTarget(ctx, &nokkuv1.DeleteTargetRequest{
 		WorkspaceId: new(t.WorkspaceID),
 		Id:          new(t.ID),
 	})
@@ -268,7 +244,7 @@ func (c *Client) DeleteTarget(ctx context.Context, t *state.Target) error {
 func (c *Client) ListX509CAs(ctx context.Context) ([]*nokkuv1.CertificateAuthority, error) {
 	var out []*nokkuv1.CertificateAuthority
 	for _, w := range c.State.Workspaces {
-		res, err := c.cc.ListCertificateAuthorities(ctx, &nokkuv1.ListCertificateAuthoritiesRequest{
+		res, err := c.certs.ListCertificateAuthorities(ctx, &nokkuv1.ListCertificateAuthoritiesRequest{
 			WorkspaceId: new(w.ID),
 		})
 		if err != nil {
@@ -298,5 +274,5 @@ func (c *Client) SignX509Certificate(
 	if c.State.TTL > 0 {
 		req.Ttl = durationpb.New(c.State.TTL)
 	}
-	return c.cc.SignX509Certificate(ctx, req)
+	return c.certs.SignX509Certificate(ctx, req)
 }

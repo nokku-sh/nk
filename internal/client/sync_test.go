@@ -99,14 +99,14 @@ const (
 	targetID = "0199a0a0-0000-7000-8000-000000000003"
 )
 
-// setTestDirs points home at a fresh temp dir and creates what EnsurePaths
+// setTestDirs points home at a fresh temp dir and creates what EnsureDirs
 // would create at startup.
 func setTestDirs(t *testing.T) {
 	t.Helper()
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home)
-	require.NoError(t, paths.EnsurePaths())
+	require.NoError(t, paths.EnsureDirs())
 }
 
 func newSyncTestClient(t *testing.T, backend *fakeBackend) *Client {
@@ -121,8 +121,8 @@ func newSyncTestClient(t *testing.T, backend *fakeBackend) *Client {
 	t.Cleanup(srv.Close)
 
 	c := &Client{State: &state.State{APIURL: srv.URL, SessionToken: "sess-token"}, httpc: srv.Client()}
-	c.cc = nokkuv1connect.NewCertificateServiceClient(srv.Client(), srv.URL)
-	c.tc = nokkuv1connect.NewTargetServiceClient(srv.Client(), srv.URL)
+	c.certs = nokkuv1connect.NewCertificateServiceClient(srv.Client(), srv.URL)
+	c.targets = nokkuv1connect.NewTargetServiceClient(srv.Client(), srv.URL)
 	return c
 }
 
@@ -199,8 +199,8 @@ func TestSyncOrCacheFallsBackToCache(t *testing.T) {
 	require.NoError(t, st.Save())
 
 	c := &Client{State: st}
-	c.cc = nokkuv1connect.NewCertificateServiceClient(&http.Client{}, st.APIURL)
-	c.tc = nokkuv1connect.NewTargetServiceClient(&http.Client{}, st.APIURL)
+	c.certs = nokkuv1connect.NewCertificateServiceClient(&http.Client{}, st.APIURL)
+	c.targets = nokkuv1connect.NewTargetServiceClient(&http.Client{}, st.APIURL)
 	err := c.SyncOrCache(t.Context(), false)
 	require.NoError(t, err, "unreachable backend must fall back to cached data")
 	assert.True(t, st.HasCachedData())
@@ -213,8 +213,8 @@ func TestSyncOrCacheWithoutCacheFails(t *testing.T) {
 
 	st := &state.State{APIURL: "http://127.0.0.1:1", SessionToken: "sess-token"}
 	c := &Client{State: st}
-	c.cc = nokkuv1connect.NewCertificateServiceClient(&http.Client{}, st.APIURL)
-	c.tc = nokkuv1connect.NewTargetServiceClient(&http.Client{}, st.APIURL)
+	c.certs = nokkuv1connect.NewCertificateServiceClient(&http.Client{}, st.APIURL)
+	c.targets = nokkuv1connect.NewTargetServiceClient(&http.Client{}, st.APIURL)
 	err := c.SyncOrCache(t.Context(), false)
 	assert.ErrorContains(t, err, "nothing is cached yet")
 }
@@ -223,7 +223,7 @@ func TestEnsureCertFreshIsNoOp(t *testing.T) {
 	setTestDirs(t)
 	ca := newFakeCA(t)
 	require.NoError(t, ssh.SetupKey(false))
-	cliPub, err := ssh.GetPubKey()
+	cliPub, err := ssh.PubKey()
 	require.NoError(t, err)
 
 	pub, _, _, _, err := cryptossh.ParseAuthorizedKey([]byte(cliPub))
@@ -235,7 +235,7 @@ func TestEnsureCertFreshIsNoOp(t *testing.T) {
 	c := &Client{State: &state.State{APIURL: "http://127.0.0.1:1", SessionToken: "sess-token"}}
 	err = c.EnsureCert(t.Context(), state.CA{
 		ID: caID, PublicKey: ca.pubKey,
-	}, false)
+	})
 	require.NoError(t, err, "a fresh certificate must not trigger a re-sign")
 }
 
@@ -257,7 +257,7 @@ func TestEnsureCertSignsAndWritesCert(t *testing.T) {
 
 	err := c.EnsureCert(t.Context(), state.CA{
 		ID: caID, WorkspaceID: wsID, PublicKey: ca.pubKey,
-	}, false)
+	})
 	require.NoError(t, err)
 
 	certPath := paths.SSHCertificate(caID)
@@ -274,7 +274,7 @@ func TestEnsureCertRenewsPastHalfLife(t *testing.T) {
 	setTestDirs(t)
 	ca := newFakeCA(t)
 	require.NoError(t, ssh.SetupKey(false))
-	cliPub, err := ssh.GetPubKey()
+	cliPub, err := ssh.PubKey()
 	require.NoError(t, err)
 	pub, _, _, _, err := cryptossh.ParseAuthorizedKey([]byte(cliPub))
 	require.NoError(t, err)
@@ -288,7 +288,7 @@ func TestEnsureCertRenewsPastHalfLife(t *testing.T) {
 
 	backend := &fakeBackend{}
 	c := newSyncTestClient(t, backend)
-	require.Error(t, c.EnsureCert(t.Context(), target, false), "the backend refused to sign")
+	require.Error(t, c.EnsureCert(t.Context(), target), "the backend refused to sign")
 	kept, err := os.ReadFile(certPath)
 	require.NoError(t, err)
 	assert.Equal(t, aging, string(kept), "a failed renewal must leave the working certificate")
@@ -298,7 +298,7 @@ func TestEnsureCertRenewsPastHalfLife(t *testing.T) {
 			SignedCertificate: new(ca.signCert(t, pub, 3*time.Hour)),
 		}, nil
 	}
-	require.NoError(t, c.EnsureCert(t.Context(), target, false))
+	require.NoError(t, c.EnsureCert(t.Context(), target))
 	renewed, err := os.ReadFile(certPath)
 	require.NoError(t, err)
 	assert.NotEqual(t, aging, string(renewed), "the aging certificate was not renewed")

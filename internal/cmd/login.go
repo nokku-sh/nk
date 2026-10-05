@@ -9,7 +9,6 @@ import (
 	"github.com/nokku-sh/nk/internal/client"
 	"github.com/nokku-sh/nk/internal/paths"
 	"github.com/nokku-sh/nk/internal/ssh"
-	"github.com/nokku-sh/nk/internal/state"
 	"github.com/nokku-sh/nk/internal/ui"
 )
 
@@ -19,7 +18,7 @@ func loginCMD() *cli.Command {
 		Usage:   "Sign in and set up ssh for your servers",
 		Aliases: []string{"refresh"},
 		Action: func(ctx context.Context, cmd *cli.Command) error {
-			s, err := state.FromCommand(cmd)
+			s, err := loadState(cmd)
 			if err != nil {
 				return err
 			}
@@ -47,7 +46,7 @@ func logoutCMD() *cli.Command {
 		Name:  "logout",
 		Usage: "Sign out and remove local credentials, certificates, and cached state",
 		Action: func(ctx context.Context, cmd *cli.Command) error {
-			if s, err := state.FromCommand(cmd); err == nil {
+			if s, err := loadState(cmd); err == nil {
 				if c, cerr := client.New(s); cerr == nil {
 					c.Logout(ctx)
 				}

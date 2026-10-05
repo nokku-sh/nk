@@ -67,7 +67,7 @@ func authorizedKeyLine(key []byte) []byte {
 	return fmt.Appendf(bytes.Clone(key), " %s@nokku\n", hostname)
 }
 
-func GetPubKey() (string, error) {
+func PubKey() (string, error) {
 	data, err := os.ReadFile(paths.PubKeyFile())
 	if err != nil {
 		return "", err

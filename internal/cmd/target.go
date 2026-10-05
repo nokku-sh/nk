@@ -469,7 +469,7 @@ func (r remote) run(ctx context.Context, command, stdin string) (string, error) 
 		// Share one connection, so a password or key prompt comes only once.
 		args = append(args,
 			"-o", "ControlMaster=auto",
-			"-o", `ControlPath="`+filepath.Join(paths.ConfigPath(), "cm-%C")+`"`,
+			"-o", `ControlPath="`+filepath.Join(paths.ConfigDir(), "cm-%C")+`"`,
 			"-o", "ControlPersist=30s",
 		)
 	}
