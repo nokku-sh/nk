@@ -17,6 +17,7 @@ import (
 	"github.com/nokku-sh/mon/dpopclient"
 	"github.com/nokku-sh/mon/tpm"
 
+	"github.com/nokku-sh/nk/internal/enclave"
 	"github.com/nokku-sh/nk/internal/paths"
 	"github.com/nokku-sh/nk/internal/ssh"
 	"github.com/nokku-sh/nk/internal/state"
@@ -89,12 +90,23 @@ func checkSystem(ctx context.Context, r *Report) {
 	case err == nil:
 		r.add(sec, "TPM", StatusOK, "available")
 	case runtime.GOOS == "darwin":
-		r.add(sec, "TPM", StatusInfo, "not available on macOS, using a machine-wrapped key")
+		status, detail := enclaveStatus()
+		r.add(sec, "Secure Enclave", status, detail)
 	case errors.Is(err, os.ErrPermission):
 		r.add(sec, "TPM", StatusWarn, "no access, run: sudo usermod -aG tss $USER, then log in again")
 	default:
 		r.add(sec, "TPM", StatusInfo, "not available, using a machine-wrapped key")
 	}
+}
+
+func enclaveStatus() (Status, string) {
+	switch {
+	case enclave.Enabled():
+		return StatusOK, "available"
+	case enclave.Available():
+		return StatusInfo, "available but experimental, set NK_SECURE_ENCLAVE=1 before nk login to use it"
+	}
+	return StatusInfo, "not available, using a machine-wrapped key"
 }
 
 func checkAccount(ctx context.Context, r *Report, s *state.State) {
@@ -152,10 +164,12 @@ func checkSSH(r *Report, s *state.State) {
 	switch method := ssh.IdentityMethod(); {
 	case method == tpm.MethodTPM:
 		r.add(sec, "identity", StatusOK, "TPM key, never leaves the chip")
-	case method == tpm.MethodSoft && tpm.Available() == nil:
-		// A software key is never moved to the TPM on its own.
+	case method == tpm.MethodEnclave:
+		r.add(sec, "identity", StatusOK, "Secure Enclave key, never leaves the chip")
+	case method == tpm.MethodSoft && (tpm.Available() == nil || enclave.Enabled()):
+		// A software key is never moved to hardware on its own.
 		r.add(sec, "identity", StatusWarn,
-			"software key although a TPM is available, run nk logout and nk login to move to it")
+			"software key although this machine can keep it in hardware, run nk logout and nk login to move it")
 	case method == tpm.MethodSoft:
 		r.add(sec, "identity", StatusOK, "machine-wrapped key, tied to this machine's ID")
 	default:

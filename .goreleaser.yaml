@@ -11,7 +11,9 @@ before:
     - go mod verify
 
 builds:
-  - binary: "{{ .ProjectName }}"
+  - &build
+    id: nk
+    binary: "{{ .ProjectName }}"
     env: [CGO_ENABLED=0]
     flags:
       - -trimpath
@@ -23,12 +25,26 @@ builds:
       - -X github.com/mizuchilabs/kata/buildinfo.Date={{ .CommitDate }}
     goos:
       - linux
-      - darwin
       - windows
     goarch:
       - amd64
       - arm64
       - riscv64
+
+  # The Secure Enclave bridge is Swift linked through cgo, so the darwin
+  # binaries only build on a Mac.
+  - <<: *build
+    id: nk-darwin
+    env: [CGO_ENABLED=1]
+    tags: [enclave]
+    goos:
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    hooks:
+      pre: ./internal/enclave/build.sh
+    skip: '{{ ne .Runtime.Goos "darwin" }}'
 
 signs:
   - cmd: cosign

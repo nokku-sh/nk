@@ -98,14 +98,15 @@ The command generates an ECDSA P-256 key pair (`--key-type ed25519` for ed25519)
 
 ## Configuration
 
-| Flag            | Environment      | Purpose                                                                |
-| --------------- | ---------------- | ---------------------------------------------------------------------- |
-| `--api`         | `NK_API_URL`     | Backend URL                                                            |
-|                 | `NK_TOKEN`       | Service-account key (`nokku_sa_...`) for CI/CD. Env only, never a flag |
-| `--ttl`         | `NK_TTL`         | Requested SSH certificate lifetime                                     |
-| `--require-tpm` | `NK_REQUIRE_TPM` | Require a TPM 2.0, refuse the software key fallback                    |
-| `--insecure`    | `NK_INSECURE`    | Disable TLS verification; testing only                                 |
-| `--debug`       | `NK_DEBUG`       | Enable debug logging                                                   |
+| Flag            | Environment         | Purpose                                                                   |
+| --------------- | ------------------- | ------------------------------------------------------------------------- |
+| `--api`         | `NK_API_URL`        | Backend URL                                                               |
+|                 | `NK_TOKEN`          | Service-account key (`nokku_sa_...`) for CI/CD. Env only, never a flag    |
+| `--ttl`         | `NK_TTL`            | Requested SSH certificate lifetime                                        |
+| `--require-tpm` | `NK_REQUIRE_TPM`    | Require a TPM 2.0 or the Secure Enclave, refuse the software key fallback |
+|                 | `NK_SECURE_ENCLAVE` | Set to `1` on macOS to keep new keys in the Secure Enclave. Experimental  |
+| `--insecure`    | `NK_INSECURE`       | Disable TLS verification; testing only                                    |
+| `--debug`       | `NK_DEBUG`          | Enable debug logging                                                      |
 
 `--api` is remembered after the first use, so a self-hosted instance only needs
 it once. Switching to another server drops the old session. The other flags

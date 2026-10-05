@@ -123,8 +123,11 @@ func (id *identity) keyring() (agent.ExtendedAgent, error) {
 		return nil, err
 	}
 	comment := "nokku (software)"
-	if signer.Method() == tpm.MethodTPM {
+	switch signer.Method() {
+	case tpm.MethodTPM:
 		comment = "nokku (tpm)"
+	case tpm.MethodEnclave:
+		comment = "nokku (secure enclave)"
 	}
 	ring, ok := agent.NewKeyring().(agent.ExtendedAgent)
 	if !ok {

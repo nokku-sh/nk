@@ -12,6 +12,14 @@ tasks:
       - mkdir -p ~/.local/bin
       - CGO_ENABLED=0 go build -ldflags="-s -w" -trimpath -o ~/.local/bin/
 
+  enclave:
+    desc: Build nk with the Secure Enclave bridge (macOS only)
+    platforms: [darwin]
+    cmds:
+      - ./internal/enclave/build.sh
+      - mkdir -p ~/.local/bin
+      - CGO_ENABLED=1 go build -tags enclave -ldflags="-s -w" -trimpath -o ~/.local/bin/
+
   lint:
     desc: Run go vet & lint
     cmds:
