@@ -195,7 +195,7 @@ func TestAgentSSHDInteropSoftwareKey(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(t.Context())
 	done := make(chan error, 1)
-	go func() { done <- RunAgent(ctx) }()
+	go func() { done <- RunAgent(ctx, false) }()
 	t.Cleanup(func() {
 		cancel()
 		<-done
@@ -337,7 +337,7 @@ func TestAgentSignOnlyAndShutdown(t *testing.T) {
 	must.NoError(SetupKey(false))
 
 	done := make(chan error, 1)
-	go func() { done <- RunAgent(t.Context()) }()
+	go func() { done <- RunAgent(t.Context(), false) }()
 	must.Eventually(func() bool { return agentAlive(t.Context()) }, 5*time.Second, 20*time.Millisecond)
 
 	conn, err := dialAgent(t.Context())

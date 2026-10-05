@@ -83,7 +83,7 @@ func proxyCMD() *cli.Command {
 				}
 				warnf("certificate for %s renewed, if ssh fails run it again", target.Name)
 			}
-			if err = ssh.EnsureAgent(ctx); err != nil {
+			if err = ssh.EnsureAgent(ctx, s.RequireTPM); err != nil {
 				return err
 			}
 			relay := func(ctx context.Context, t *state.Target) (io.ReadWriteCloser, error) {
@@ -150,8 +150,8 @@ func agentCMD() *cli.Command {
 		Name:   "agent",
 		Usage:  "Serve the machine SSH identity (started by nk proxy)",
 		Hidden: true,
-		Action: func(ctx context.Context, _ *cli.Command) error {
-			return ssh.RunAgent(ctx)
+		Action: func(ctx context.Context, cmd *cli.Command) error {
+			return ssh.RunAgent(ctx, cmd.Bool("require-tpm"))
 		},
 	}
 }

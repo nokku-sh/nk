@@ -21,10 +21,10 @@ const sshSalt = "nokku-cli-ssh"
 // a TPM is usable, otherwise a software key wrapped to this machine.
 func newSSHSigner(requireTPM bool) (tpm.Signer, error) {
 	return tpm.NewSigner(tpm.SignerOptions{
-		Salt:             []byte(sshSalt),
-		StatePath:        paths.SSHSignerFile(),
-		RequireTPM:       requireTPM,
-		OnIdentityChange: tpm.RecreateIdentity,
+		Salt:       []byte(sshSalt),
+		StatePath:  paths.SSHSignerFile(),
+		RequireTPM: requireTPM,
+		Recreate:   true,
 	})
 }
 
