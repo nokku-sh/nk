@@ -333,7 +333,7 @@ func TestAgentSignOnlyAndShutdown(t *testing.T) {
 	}
 	must := require.New(t)
 	t.Setenv("HOME", t.TempDir())
-	must.NoError(paths.EnsurePaths())
+	must.NoError(paths.EnsureDirs())
 	must.NoError(SetupKey(false))
 
 	done := make(chan error, 1)
@@ -371,7 +371,7 @@ func TestAgentSocketHasOneOwner(t *testing.T) {
 	}
 	must := require.New(t)
 	t.Setenv("HOME", t.TempDir())
-	must.NoError(paths.EnsurePaths())
+	must.NoError(paths.EnsureDirs())
 
 	first, err := listenAgent(t.Context())
 	must.NoError(err)

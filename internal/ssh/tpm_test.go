@@ -23,14 +23,14 @@ func TestSetupTPMKey(t *testing.T) {
 		t.Skip("manual test: NK_TPM_E2E=1 XDG_CONFIG_HOME=$(mktemp -d)")
 	}
 	xdg := os.Getenv("XDG_CONFIG_HOME")
-	require.True(t, xdg != "" && strings.HasPrefix(paths.ConfigPath(), xdg),
+	require.True(t, xdg != "" && strings.HasPrefix(paths.ConfigDir(), xdg),
 		"XDG_CONFIG_HOME must be set to a scratch dir before the test binary starts")
 	probe := tpm.Available()
 	if probe != nil {
 		t.Skipf("no TPM available: %v", probe)
 	}
 
-	require.NoError(t, os.MkdirAll(paths.SSHCertPath(), 0o700))
+	require.NoError(t, os.MkdirAll(paths.SSHCertDir(), 0o700))
 
 	// Login: only the public key may touch disk.
 	require.NoError(t, SetupKey(true), "SetupKey(true)")

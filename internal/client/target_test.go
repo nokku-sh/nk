@@ -53,7 +53,7 @@ func TestCreateTarget(t *testing.T) {
 	t.Cleanup(server.Close)
 
 	c := &Client{State: &state.State{APIURL: server.URL, SessionToken: "sess-token"}}
-	c.tc = nokkuv1connect.NewTargetServiceClient(http.DefaultClient, server.URL)
+	c.targets = nokkuv1connect.NewTargetServiceClient(http.DefaultClient, server.URL)
 
 	created, err := c.CreateTarget(t.Context(), &state.Target{
 		WorkspaceID: "ws-1", CAID: "ca-1", HostPublicKey: "ssh-ed25519 AAAA", Endpoints: []string{"10.0.0.5"},
@@ -80,7 +80,7 @@ func TestDeleteTarget(t *testing.T) {
 	t.Cleanup(server.Close)
 
 	c := &Client{State: &state.State{APIURL: server.URL, SessionToken: "sess-token"}}
-	c.tc = nokkuv1connect.NewTargetServiceClient(http.DefaultClient, server.URL)
+	c.targets = nokkuv1connect.NewTargetServiceClient(http.DefaultClient, server.URL)
 
 	require.NoError(t, c.DeleteTarget(t.Context(), &state.Target{ID: "target-1", WorkspaceID: "ws-1"}))
 	require.NotNil(t, svc.deleted)

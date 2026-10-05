@@ -19,7 +19,7 @@ func setupSSHDir(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home)
-	require.NoError(t, paths.EnsurePaths())
+	require.NoError(t, paths.EnsureDirs())
 }
 
 func TestSetupKeyIsStable(t *testing.T) {
@@ -34,7 +34,7 @@ func TestSetupKeyIsStable(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, pub, pub2, "the identity must be stable across runs")
 
-	key, err := GetPubKey()
+	key, err := PubKey()
 	require.NoError(t, err)
 	assert.Equal(t, strings.TrimSpace(string(pub)), key)
 }

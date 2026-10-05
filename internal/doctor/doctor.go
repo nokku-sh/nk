@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"net/http"
 	"os"
 	"os/exec"
 	"runtime"
@@ -13,9 +14,9 @@ import (
 	"time"
 
 	"github.com/mizuchilabs/kata/buildinfo"
+	"github.com/nokku-sh/mon/dpopclient"
 	"github.com/nokku-sh/mon/tpm"
 
-	"github.com/nokku-sh/nk/internal/client"
 	"github.com/nokku-sh/nk/internal/paths"
 	"github.com/nokku-sh/nk/internal/ssh"
 	"github.com/nokku-sh/nk/internal/state"
@@ -110,11 +111,34 @@ func checkAccount(ctx context.Context, r *Report, s *state.State) {
 	}
 	r.add(sec, "servers", StatusInfo, fmt.Sprintf("%d in %d workspaces", len(s.Targets), len(s.Workspaces)))
 
-	if client.Reachable(ctx, s) {
+	if reachable(ctx, s) {
 		r.add(sec, "Nokku", StatusOK, s.APIURL)
 	} else {
 		r.add(sec, "Nokku", StatusWarn, "cannot reach "+s.APIURL+", ssh keeps working with cached access")
 	}
+}
+
+// reachable reports whether the backend answers a plain HTTP request within a
+// short timeout. It is a diagnostic signal only.
+func reachable(ctx context.Context, s *state.State) bool {
+	httpc, err := dpopclient.NewHTTPClient(s.Insecure, 3*time.Second)
+	if err != nil {
+		return false
+	}
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+
+	u := strings.TrimRight(s.APIURL, "/") + "/auth/device/nonce"
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	if err != nil {
+		return false
+	}
+	resp, err := httpc.Do(req)
+	if err != nil {
+		return false
+	}
+	_ = resp.Body.Close()
+	return true
 }
 
 func checkSSH(r *Report, s *state.State) {
@@ -135,9 +159,9 @@ func checkSSH(r *Report, s *state.State) {
 	}
 
 	if runtime.GOOS != "windows" {
-		if fi, err := os.Stat(paths.ConfigPath()); err == nil && fi.Mode().Perm() != 0o700 {
+		if fi, err := os.Stat(paths.ConfigDir()); err == nil && fi.Mode().Perm() != 0o700 {
 			r.add(sec, "permissions", StatusWarn,
-				fmt.Sprintf("%s is %04o, run nk doctor --fix", paths.ConfigPath(), fi.Mode().Perm()))
+				fmt.Sprintf("%s is %04o, run nk doctor --fix", paths.ConfigDir(), fi.Mode().Perm()))
 		}
 	}
 
@@ -166,9 +190,9 @@ func checkSSH(r *Report, s *state.State) {
 func repair(s *state.State) []string {
 	var fixed []string
 	if runtime.GOOS != "windows" {
-		if fi, err := os.Stat(paths.ConfigPath()); err == nil && fi.Mode().Perm() != 0o700 &&
-			os.Chmod(paths.ConfigPath(), 0o700) == nil { //nolint:gosec // a directory needs x
-			fixed = append(fixed, "made "+paths.ConfigPath()+" private")
+		if fi, err := os.Stat(paths.ConfigDir()); err == nil && fi.Mode().Perm() != 0o700 &&
+			os.Chmod(paths.ConfigDir(), 0o700) == nil { //nolint:gosec // a directory needs x
+			fixed = append(fixed, "made "+paths.ConfigDir()+" private")
 		}
 	}
 
