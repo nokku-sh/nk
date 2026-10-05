@@ -16,7 +16,10 @@ import (
 // setupSSHDir points home at a temp dir so tests never touch real state.
 func setupSSHDir(t *testing.T) {
 	t.Helper()
-	home := t.TempDir()
+	// Not t.TempDir, its path is too long for the agent socket on macOS.
+	home, err := os.MkdirTemp("", "nk")
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = os.RemoveAll(home) })
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home)
 	require.NoError(t, paths.EnsureDirs())
