@@ -47,6 +47,10 @@ func syncCMD() *cli.Command {
 			},
 			portFlag,
 			&cli.BoolFlag{Name: "dry-run", Usage: "Show what would be written and change nothing"},
+			&cli.BoolFlag{
+				Name:  "accept-host-key",
+				Usage: "Go on when the host key changed since the last sync and pin the new one",
+			},
 			jsonFlag,
 		},
 		Action: targetSync,
@@ -99,8 +103,8 @@ func targetSync(ctx context.Context, cmd *cli.Command) error {
 	if err != nil {
 		return fmt.Errorf("%s: %w", dest.host, err)
 	}
-	if target.HostPublicKey != "" && target.HostPublicKey != h.HostKey {
-		warnf("the host key of %s changed since the last sync, users will trust the new one", dest.host)
+	if err = checkHostKey(target.HostPublicKey, h.HostKey, dest.host, cmd.Bool("accept-host-key")); err != nil {
+		return err
 	}
 
 	grants := map[string][]string{}
@@ -129,6 +133,22 @@ func targetSync(ctx context.Context, cmd *cli.Command) error {
 	if dryRun {
 		printPlan(plan)
 	}
+	return nil
+}
+
+// checkHostKey stops a sync that would hand a changed host key to every user.
+func checkHostKey(pinned, seen, host string, accept bool) error {
+	if pinned == "" || pinned == seen {
+		return nil
+	}
+	if !accept {
+		return fmt.Errorf(
+			"the host key of %s changed since the last sync, nothing was written. "+
+				"If the server was reinstalled, run again with --accept-host-key to pin the new one",
+			host,
+		)
+	}
+	warnf("the host key of %s changed since the last sync, users will trust the new one", host)
 	return nil
 }
 

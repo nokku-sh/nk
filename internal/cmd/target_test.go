@@ -139,3 +139,14 @@ func TestSyncResultJSON(t *testing.T) {
 	require.NoError(t, err)
 	assert.Contains(t, string(b), `"removed":[]`, "scripts get a list, never null")
 }
+
+func TestCheckHostKey(t *testing.T) {
+	assert.NoError(t, checkHostKey("", "ssh-ed25519 new", "web", false), "first sync pins the key")
+	assert.NoError(t, checkHostKey("ssh-ed25519 old", "ssh-ed25519 old", "web", false))
+
+	err := checkHostKey("ssh-ed25519 old", "ssh-ed25519 new", "web", false)
+	require.Error(t, err, "a changed key stops the sync")
+	assert.Contains(t, err.Error(), "--accept-host-key")
+
+	assert.NoError(t, checkHostKey("ssh-ed25519 old", "ssh-ed25519 new", "web", true))
+}
