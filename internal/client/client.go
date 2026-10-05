@@ -56,12 +56,12 @@ func New(s *state.State) (*Client, error) {
 	if s.IsServiceAccount() {
 		auth = newBearerAuth(s.Token)
 	} else {
-		proofer, perr := dpopclient.NewProofer(
-			[]byte(signerSalt),
-			paths.SignerStateFile(),
-			s.RequireTPM,
-			tpm.RecreateIdentity,
-		)
+		proofer, perr := dpopclient.NewProofer(tpm.SignerOptions{
+			Salt:       []byte(signerSalt),
+			StatePath:  paths.SignerStateFile(),
+			RequireTPM: s.RequireTPM,
+			Recreate:   true,
+		})
 		if perr != nil {
 			return nil, perr
 		}

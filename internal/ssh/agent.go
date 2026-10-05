@@ -30,7 +30,7 @@ var errSignOnly = errors.New("the nk agent only signs with the Nokku identity")
 // EnsureAgent makes sure a background nk agent serves the SSH identity on
 // paths.AgentSocket. One shared agent outlives every ssh session, so parallel
 // sessions never lose their signer when another one ends.
-func EnsureAgent(ctx context.Context) error {
+func EnsureAgent(ctx context.Context, requireTPM bool) error {
 	if agentAlive(ctx) {
 		return nil
 	}
@@ -38,8 +38,12 @@ func EnsureAgent(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	args := []string{"agent"}
+	if requireTPM {
+		args = []string{"--require-tpm", "agent"}
+	}
 	//nolint:noctx // the agent must outlive this ssh session
-	cmd := exec.Command(exe, "agent")
+	cmd := exec.Command(exe, args...)
 	detach(cmd)
 	if err = cmd.Start(); err != nil {
 		return fmt.Errorf("start nk agent: %w", err)
@@ -61,7 +65,7 @@ func EnsureAgent(ctx context.Context) error {
 
 // RunAgent serves the SSH identity until ctx ends or the agent sits idle. It
 // returns at once when another agent already serves the socket.
-func RunAgent(ctx context.Context) error {
+func RunAgent(ctx context.Context, requireTPM bool) error {
 	if agentAlive(ctx) {
 		return nil
 	}
@@ -77,7 +81,7 @@ func RunAgent(ctx context.Context) error {
 	stop := context.AfterFunc(ctx, shutdown)
 	defer stop()
 
-	var id identity
+	id := identity{requireTPM: requireTPM}
 	for {
 		conn, acceptErr := ln.Accept()
 		if acceptErr != nil {
@@ -100,8 +104,9 @@ func RunAgent(ctx context.Context) error {
 // identity reloads the signer whenever nk wrote a new public key, so a
 // recreated identity never needs an agent restart.
 type identity struct {
-	pub  []byte
-	ring agent.ExtendedAgent
+	requireTPM bool
+	pub        []byte
+	ring       agent.ExtendedAgent
 }
 
 func (id *identity) keyring() (agent.ExtendedAgent, error) {
@@ -113,7 +118,7 @@ func (id *identity) keyring() (agent.ExtendedAgent, error) {
 		return id.ring, nil
 	}
 	// A replaced signer is not closed, connections may still be using it.
-	signer, err := newSSHSigner(false)
+	signer, err := newSSHSigner(id.requireTPM)
 	if err != nil {
 		return nil, err
 	}

@@ -87,7 +87,7 @@ func checkSystem(ctx context.Context, r *Report) {
 
 	switch err := tpm.Available(); {
 	case err == nil:
-		r.add(sec, "TPM", StatusOK, "keys are bound to this machine's TPM")
+		r.add(sec, "TPM", StatusOK, "available")
 	case runtime.GOOS == "darwin":
 		r.add(sec, "TPM", StatusInfo, "not available on macOS, using a machine-wrapped key")
 	case errors.Is(err, os.ErrPermission):
@@ -149,11 +149,15 @@ func checkSSH(r *Report, s *state.State) {
 		r.add(sec, "~/.ssh/config", StatusFail, "missing the Nokku include, run nk doctor --fix")
 	}
 
-	switch ssh.IdentityMethod() {
-	case tpm.MethodTPM:
+	switch method := ssh.IdentityMethod(); {
+	case method == tpm.MethodTPM:
 		r.add(sec, "identity", StatusOK, "TPM key, never leaves the chip")
-	case tpm.MethodSoft:
-		r.add(sec, "identity", StatusOK, "machine-wrapped key, useless on another machine")
+	case method == tpm.MethodSoft && tpm.Available() == nil:
+		// A software key is never moved to the TPM on its own.
+		r.add(sec, "identity", StatusWarn,
+			"software key although a TPM is available, run nk logout and nk login to move to it")
+	case method == tpm.MethodSoft:
+		r.add(sec, "identity", StatusOK, "machine-wrapped key, tied to this machine's ID")
 	default:
 		r.add(sec, "identity", StatusWarn, "none yet, run nk login")
 	}
