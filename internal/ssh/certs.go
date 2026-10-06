@@ -7,6 +7,8 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"slices"
+	"strings"
 	"time"
 
 	"golang.org/x/crypto/ssh"
@@ -61,20 +63,46 @@ func CertValid(target state.Target, ca state.CA, margin time.Duration) bool {
 	return err == nil && CheckCert(data, ca.PublicKey, margin) == nil
 }
 
-// CertFresh reports whether the cached certificate for target is valid and
-// still in the first half of its life. It is renewed from there on, so a
-// backend outage finds an active user with at least half a lifetime left.
+// CertFresh reports whether the cached certificate for target is valid,
+// names every account granted there, and is still in the first half of its
+// life. It is renewed from there on, so a backend outage finds an active user
+// with at least half a lifetime left.
 func CertFresh(target state.Target, ca state.CA) bool {
 	data, err := os.ReadFile(paths.SSHCertificate(target.ID))
 	if err != nil {
 		return false
 	}
 	cert, err := ParseCert(data)
-	if err != nil {
+	if err != nil || !covers(cert, target.Usernames) {
 		return false
 	}
 	after, before := CertWindow(cert)
 	return CheckCert(data, ca.PublicKey, before.Sub(after)/2) == nil
+}
+
+// CertCovers reports whether the cached certificate names every account
+// granted on target. One signed before a grant does not, and the server
+// refuses that account until the certificate is renewed.
+func CertCovers(target state.Target) bool {
+	data, err := os.ReadFile(paths.SSHCertificate(target.ID))
+	if err != nil {
+		return false
+	}
+	cert, err := ParseCert(data)
+	return err == nil && covers(cert, target.Usernames)
+}
+
+// covers relies on one thing about the principals the backend signs: each
+// ends with ":" and the account it is for.
+func covers(cert *ssh.Certificate, accounts []string) bool {
+	for _, account := range accounts {
+		if !slices.ContainsFunc(cert.ValidPrincipals, func(p string) bool {
+			return strings.HasSuffix(p, ":"+account)
+		}) {
+			return false
+		}
+	}
+	return true
 }
 
 func unixTime(t uint64) time.Time {
