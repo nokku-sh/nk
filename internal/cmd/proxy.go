@@ -72,7 +72,8 @@ func proxyCMD() *cli.Command {
 			}
 
 			// nk prepare renewed the certificate before ssh read it. Signing
-			// here only happens when that failed or this sync brought a new CA.
+			// here only happens when that failed, or this sync brought a new CA
+			// or an account granted after the certificate was signed.
 			if !ssh.CertValid(*target, *ca, 0) {
 				c, cerr := backend()
 				if cerr == nil {
@@ -82,6 +83,11 @@ func proxyCMD() *cli.Command {
 					return fmt.Errorf("no valid certificate for %s, run nk login: %w", target.Name, cerr)
 				}
 				warnf("certificate for %s renewed, if ssh fails run it again", target.Name)
+			} else if !ssh.CertCovers(*target) {
+				// The old certificate still works for the accounts it names.
+				if c, cerr := backend(); cerr == nil && c.EnsureCert(ctx, *target, *ca) == nil {
+					warnf("certificate for %s renewed for a new account, if ssh fails run it again", target.Name)
+				}
 			}
 			if err = ssh.EnsureAgent(ctx, s.RequireTPM); err != nil {
 				return err

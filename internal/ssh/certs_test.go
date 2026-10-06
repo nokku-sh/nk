@@ -96,6 +96,36 @@ func TestCertFresh(t *testing.T) {
 	}
 }
 
+// A certificate signed before a grant does not name the new account, so it
+// counts as stale and gets renewed.
+func TestCertFreshNeedsEveryGrantedAccount(t *testing.T) {
+	setupSSHDir(t)
+	signer := newSigner(t)
+	ca := state.CA{PublicKey: string(ssh.MarshalAuthorizedKey(signer.PublicKey()))}
+	target := state.Target{ID: "0199a0a0-0000-7000-8000-000000000003", Usernames: []string{"deploy"}}
+	now := time.Now()
+	cert := &ssh.Certificate{
+		Key:             signer.PublicKey(),
+		CertType:        ssh.UserCert,
+		ValidPrincipals: []string{"subject@" + target.ID + ":deploy"},
+		ValidAfter:      uint64(now.Add(-time.Hour).Unix()),
+		ValidBefore:     uint64(now.Add(100 * time.Hour).Unix()),
+	}
+	require.NoError(t, cert.SignCert(rand.Reader, signer))
+	require.NoError(t, os.WriteFile(paths.SSHCertificate(target.ID), ssh.MarshalAuthorizedKey(cert), 0o600))
+
+	assert.True(t, CertFresh(target, ca))
+	assert.True(t, CertCovers(target))
+
+	target.Usernames = []string{"deploy", "root"}
+	assert.False(t, CertFresh(target, ca), "a newly granted account needs a new certificate")
+	assert.False(t, CertCovers(target))
+	assert.True(t, CertValid(target, ca, 0), "the certificate still works for the account it names")
+
+	target.Usernames = []string{"ploy"}
+	assert.False(t, CertCovers(target), "an account that only ends the same way is not covered")
+}
+
 func TestCertValidAndCleanup(t *testing.T) {
 	setupSSHDir(t)
 	signer := newSigner(t)
