@@ -56,10 +56,11 @@ func AgentSocket() string {
 	return filepath.Join(ConfigDir(), "agent.sock")
 }
 
-// SSHCertificate is the signed SSH certificate for caID. IDs are UUIDs,
-// checked when the backend snapshot is mapped.
-func SSHCertificate(caID string) string {
-	return filepath.Join(SSHCertDir(), caID+"-cert.pub")
+// SSHCertificate is the signed SSH certificate for one target. A certificate
+// only works on the server it was signed for. IDs are UUIDs, checked when the
+// backend snapshot is mapped.
+func SSHCertificate(targetID string) string {
+	return filepath.Join(SSHCertDir(), targetID+"-cert.pub")
 }
 
 // SSHCertificates returns all locally cached SSH certificate paths.

@@ -229,11 +229,11 @@ func TestEnsureCertFreshIsNoOp(t *testing.T) {
 	pub, _, _, _, err := cryptossh.ParseAuthorizedKey([]byte(cliPub))
 	require.NoError(t, err)
 	fresh := ca.signCert(t, pub, 2*time.Hour)
-	certPath := paths.SSHCertificate(caID)
+	certPath := paths.SSHCertificate(targetID)
 	require.NoError(t, os.WriteFile(certPath, []byte(fresh), 0o600))
 
 	c := &Client{State: &state.State{APIURL: "http://127.0.0.1:1", SessionToken: "sess-token"}}
-	err = c.EnsureCert(t.Context(), state.CA{
+	err = c.EnsureCert(t.Context(), state.Target{ID: targetID}, state.CA{
 		ID: caID, PublicKey: ca.pubKey,
 	})
 	require.NoError(t, err, "a fresh certificate must not trigger a re-sign")
@@ -246,7 +246,7 @@ func TestEnsureCertSignsAndWritesCert(t *testing.T) {
 
 	backend := &fakeBackend{
 		sign: func(t *testing.T, req *nokkuv1.SignSSHCertificateRequest) (*nokkuv1.SignSSHCertificateResponse, error) {
-			assert.Equal(t, caID, req.GetCaId())
+			assert.Equal(t, targetID, req.GetTargetId(), "a certificate is asked for one server")
 			return &nokkuv1.SignSSHCertificateResponse{
 				CaId:              new(caID),
 				SignedCertificate: new(ca.signRequest(t, req)),
@@ -255,12 +255,12 @@ func TestEnsureCertSignsAndWritesCert(t *testing.T) {
 	}
 	c := newSyncTestClient(t, backend)
 
-	err := c.EnsureCert(t.Context(), state.CA{
+	err := c.EnsureCert(t.Context(), state.Target{ID: targetID, WorkspaceID: wsID}, state.CA{
 		ID: caID, WorkspaceID: wsID, PublicKey: ca.pubKey,
 	})
 	require.NoError(t, err)
 
-	certPath := paths.SSHCertificate(caID)
+	certPath := paths.SSHCertificate(targetID)
 	signed, err := os.ReadFile(certPath)
 	require.NoError(t, err)
 	require.NoError(t, ssh.CheckCert(signed, ca.pubKey, 0),
@@ -281,14 +281,15 @@ func TestEnsureCertRenewsPastHalfLife(t *testing.T) {
 
 	// Issued an hour ago with half an hour left.
 	aging := ca.signCert(t, pub, 30*time.Minute)
-	certPath := paths.SSHCertificate(caID)
+	certPath := paths.SSHCertificate(targetID)
 	require.NoError(t, os.WriteFile(certPath, []byte(aging), 0o600))
-	target := state.CA{ID: caID, WorkspaceID: wsID, PublicKey: ca.pubKey}
-	require.True(t, ssh.CertValid(target, 0))
+	target := state.Target{ID: targetID, WorkspaceID: wsID}
+	authority := state.CA{ID: caID, WorkspaceID: wsID, PublicKey: ca.pubKey}
+	require.True(t, ssh.CertValid(target, authority, 0))
 
 	backend := &fakeBackend{}
 	c := newSyncTestClient(t, backend)
-	require.Error(t, c.EnsureCert(t.Context(), target), "the backend refused to sign")
+	require.Error(t, c.EnsureCert(t.Context(), target, authority), "the backend refused to sign")
 	kept, err := os.ReadFile(certPath)
 	require.NoError(t, err)
 	assert.Equal(t, aging, string(kept), "a failed renewal must leave the working certificate")
@@ -298,9 +299,9 @@ func TestEnsureCertRenewsPastHalfLife(t *testing.T) {
 			SignedCertificate: new(ca.signCert(t, pub, 3*time.Hour)),
 		}, nil
 	}
-	require.NoError(t, c.EnsureCert(t.Context(), target))
+	require.NoError(t, c.EnsureCert(t.Context(), target, authority))
 	renewed, err := os.ReadFile(certPath)
 	require.NoError(t, err)
 	assert.NotEqual(t, aging, string(renewed), "the aging certificate was not renewed")
-	assert.True(t, ssh.CertFresh(target))
+	assert.True(t, ssh.CertFresh(target, authority))
 }

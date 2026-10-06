@@ -119,7 +119,7 @@ func safeName(name string) bool {
 	})
 }
 
-// renderPrincipals renders the subject UUIDs allowed to log in as one
+// renderPrincipals renders the certificate principals allowed to log in as one
 // account. An empty file denies certificate login for it.
 func renderPrincipals(ids []string) string {
 	ids = slices.DeleteFunc(slices.Clone(ids), func(id string) bool { return id == "" })

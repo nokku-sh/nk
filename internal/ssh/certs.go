@@ -54,17 +54,18 @@ func CheckCert(data []byte, caKey string, margin time.Duration) error {
 	return nil
 }
 
-// CertValid reports whether the cached certificate for ca passes CheckCert.
-func CertValid(ca state.CA, margin time.Duration) bool {
-	data, err := os.ReadFile(paths.SSHCertificate(ca.ID))
+// CertValid reports whether the cached certificate for target passes
+// CheckCert against ca, the CA of that target.
+func CertValid(target state.Target, ca state.CA, margin time.Duration) bool {
+	data, err := os.ReadFile(paths.SSHCertificate(target.ID))
 	return err == nil && CheckCert(data, ca.PublicKey, margin) == nil
 }
 
-// CertFresh reports whether the cached certificate for ca is valid and still
-// in the first half of its life. It is renewed from there on, so a backend
-// outage finds an active user with at least half a lifetime left.
-func CertFresh(ca state.CA) bool {
-	data, err := os.ReadFile(paths.SSHCertificate(ca.ID))
+// CertFresh reports whether the cached certificate for target is valid and
+// still in the first half of its life. It is renewed from there on, so a
+// backend outage finds an active user with at least half a lifetime left.
+func CertFresh(target state.Target, ca state.CA) bool {
+	data, err := os.ReadFile(paths.SSHCertificate(target.ID))
 	if err != nil {
 		return false
 	}
@@ -80,15 +81,15 @@ func unixTime(t uint64) time.Time {
 	return time.Unix(int64(min(t, math.MaxInt64)), 0)
 }
 
-// CleanupCerts removes certificate files for CAs not in keep.
-func CleanupCerts(keep []state.CA) error {
+// CleanupCerts removes certificate files for targets not in keep.
+func CleanupCerts(keep []state.Target) error {
 	files, err := paths.SSHCertificates()
 	if err != nil {
 		return err
 	}
 	valid := make(map[string]bool, len(keep))
-	for _, ca := range keep {
-		valid[filepath.Base(paths.SSHCertificate(ca.ID))] = true
+	for _, t := range keep {
+		valid[filepath.Base(paths.SSHCertificate(t.ID))] = true
 	}
 	for _, f := range files {
 		if valid[filepath.Base(f)] {

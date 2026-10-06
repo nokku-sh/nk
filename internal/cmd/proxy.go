@@ -73,10 +73,10 @@ func proxyCMD() *cli.Command {
 
 			// nk prepare renewed the certificate before ssh read it. Signing
 			// here only happens when that failed or this sync brought a new CA.
-			if !ssh.CertValid(*ca, 0) {
+			if !ssh.CertValid(*target, *ca, 0) {
 				c, cerr := backend()
 				if cerr == nil {
-					cerr = c.EnsureCert(ctx, *ca)
+					cerr = c.EnsureCert(ctx, *target, *ca)
 				}
 				if cerr != nil {
 					return fmt.Errorf("no valid certificate for %s, run nk login: %w", target.Name, cerr)
@@ -127,19 +127,19 @@ func renewCert(ctx context.Context, cmd *cli.Command) error {
 		return errors.New("unknown target")
 	}
 	ca := s.CAByID(target.CAID)
-	if ca == nil || ssh.CertFresh(*ca) {
+	if ca == nil || ssh.CertFresh(*target, *ca) {
 		return nil
 	}
 	// A certificate that still works is not worth a timeout while the
 	// backend is down.
-	if ssh.CertValid(*ca, 0) && s.BackendDown(backendRetryAfter) {
+	if ssh.CertValid(*target, *ca, 0) && s.BackendDown(backendRetryAfter) {
 		return nil
 	}
 	c, err := client.New(s)
 	if err != nil {
 		return err
 	}
-	if err = c.EnsureCert(ctx, *ca); err != nil {
+	if err = c.EnsureCert(ctx, *target, *ca); err != nil {
 		s.MarkBackendDown()
 	}
 	return err
