@@ -81,7 +81,7 @@ Host %s
     LogLevel ERROR
 
 `, host, configValue(nk+" prepare "+t.ID), host, t.Usernames[0], nk, t.ID, t.ID,
-			configValue(paths.SSHCertificate(t.CAID)), configValue(paths.PubKeyFile()),
+			configValue(paths.SSHCertificate(t.ID)), configValue(paths.PubKeyFile()),
 			configValue(paths.AgentSocket()), configValue(paths.KnownHostsFile()))
 	}
 	return b.Bytes()

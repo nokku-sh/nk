@@ -183,24 +183,30 @@ func checkSSH(r *Report, s *state.State) {
 		}
 	}
 
-	for _, ca := range s.CAs {
-		data, err := os.ReadFile(paths.SSHCertificate(ca.ID))
+	// One certificate per server, fetched on its first ssh. Only the servers
+	// that have one get a line.
+	certs := 0
+	for _, t := range s.Targets {
+		data, err := os.ReadFile(paths.SSHCertificate(t.ID))
 		if errors.Is(err, fs.ErrNotExist) {
-			r.add(sec, ca.Name, StatusInfo, "no certificate yet, fetched on first ssh")
 			continue
 		}
+		certs++
 		cert, err := ssh.ParseCert(data)
 		if err != nil {
-			r.add(sec, ca.Name, StatusFail, "unreadable certificate, run nk login")
+			r.add(sec, t.Name, StatusFail, "unreadable certificate, run nk login")
 			continue
 		}
 		_, before := ssh.CertWindow(cert)
 		switch left := time.Until(before); {
 		case left <= 0:
-			r.add(sec, ca.Name, StatusWarn, "certificate expired, renewed on the next ssh or nk login")
+			r.add(sec, t.Name, StatusWarn, "certificate expired, renewed on the next ssh or nk login")
 		default:
-			r.add(sec, ca.Name, StatusOK, "certificate valid for "+ui.HumanizeDuration(left))
+			r.add(sec, t.Name, StatusOK, "certificate valid for "+ui.HumanizeDuration(left))
 		}
+	}
+	if certs == 0 {
+		r.add(sec, "certificates", StatusInfo, "none yet, fetched on the first ssh to a server")
 	}
 }
 
@@ -221,11 +227,11 @@ func repair(s *state.State) []string {
 		fixed = append(fixed, "added the Nokku include to ~/.ssh/config")
 	}
 
-	// Without a synced snapshot the CA list is empty for reasons unrelated
+	// Without a synced snapshot the target list is empty for reasons unrelated
 	// to the certificates on disk, so never prune from it.
 	if s.HasCachedData() {
 		certs, _ := paths.SSHCertificates()
-		if err := ssh.CleanupCerts(s.CAs); err == nil {
+		if err := ssh.CleanupCerts(s.Targets); err == nil {
 			if left, _ := paths.SSHCertificates(); len(left) < len(certs) {
 				fixed = append(fixed, fmt.Sprintf("removed %d stale certificates", len(certs)-len(left)))
 			}

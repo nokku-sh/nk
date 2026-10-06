@@ -125,7 +125,7 @@ func (c *Client) sync(ctx context.Context, interactive bool) error {
 
 	cache := state.FromAccess(res)
 	cache.SyncedAt = time.Now()
-	if err = ssh.CleanupCerts(cache.CAs); err != nil {
+	if err = ssh.CleanupCerts(cache.Targets); err != nil {
 		return err
 	}
 	c.State.Cache = cache
@@ -148,11 +148,12 @@ func (c *Client) Logout(ctx context.Context) {
 	}
 }
 
-// EnsureCert makes sure a fresh certificate from ca is on disk, see
-// ssh.CertFresh. When signing fails the one on disk stays, so ssh keeps
+// EnsureCert makes sure a fresh certificate for target is on disk, see
+// ssh.CertFresh. The backend signs it for this one server, with the accounts
+// granted there. When signing fails the one on disk stays, so ssh keeps
 // working offline for as long as it is valid.
-func (c *Client) EnsureCert(ctx context.Context, ca state.CA) error {
-	if ssh.CertFresh(ca) {
+func (c *Client) EnsureCert(ctx context.Context, target state.Target, ca state.CA) error {
+	if ssh.CertFresh(target, ca) {
 		return nil
 	}
 	if err := c.ensureSession(ctx, false); err != nil {
@@ -164,8 +165,8 @@ func (c *Client) EnsureCert(ctx context.Context, ca state.CA) error {
 	}
 
 	req := &nokkuv1.SignSSHCertificateRequest{
-		WorkspaceId: new(ca.WorkspaceID),
-		CaId:        new(ca.ID),
+		WorkspaceId: new(target.WorkspaceID),
+		TargetId:    new(target.ID),
 		PublicKey:   new(pubKey),
 	}
 	if c.State.TTL > 0 {
@@ -182,11 +183,11 @@ func (c *Client) EnsureCert(ctx context.Context, ca state.CA) error {
 	if err = ssh.CheckCert(signed, ca.PublicKey, 0); err != nil {
 		return fmt.Errorf("backend returned an unusable certificate: %w", err)
 	}
-	return fsutil.WriteFile(paths.SSHCertificate(ca.ID), signed, 0o600)
+	return fsutil.WriteFile(paths.SSHCertificate(target.ID), signed, 0o600)
 }
 
-// TargetPrincipals returns the subject UUIDs allowed per account on a manual
-// target, with teams expanded.
+// TargetPrincipals returns the certificate principals allowed per account on
+// a manual target. The backend builds them, sshd compares them as they are.
 func (c *Client) TargetPrincipals(ctx context.Context, t *state.Target) (map[string][]string, error) {
 	res, err := c.targets.GetTargetPrincipals(ctx, &nokkuv1.GetTargetPrincipalsRequest{
 		WorkspaceId: new(t.WorkspaceID),
@@ -197,7 +198,7 @@ func (c *Client) TargetPrincipals(ctx context.Context, t *state.Target) (map[str
 	}
 	grants := make(map[string][]string, len(res.GetPrincipals()))
 	for _, p := range res.GetPrincipals() {
-		grants[p.GetUsername()] = p.GetIds()
+		grants[p.GetUsername()] = p.GetCertPrincipals()
 	}
 	return grants, nil
 }

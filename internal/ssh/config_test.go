@@ -31,7 +31,7 @@ func TestRenderSSHConfig(t *testing.T) {
 
 	for _, want := range []string{
 		"Match originalhost web exec \"nk prepare t-1\"\n\nHost web\n    User alice\n    ProxyCommand nk proxy t-1 %p\n    HostKeyAlias t-1\n",
-		"    CertificateFile " + configValue(paths.SSHCertificate("ca-1")) + "\n",
+		"    CertificateFile " + configValue(paths.SSHCertificate("t-1")) + "\n",
 		"    IdentityAgent " + configValue(paths.AgentSocket()) + "\n",
 		"Host staging/db\n",
 		"Host ws-2/db\n", // an unsafe workspace name falls back to its id

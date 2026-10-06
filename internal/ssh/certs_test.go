@@ -71,7 +71,8 @@ func TestCertFresh(t *testing.T) {
 		ID:        "0199a0a0-0000-7000-8000-000000000002",
 		PublicKey: string(ssh.MarshalAuthorizedKey(signer.PublicKey())),
 	}
-	assert.False(t, CertFresh(ca), "no certificate yet")
+	target := state.Target{ID: "0199a0a0-0000-7000-8000-000000000003"}
+	assert.False(t, CertFresh(target, ca), "no certificate yet")
 
 	now := time.Now()
 	tests := []struct {
@@ -88,9 +89,9 @@ func TestCertFresh(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			require.NoError(t, os.WriteFile(
-				paths.SSHCertificate(ca.ID), signCert(t, tt.signer, tt.after, tt.before), 0o600,
+				paths.SSHCertificate(target.ID), signCert(t, tt.signer, tt.after, tt.before), 0o600,
 			))
-			assert.Equal(t, tt.fresh, CertFresh(ca))
+			assert.Equal(t, tt.fresh, CertFresh(target, ca))
 		})
 	}
 }
@@ -98,11 +99,9 @@ func TestCertFresh(t *testing.T) {
 func TestCertValidAndCleanup(t *testing.T) {
 	setupSSHDir(t)
 	signer := newSigner(t)
-	keep := state.CA{
-		ID:        "0199a0a0-0000-7000-8000-000000000002",
-		PublicKey: string(ssh.MarshalAuthorizedKey(signer.PublicKey())),
-	}
-	drop := state.CA{ID: "0199a0a0-0000-7000-8000-000000000009"}
+	ca := state.CA{PublicKey: string(ssh.MarshalAuthorizedKey(signer.PublicKey()))}
+	keep := state.Target{ID: "0199a0a0-0000-7000-8000-000000000002"}
+	drop := state.Target{ID: "0199a0a0-0000-7000-8000-000000000009"}
 	now := time.Now()
 	require.NoError(
 		t,
@@ -114,10 +113,10 @@ func TestCertValidAndCleanup(t *testing.T) {
 	)
 	require.NoError(t, os.WriteFile(paths.SSHCertificate(drop.ID), []byte("x"), 0o600))
 
-	assert.True(t, CertValid(keep, 0))
-	assert.False(t, CertValid(drop, 0))
+	assert.True(t, CertValid(keep, ca, 0))
+	assert.False(t, CertValid(drop, ca, 0))
 
-	require.NoError(t, CleanupCerts([]state.CA{keep}))
+	require.NoError(t, CleanupCerts([]state.Target{keep}))
 	files, err := paths.SSHCertificates()
 	require.NoError(t, err)
 	assert.Equal(t, []string{paths.SSHCertificate(keep.ID)}, files)
