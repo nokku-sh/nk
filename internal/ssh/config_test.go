@@ -1,9 +1,11 @@
 package ssh
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 	"time"
 
@@ -27,7 +29,7 @@ func TestRenderSSHConfig(t *testing.T) {
 			{ID: "t-6", Name: "ok", CAID: "ca-1", Usernames: []string{"a\n    ProxyCommand curl evil"}},
 			{ID: "t-7", Name: "a/b", CAID: "ca-1", Usernames: []string{"a"}},
 		}}
-	out := string(renderSSHConfig(st, "nk"))
+	out := string(renderSSHConfig(st, hostAliases(st, nil), "nk"))
 
 	for _, want := range []string{
 		"Match originalhost web exec \"nk prepare t-1\"\n\nHost web\n    User alice\n    ProxyCommand nk proxy t-1 %p\n    HostKeyAlias t-1\n",
@@ -139,4 +141,111 @@ func TestNKCommandIsAbsolute(t *testing.T) {
 	self, err := os.Executable()
 	require.NoError(t, err)
 	assert.Equal(t, self, nkCommand(), "ProxyCommand must name this binary")
+}
+
+func writtenConfig(t *testing.T, st *state.State) string {
+	t.Helper()
+	require.NoError(t, WriteConfigs(st))
+	out, err := os.ReadFile(paths.SSHConfigFile())
+	require.NoError(t, err)
+	return string(out)
+}
+
+// nk's Include sits on top of ~/.ssh/config, so its Host block would win. A
+// name the user already sends somewhere stays theirs, whoever names a server
+// like it.
+func TestOwnSSHConfigKeepsItsNames(t *testing.T) {
+	setupSSHDir(t)
+	sshDir := filepath.Dir(paths.SSHUserConfig())
+	require.NoError(t, os.MkdirAll(filepath.Join(sshDir, "conf.d", "a-directory"), 0o700))
+	require.NoError(t, os.WriteFile(paths.SSHUserConfig(), []byte(`# mine
+Include conf.d/* ~/.ssh/extra missing
+
+Host *
+    ProxyCommand none
+    ForwardAgent no
+
+Host bastion jump   # two names
+    HostName 203.0.113.7
+    ForwardAgent yes
+
+Host web
+    LocalForward 8080 localhost:80
+`), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(sshDir, "conf.d", "work"), []byte(`
+host=prod-* !prod-open
+  proxyjump jump
+
+Match originalhost gitbox,mirror user git
+  Hostname git.example.com
+`), 0o600))
+	// It includes itself, ssh gives up on that at some depth.
+	require.NoError(t, os.WriteFile(filepath.Join(sshDir, "extra"), []byte(
+		"Host \"nas\"\n  ProxyCommand nc 192.0.2.9 22\nInclude extra\n",
+	), 0o600))
+
+	st := &state.State{Workspaces: []state.Workspace{{ID: "ws-1", Name: "acme"}}}
+	for i, name := range []string{"bastion", "JUMP", "prod-db", "mirror", "nas", "web", "prod-open", "other"} {
+		st.Targets = append(st.Targets, state.Target{
+			ID: fmt.Sprintf("t-%d", i+1), Name: name, WorkspaceID: "ws-1", Usernames: []string{"root"},
+		})
+	}
+	// Twice, the second run sees the file the first one wrote.
+	writtenConfig(t, st)
+	out := writtenConfig(t, st)
+
+	// JUMP differs from the user's jump only by case. ssh's Match does not
+	// tell those apart, and neither does a person.
+	for _, taken := range []string{"bastion", "JUMP", "prod-db", "mirror", "nas"} {
+		assert.NotContains(t, out, "\nHost "+taken+"\n", "%s is the user's own name", taken)
+		assert.Contains(t, out, "\nHost acme/"+taken+"\n", "%s stays reachable under its workspace", taken)
+	}
+	for name, why := range map[string]string{
+		"web":       "a block that sends the name nowhere only adds options",
+		"prod-open": "the user's pattern leaves it out",
+		"other":     "Host * holds defaults",
+	} {
+		assert.Contains(t, out, "\nHost "+name+"\n", why)
+	}
+	assert.Equal(t, map[string]string{
+		"t-1": "acme/bastion", "t-2": "acme/JUMP", "t-3": "acme/prod-db", "t-4": "acme/mirror", "t-5": "acme/nas",
+		"t-6": "web", "t-7": "prod-open", "t-8": "other",
+	}, HostAliases(st), "nk ls shows the names ssh knows")
+}
+
+// Anyone can name a workspace like one of yours, or like its id. Two servers
+// never share a Host line, and names that differ only by case count as one.
+func TestHostLinesAreNeverShared(t *testing.T) {
+	setupSSHDir(t)
+	st := &state.State{
+		Workspaces: []state.Workspace{
+			{ID: "ws-1", Name: "acme"},
+			{ID: "ws-2", Name: "Acme"},
+			{ID: "ws-3", Name: "lab"},
+			{ID: "ws-4", Name: "ws-3"},
+			{ID: "ws-5", Name: "solo"},
+		},
+		Targets: []state.Target{
+			{ID: "t-1", Name: "db", WorkspaceID: "ws-1", Usernames: []string{"root"}},
+			{ID: "t-2", Name: "DB", WorkspaceID: "ws-2", Usernames: []string{"root"}},
+			{ID: "t-3", Name: "db", WorkspaceID: "ws-3", Usernames: []string{"root"}},
+			{ID: "t-4", Name: "db", WorkspaceID: "ws-4", Usernames: []string{"root"}},
+			{ID: "t-5", Name: "cache", WorkspaceID: "ws-5", Usernames: []string{"root"}},
+		}}
+	out := writtenConfig(t, st)
+
+	for _, host := range []string{"ws-1/db", "ws-2/DB", "lab/db", "ws-4/db", "cache"} {
+		assert.Contains(t, out, "\nHost "+host+"\n")
+	}
+	seen := map[string]bool{}
+	for line := range strings.SplitSeq(out, "\n") {
+		host, ok := strings.CutPrefix(line, "Host ")
+		if !ok {
+			continue
+		}
+		host = strings.ToLower(host)
+		assert.False(t, seen[host], "%s is written twice", host)
+		seen[host] = true
+	}
+	assert.Len(t, seen, 5)
 }

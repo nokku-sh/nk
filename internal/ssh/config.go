@@ -26,7 +26,8 @@ const unsafeChars = " ,/#\"'`$&|;<>(){}[]*?!~\\%="
 // WriteConfigs regenerates ssh_config and known_hosts from the snapshot and
 // makes sure ~/.ssh/config includes them.
 func WriteConfigs(s *state.State) error {
-	if err := fsutil.WriteIfChanged(paths.SSHConfigFile(), renderSSHConfig(s, nkCommand()), 0o600); err != nil {
+	config := renderSSHConfig(s, HostAliases(s), nkCommand())
+	if err := fsutil.WriteIfChanged(paths.SSHConfigFile(), config, 0o600); err != nil {
 		return err
 	}
 	if err := fsutil.WriteIfChanged(paths.KnownHostsFile(), renderKnownHosts(s), 0o600); err != nil {
@@ -35,27 +36,56 @@ func WriteConfigs(s *state.State) error {
 	return ensureInclude()
 }
 
-func renderSSHConfig(s *state.State, nk string) []byte {
-	nameCount := make(map[string]int)
+// HostAliases maps a target id to the name ssh reaches it by. A target that
+// cannot go into ssh_config has none.
+func HostAliases(s *state.State) map[string]string {
+	return hostAliases(s, readOwnHosts())
+}
+
+// hostAliases gives a target its bare name when nothing else answers to it.
+// Otherwise the workspace goes in front. nk's Include sits on top of the
+// user's config, so a bare name there would take over a host of their own.
+func hostAliases(s *state.State, own ownHosts) map[string]string {
+	// Case is folded. ssh's Match does not tell Web from web, and neither
+	// does a person.
+	names := make(map[string]int)
 	for _, t := range s.Targets {
 		if usable(t) {
-			nameCount[t.Name]++
+			names[strings.ToLower(t.Name)]++
 		}
 	}
+	// Anyone can name a workspace like another one, or like its id.
+	prefixes := make(map[string]int)
+	for _, w := range s.Workspaces {
+		prefixes[strings.ToLower(w.Name)]++
+		prefixes[strings.ToLower(w.ID)]++
+	}
 
-	var b bytes.Buffer
-	b.WriteString(header)
+	aliases := make(map[string]string, len(s.Targets))
 	for _, t := range s.Targets {
 		if !usable(t) {
 			continue
 		}
-		host := t.Name
-		if nameCount[t.Name] > 1 {
-			ws := s.WorkspaceName(t.WorkspaceID)
-			if !safeToken(ws) {
-				ws = t.WorkspaceID
-			}
-			host = ws + "/" + t.Name
+		aliases[t.ID] = t.Name
+		if names[strings.ToLower(t.Name)] == 1 && !own.claims(t.Name) {
+			continue
+		}
+		ws := s.WorkspaceName(t.WorkspaceID)
+		if !safeToken(ws) || prefixes[strings.ToLower(ws)] > 1 {
+			ws = t.WorkspaceID
+		}
+		aliases[t.ID] = ws + "/" + t.Name
+	}
+	return aliases
+}
+
+func renderSSHConfig(s *state.State, aliases map[string]string, nk string) []byte {
+	var b bytes.Buffer
+	b.WriteString(header)
+	for _, t := range s.Targets {
+		host, ok := aliases[t.ID]
+		if !ok {
+			continue
 		}
 
 		// ssh loads CertificateFile before it starts the ProxyCommand, so the

@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"strings"
@@ -8,6 +9,7 @@ import (
 
 	"github.com/urfave/cli/v3"
 
+	"github.com/nokku-sh/nk/internal/ssh"
 	"github.com/nokku-sh/nk/internal/state"
 	"github.com/nokku-sh/nk/internal/ui"
 )
@@ -32,12 +34,16 @@ func listCMD() *cli.Command {
 				return nil
 			}
 
+			// The name ssh knows a server by carries its workspace when the
+			// bare one is taken.
+			aliases := ssh.HostAliases(s)
 			for _, t := range s.Targets {
 				users := ui.Dim("no accounts")
 				if len(t.Usernames) > 0 {
 					users = strings.Join(t.Usernames, ", ")
 				}
-				fmt.Printf("  %-24s %s %s\n", t.Name, users, ui.Dim(manualNote(t, s.CAByID(t.CAID))))
+				name := cmp.Or(aliases[t.ID], t.Name)
+				fmt.Printf("  %-24s %s %s\n", name, users, ui.Dim(manualNote(t, s.CAByID(t.CAID))))
 			}
 			fmt.Println("\nConnect with: ssh <server> or ssh <user>@<server>")
 			return nil
