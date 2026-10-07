@@ -34,8 +34,8 @@ func listCMD() *cli.Command {
 				return nil
 			}
 
-			// The name ssh knows a server by carries its workspace when the
-			// bare one is taken.
+			// The name ssh knows a server by carries a prefix when the bare
+			// one is taken.
 			aliases := ssh.HostAliases(s)
 			for _, t := range s.Targets {
 				users := ui.Dim("no accounts")
@@ -69,7 +69,6 @@ func manualNote(t state.Target, ca *state.CA) string {
 func printTargetsJSON(s *state.State) error {
 	type target struct {
 		Name       string   `json:"name"`
-		Workspace  string   `json:"workspace"`
 		Users      []string `json:"users"`
 		Manual     bool     `json:"manual"`
 		LastSynced string   `json:"last_synced,omitempty"`
@@ -81,7 +80,6 @@ func printTargetsJSON(s *state.State) error {
 	for _, t := range s.Targets {
 		out.Targets = append(out.Targets, target{
 			Name:       t.Name,
-			Workspace:  s.WorkspaceName(t.WorkspaceID),
 			Users:      t.Usernames,
 			Manual:     t.Manual(),
 			LastSynced: t.Metadata["last_manual_sync"],

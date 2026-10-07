@@ -94,7 +94,6 @@ func (f *fakeCA) signRequest(t *testing.T, req *nokkuv1.SignSSHCertificateReques
 }
 
 const (
-	wsID     = "0199a0a0-0000-7000-8000-000000000001"
 	caID     = "0199a0a0-0000-7000-8000-000000000002"
 	targetID = "0199a0a0-0000-7000-8000-000000000003"
 )
@@ -131,22 +130,16 @@ func accessResponse(caPubKey string) *nokkuv1.GetMyAccessResponse {
 		Subject: &nokkuv1.GetMyAccessResponse_User{
 			User: &nokkuv1.User{Id: new("user-1"), Name: new("alice")},
 		},
-		Workspaces: []*nokkuv1.WorkspaceAccess{{
-			WorkspaceId:   new(wsID),
-			WorkspaceName: new("production"),
-			Targets: []*nokkuv1.Target{{
-				Id:          new(targetID),
-				Name:        new("prod"),
-				WorkspaceId: new(wsID),
-				CaId:        new(caID),
-				Usernames:   []string{"alice"},
-			}},
-			CertificateAuthorities: []*nokkuv1.CertificateAuthority{{
-				Id:          new(caID),
-				WorkspaceId: new(wsID),
-				Name:        new("Production CA"),
-				PublicKey:   new(caPubKey),
-			}},
+		Targets: []*nokkuv1.Target{{
+			Id:        new(targetID),
+			Name:      new("prod"),
+			CaId:      new(caID),
+			Usernames: []string{"alice"},
+		}},
+		CertificateAuthorities: []*nokkuv1.CertificateAuthority{{
+			Id:        new(caID),
+			Name:      new("Production CA"),
+			PublicKey: new(caPubKey),
 		}},
 	}
 }
@@ -162,7 +155,6 @@ func TestSyncCommitsAccessSnapshot(t *testing.T) {
 	assert.False(t, c.State.BackendDown(time.Minute), "a sync that worked ends the outage")
 
 	assert.Equal(t, "user-1", c.State.User.ID)
-	assert.Equal(t, []state.Workspace{{ID: wsID, Name: "production"}}, c.State.Workspaces)
 	require.Len(t, c.State.Targets, 1)
 	assert.Equal(t, "prod", c.State.Targets[0].Name)
 	require.Len(t, c.State.CAs, 1)
@@ -255,9 +247,7 @@ func TestEnsureCertSignsAndWritesCert(t *testing.T) {
 	}
 	c := newSyncTestClient(t, backend)
 
-	err := c.EnsureCert(t.Context(), state.Target{ID: targetID, WorkspaceID: wsID}, state.CA{
-		ID: caID, WorkspaceID: wsID, PublicKey: ca.pubKey,
-	})
+	err := c.EnsureCert(t.Context(), state.Target{ID: targetID}, state.CA{ID: caID, PublicKey: ca.pubKey})
 	require.NoError(t, err)
 
 	certPath := paths.SSHCertificate(targetID)
@@ -283,8 +273,8 @@ func TestEnsureCertRenewsPastHalfLife(t *testing.T) {
 	aging := ca.signCert(t, pub, 30*time.Minute)
 	certPath := paths.SSHCertificate(targetID)
 	require.NoError(t, os.WriteFile(certPath, []byte(aging), 0o600))
-	target := state.Target{ID: targetID, WorkspaceID: wsID}
-	authority := state.CA{ID: caID, WorkspaceID: wsID, PublicKey: ca.pubKey}
+	target := state.Target{ID: targetID}
+	authority := state.CA{ID: caID, PublicKey: ca.pubKey}
 	require.True(t, ssh.CertValid(target, authority, 0))
 
 	backend := &fakeBackend{}

@@ -20,7 +20,7 @@ const header = "# Managed by Nokku. nk regenerates this file, do not edit it.\n\
 
 // unsafeChars may not appear in a target or user name emitted into ssh_config.
 // Wildcards and lists would widen a Host pattern to hosts the target does not
-// own, / is the workspace separator, the rest are shell metacharacters.
+// own, / separates the nokku prefix, the rest are shell metacharacters.
 const unsafeChars = " ,/#\"'`$&|;<>(){}[]*?!~\\%="
 
 // WriteConfigs regenerates ssh_config and known_hosts from the snapshot and
@@ -43,8 +43,8 @@ func HostAliases(s *state.State) map[string]string {
 }
 
 // hostAliases gives a target its bare name when nothing else answers to it.
-// Otherwise the workspace goes in front. nk's Include sits on top of the
-// user's config, so a bare name there would take over a host of their own.
+// Otherwise nokku/ goes in front. nk's Include sits on top of the user's
+// config, so a bare name there would take over a host of their own.
 func hostAliases(s *state.State, own ownHosts) map[string]string {
 	// Case is folded. ssh's Match does not tell Web from web, and neither
 	// does a person.
@@ -54,27 +54,20 @@ func hostAliases(s *state.State, own ownHosts) map[string]string {
 			names[strings.ToLower(t.Name)]++
 		}
 	}
-	// Anyone can name a workspace like another one, or like its id.
-	prefixes := make(map[string]int)
-	for _, w := range s.Workspaces {
-		prefixes[strings.ToLower(w.Name)]++
-		prefixes[strings.ToLower(w.ID)]++
-	}
 
 	aliases := make(map[string]string, len(s.Targets))
 	for _, t := range s.Targets {
 		if !usable(t) {
 			continue
 		}
-		aliases[t.ID] = t.Name
-		if names[strings.ToLower(t.Name)] == 1 && !own.claims(t.Name) {
-			continue
+		switch {
+		case names[strings.ToLower(t.Name)] > 1:
+			aliases[t.ID] = "nokku/" + t.ID
+		case own.claims(t.Name):
+			aliases[t.ID] = "nokku/" + t.Name
+		default:
+			aliases[t.ID] = t.Name
 		}
-		ws := s.WorkspaceName(t.WorkspaceID)
-		if !safeToken(ws) || prefixes[strings.ToLower(ws)] > 1 {
-			ws = t.WorkspaceID
-		}
-		aliases[t.ID] = ws + "/" + t.Name
 	}
 	return aliases
 }

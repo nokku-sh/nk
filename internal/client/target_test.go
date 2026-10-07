@@ -56,15 +56,14 @@ func TestCreateTarget(t *testing.T) {
 	c.targets = nokkuv1connect.NewTargetServiceClient(http.DefaultClient, server.URL)
 
 	created, err := c.CreateTarget(t.Context(), &state.Target{
-		WorkspaceID: "ws-1", CAID: "ca-1", HostPublicKey: "ssh-ed25519 AAAA", Endpoints: []string{"10.0.0.5"},
+		CAID: "ca-1", HostPublicKey: "ssh-ed25519 AAAA", Endpoints: []string{"10.0.0.5"},
 	})
 	require.NoError(t, err)
 
 	assert.Equal(t, "fair-juniper", created.Name, "the server-generated name comes back")
-	assert.Equal(t, "ws-1", created.WorkspaceID)
+	assert.Equal(t, "ca-1", created.CAID)
 	require.NotNil(t, svc.got)
 	assert.Empty(t, svc.got.GetName(), "an empty name asks the server to generate one")
-	assert.Equal(t, "ws-1", svc.got.GetWorkspaceId())
 	assert.Equal(t, "ca-1", svc.got.GetCaId())
 	assert.Equal(t, []string{"10.0.0.5"}, svc.got.GetEndpoints())
 	assert.Equal(t, "ssh-ed25519 AAAA", svc.got.GetHostPublicKey())
@@ -82,8 +81,7 @@ func TestDeleteTarget(t *testing.T) {
 	c := &Client{State: &state.State{APIURL: server.URL, SessionToken: "sess-token"}}
 	c.targets = nokkuv1connect.NewTargetServiceClient(http.DefaultClient, server.URL)
 
-	require.NoError(t, c.DeleteTarget(t.Context(), &state.Target{ID: "target-1", WorkspaceID: "ws-1"}))
+	require.NoError(t, c.DeleteTarget(t.Context(), &state.Target{ID: "target-1"}))
 	require.NotNil(t, svc.deleted)
-	assert.Equal(t, "ws-1", svc.deleted.GetWorkspaceId())
 	assert.Equal(t, "target-1", svc.deleted.GetId())
 }

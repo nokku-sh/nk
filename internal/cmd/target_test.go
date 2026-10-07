@@ -13,17 +13,15 @@ import (
 
 func testState() *state.State {
 	return &state.State{
-		Workspaces: []state.Workspace{{ID: "ws-1", Name: "prod"}, {ID: "ws-2", Name: "lab"}},
 		CAs: []state.CA{
-			{ID: "ca-1", WorkspaceID: "ws-1", Name: "main", Default: true},
-			{ID: "ca-2", WorkspaceID: "ws-1", Name: "legacy"},
-			{ID: "ca-3", WorkspaceID: "ws-2", Name: "lab"},
+			{ID: "ca-1", Name: "main", Default: true},
+			{ID: "ca-2", Name: "legacy"},
 		},
 		Targets: []state.Target{
-			{ID: "t-1", WorkspaceID: "ws-1", Name: "web", Endpoints: []string{"10.0.0.5:2222"}},
-			{ID: "t-2", WorkspaceID: "ws-1", Name: "db", DaemonID: "d", Endpoints: []string{"10.0.0.6"}},
-			{ID: "t-3", WorkspaceID: "ws-1", Name: "dup"},
-			{ID: "t-4", WorkspaceID: "ws-2", Name: "dup"},
+			{ID: "t-1", Name: "web", Endpoints: []string{"10.0.0.5:2222"}},
+			{ID: "t-2", Name: "db", DaemonID: "d", Endpoints: []string{"10.0.0.6"}},
+			{ID: "t-3", Name: "dup", Endpoints: []string{"10.0.0.7"}},
+			{ID: "t-4", Name: "other", Endpoints: []string{"10.0.0.7"}},
 		}}
 }
 
@@ -31,68 +29,51 @@ func TestFindTarget(t *testing.T) {
 	t.Parallel()
 	s := testState()
 
-	got, err := findTarget(s, "", "web")
+	got, err := findTarget(s, "web")
 	require.NoError(t, err)
 	assert.Equal(t, "t-1", got.ID, "by name")
 
-	got, err = findTarget(s, "", "10.0.0.5")
+	got, err = findTarget(s, "10.0.0.5")
 	require.NoError(t, err)
 	assert.Equal(t, "t-1", got.ID, "by endpoint host, ignoring its port")
 
-	got, err = findTarget(s, "", "10.0.0.9")
+	got, err = findTarget(s, "10.0.0.9")
 	require.NoError(t, err)
 	assert.Nil(t, got, "an unknown host is a new target")
 
-	_, err = findTarget(s, "", "db")
+	_, err = findTarget(s, "db")
 	require.ErrorContains(t, err, "daemon")
 
-	_, err = findTarget(s, "", "dup")
-	require.ErrorContains(t, err, "--workspace")
-	got, err = findTarget(s, "lab", "dup")
+	_, err = findTarget(s, "10.0.0.7")
+	require.ErrorContains(t, err, "several targets")
+	got, err = findTarget(s, "dup")
 	require.NoError(t, err)
-	assert.Equal(t, "t-4", got.ID)
-}
-
-func TestResolveWorkspace(t *testing.T) {
-	t.Parallel()
-	s := testState()
-
-	_, err := resolveWorkspace(s, "")
-	require.ErrorContains(t, err, "prod, lab")
-	ws, err := resolveWorkspace(s, "lab")
-	require.NoError(t, err)
-	assert.Equal(t, "ws-2", ws.ID)
-	_, err = resolveWorkspace(s, "nope")
-	require.Error(t, err)
-
-	s.Workspaces = s.Workspaces[:1]
-	ws, err = resolveWorkspace(s, "")
-	require.NoError(t, err)
-	assert.Equal(t, "ws-1", ws.ID, "a single workspace needs no flag")
+	assert.Equal(t, "t-3", got.ID, "the name settles a shared endpoint")
 }
 
 func TestResolveCA(t *testing.T) {
 	t.Parallel()
 	s := testState()
 
-	ca, err := resolveCA(s, "ws-1", "")
+	ca, err := resolveCA(s, "")
 	require.NoError(t, err)
 	assert.Equal(t, "ca-1", ca.ID, "the default wins")
 
-	ca, err = resolveCA(s, "ws-1", "legacy")
+	ca, err = resolveCA(s, "legacy")
 	require.NoError(t, err)
 	assert.Equal(t, "ca-2", ca.ID)
 
-	ca, err = resolveCA(s, "ws-2", "")
-	require.NoError(t, err)
-	assert.Equal(t, "ca-3", ca.ID, "the only CA needs no flag")
-
-	_, err = resolveCA(s, "ws-2", "main")
-	require.Error(t, err, "a CA from another workspace is not found")
+	_, err = resolveCA(s, "nope")
+	require.Error(t, err)
 
 	s.CAs[0].Default = false
-	_, err = resolveCA(s, "ws-1", "")
+	_, err = resolveCA(s, "")
 	require.ErrorContains(t, err, "--ca")
+
+	s.CAs = s.CAs[:1]
+	ca, err = resolveCA(s, "")
+	require.NoError(t, err)
+	assert.Equal(t, "ca-1", ca.ID, "the only CA needs no flag")
 }
 
 func TestEndpointRemote(t *testing.T) {

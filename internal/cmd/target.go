@@ -23,13 +23,7 @@ import (
 	"github.com/nokku-sh/nk/internal/ui"
 )
 
-var (
-	workspaceFlag = &cli.StringFlag{
-		Name:  "workspace",
-		Usage: "Workspace id or name, needed only when you belong to several",
-	}
-	portFlag = &cli.StringFlag{Name: "port", Usage: "SSH port of the server, defaults to your ssh config or 22"}
-)
+var portFlag = &cli.StringFlag{Name: "port", Usage: "SSH port of the server, defaults to your ssh config or 22"}
 
 func syncCMD() *cli.Command {
 	return &cli.Command{
@@ -40,10 +34,9 @@ func syncCMD() *cli.Command {
 		ArgsUsage: "<host | root@host | target-name>",
 		Flags: []cli.Flag{
 			&cli.StringFlag{Name: "name", Usage: "Name for a new target, generated when empty"},
-			workspaceFlag,
 			&cli.StringFlag{
 				Name:  "ca",
-				Usage: "Certificate authority id or name for a new target, defaults to the workspace default",
+				Usage: "Certificate authority id or name for a new target, defaults to the default one",
 			},
 			portFlag,
 			&cli.BoolFlag{Name: "dry-run", Usage: "Show what would be written and change nothing"},
@@ -76,7 +69,7 @@ func targetSync(ctx context.Context, cmd *cli.Command) error {
 		progress = os.Stderr
 	}
 
-	target, err := findTarget(s, cmd.String("workspace"), host)
+	target, err := findTarget(s, host)
 	if err != nil {
 		return err
 	}
@@ -229,7 +222,6 @@ func targetCMD() *cli.Command {
 				"and the principals files, then deletes the target in Nokku.",
 			ArgsUsage: "<host | root@host | target-name>",
 			Flags: []cli.Flag{
-				workspaceFlag,
 				portFlag,
 				&cli.BoolFlag{Name: "keep-host", Usage: "Delete the target only and leave the server as it is"},
 			},
@@ -250,7 +242,7 @@ func targetDelete(ctx context.Context, cmd *cli.Command) error {
 	if err != nil {
 		return err
 	}
-	target, err := findTarget(c.State, cmd.String("workspace"), host)
+	target, err := findTarget(c.State, host)
 	if err != nil {
 		return err
 	}
@@ -304,13 +296,10 @@ func rootHost(cmd *cli.Command) (string, error) {
 }
 
 // findTarget looks for an existing manual target by name or endpoint.
-func findTarget(s *state.State, workspace, host string) (*state.Target, error) {
+func findTarget(s *state.State, host string) (*state.Target, error) {
 	var matches []*state.Target
 	for i := range s.Targets {
 		t := &s.Targets[i]
-		if workspace != "" && t.WorkspaceID != workspace && s.WorkspaceName(t.WorkspaceID) != workspace {
-			continue
-		}
 		if t.Name == host ||
 			slices.ContainsFunc(t.Endpoints, func(ep string) bool { return endpointHost(ep) == host }) {
 			matches = append(matches, t)
@@ -320,7 +309,7 @@ func findTarget(s *state.State, workspace, host string) (*state.Target, error) {
 	case len(matches) == 0:
 		return nil, nil //nolint:nilnil // no match means a new server
 	case len(matches) > 1:
-		return nil, fmt.Errorf("%s matches targets in several workspaces, pass --workspace", host)
+		return nil, fmt.Errorf("%s matches several targets, pass the target name", host)
 	case !matches[0].Manual():
 		return nil, fmt.Errorf("%s runs the Nokku daemon, this command is for servers without it", matches[0].Name)
 	}
@@ -330,11 +319,7 @@ func findTarget(s *state.State, workspace, host string) (*state.Target, error) {
 // newTarget prepares a target for a server Nokku does not know yet. It is
 // created on the backend only once the host key is read.
 func newTarget(ctx context.Context, s *state.State, cmd *cli.Command, dest remote) (*state.Target, error) {
-	ws, err := resolveWorkspace(s, cmd.String("workspace"))
-	if err != nil {
-		return nil, err
-	}
-	ca, err := resolveCA(s, ws.ID, cmd.String("ca"))
+	ca, err := resolveCA(s, cmd.String("ca"))
 	if err != nil {
 		return nil, err
 	}
@@ -346,60 +331,28 @@ func newTarget(ctx context.Context, s *state.State, cmd *cli.Command, dest remot
 		endpoint = net.JoinHostPort(addr.host, addr.port)
 	}
 	return &state.Target{
-		WorkspaceID: ws.ID,
-		CAID:        ca.ID,
-		Name:        strings.TrimSpace(cmd.String("name")),
-		Endpoints:   []string{endpoint},
+		CAID:      ca.ID,
+		Name:      strings.TrimSpace(cmd.String("name")),
+		Endpoints: []string{endpoint},
 	}, nil
 }
 
-func resolveWorkspace(s *state.State, ref string) (state.Workspace, error) {
-	if ref != "" {
-		for _, w := range s.Workspaces {
-			if w.ID == ref || w.Name == ref {
-				return w, nil
-			}
-		}
-		return state.Workspace{}, fmt.Errorf("workspace %q not found", ref)
-	}
-	switch len(s.Workspaces) {
-	case 0:
-		return state.Workspace{}, errors.New("you do not belong to any workspace yet")
-	case 1:
-		return s.Workspaces[0], nil
-	}
-	names := make([]string, 0, len(s.Workspaces))
-	for _, w := range s.Workspaces {
-		names = append(names, w.Name)
-	}
-	return state.Workspace{}, fmt.Errorf(
-		"you belong to several workspaces, pass --workspace with one of: %s",
-		strings.Join(names, ", "),
-	)
-}
-
-// resolveCA picks the named CA, else the workspace default, else the only one.
-func resolveCA(s *state.State, workspaceID, ref string) (state.CA, error) {
-	var cas []state.CA
-	for _, ca := range s.CAs {
-		if ca.WorkspaceID == workspaceID {
-			cas = append(cas, ca)
-		}
-	}
-	if i := slices.IndexFunc(cas, func(ca state.CA) bool {
+// resolveCA picks the named CA, else the default, else the only one.
+func resolveCA(s *state.State, ref string) (state.CA, error) {
+	if i := slices.IndexFunc(s.CAs, func(ca state.CA) bool {
 		return ref != "" && (ca.ID == ref || ca.Name == ref) || ref == "" && ca.Default
 	}); i >= 0 {
-		return cas[i], nil
+		return s.CAs[i], nil
 	}
 	switch {
 	case ref != "":
-		return state.CA{}, fmt.Errorf("certificate authority %q not found in this workspace", ref)
-	case len(cas) == 1:
-		return cas[0], nil
-	case len(cas) == 0:
-		return state.CA{}, errors.New("this workspace has no certificate authority yet, create one in the Nokku UI")
+		return state.CA{}, fmt.Errorf("certificate authority %q not found", ref)
+	case len(s.CAs) == 1:
+		return s.CAs[0], nil
+	case len(s.CAs) == 0:
+		return state.CA{}, errors.New("there is no certificate authority yet, create one in the Nokku UI")
 	}
-	return state.CA{}, errors.New("this workspace has several certificate authorities, pass --ca")
+	return state.CA{}, errors.New("there are several certificate authorities, pass --ca")
 }
 
 func endpointHost(ep string) string {

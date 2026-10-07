@@ -164,9 +164,8 @@ func (c *Client) EnsureCert(ctx context.Context, target state.Target, ca state.C
 	}
 
 	req := &nokkuv1.SignSSHCertificateRequest{
-		WorkspaceId: new(target.WorkspaceID),
-		TargetId:    new(target.ID),
-		PublicKey:   new(pubKey),
+		TargetId:  new(target.ID),
+		PublicKey: new(pubKey),
 	}
 	if c.State.TTL > 0 {
 		req.Ttl = durationpb.New(c.State.TTL)
@@ -189,8 +188,7 @@ func (c *Client) EnsureCert(ctx context.Context, target state.Target, ca state.C
 // a manual target. The backend builds them, sshd compares them as they are.
 func (c *Client) TargetPrincipals(ctx context.Context, t *state.Target) (map[string][]string, error) {
 	res, err := c.targets.GetTargetPrincipals(ctx, &nokkuv1.GetTargetPrincipalsRequest{
-		WorkspaceId: new(t.WorkspaceID),
-		TargetId:    new(t.ID),
+		TargetId: new(t.ID),
 	})
 	if err != nil {
 		return nil, err
@@ -206,7 +204,6 @@ func (c *Client) TargetPrincipals(ctx context.Context, t *state.Target) (map[str
 // which also stamps its last sync.
 func (c *Client) ReportTarget(ctx context.Context, t *state.Target, accounts []string, hostKey string) error {
 	_, err := c.targets.SyncTargetUsers(ctx, &nokkuv1.SyncTargetUsersRequest{
-		WorkspaceId:   new(t.WorkspaceID),
 		TargetId:      new(t.ID),
 		Usernames:     accounts,
 		HostPublicKey: new(hostKey),
@@ -219,7 +216,6 @@ func (c *Client) ReportTarget(ctx context.Context, t *state.Target, accounts []s
 // generate one.
 func (c *Client) CreateTarget(ctx context.Context, t *state.Target) (*state.Target, error) {
 	res, err := c.targets.CreateTarget(ctx, &nokkuv1.CreateTargetRequest{
-		WorkspaceId:   new(t.WorkspaceID),
 		CaId:          new(t.CAID),
 		Name:          new(t.Name),
 		HostPublicKey: new(t.HostPublicKey),
@@ -229,33 +225,28 @@ func (c *Client) CreateTarget(ctx context.Context, t *state.Target) (*state.Targ
 		return nil, err
 	}
 	created := state.MapTarget(res.GetTarget())
-	created.WorkspaceID, created.CAID = t.WorkspaceID, t.CAID
+	created.CAID = t.CAID
 	return &created, nil
 }
 
 func (c *Client) DeleteTarget(ctx context.Context, t *state.Target) error {
 	_, err := c.targets.DeleteTarget(ctx, &nokkuv1.DeleteTargetRequest{
-		WorkspaceId: new(t.WorkspaceID),
-		Id:          new(t.ID),
+		Id: new(t.ID),
 	})
 	return err
 }
 
-// ListX509CAs returns the active X.509 CAs across the workspaces. They are
-// not linked to targets, so they are fetched separately from the access sync.
+// ListX509CAs returns the active X.509 CAs. They are not linked to targets,
+// so they are fetched separately from the access sync.
 func (c *Client) ListX509CAs(ctx context.Context) ([]*nokkuv1.CertificateAuthority, error) {
+	res, err := c.certs.ListCertificateAuthorities(ctx, &nokkuv1.ListCertificateAuthoritiesRequest{})
+	if err != nil {
+		return nil, err
+	}
 	var out []*nokkuv1.CertificateAuthority
-	for _, w := range c.State.Workspaces {
-		res, err := c.certs.ListCertificateAuthorities(ctx, &nokkuv1.ListCertificateAuthoritiesRequest{
-			WorkspaceId: new(w.ID),
-		})
-		if err != nil {
-			return nil, err
-		}
-		for _, ca := range res.GetCertificateAuthorities() {
-			if ca.GetAuthorityType() == nokkuv1.AuthorityType_AUTHORITY_TYPE_X509 && ca.GetIsActive() {
-				out = append(out, ca)
-			}
+	for _, ca := range res.GetCertificateAuthorities() {
+		if ca.GetAuthorityType() == nokkuv1.AuthorityType_AUTHORITY_TYPE_X509 && ca.GetIsActive() {
+			out = append(out, ca)
 		}
 	}
 	return out, nil
@@ -268,10 +259,9 @@ func (c *Client) SignX509Certificate(
 	usage nokkuv1.SignX509CertificateRequest_X509Usage,
 ) (*nokkuv1.SignX509CertificateResponse, error) {
 	req := &nokkuv1.SignX509CertificateRequest{
-		WorkspaceId: new(ca.GetWorkspaceId()),
-		CaId:        new(ca.GetId()),
-		Csr:         new(csrPEM),
-		Usage:       usage.Enum(),
+		CaId:  new(ca.GetId()),
+		Csr:   new(csrPEM),
+		Usage: usage.Enum(),
 	}
 	if c.State.TTL > 0 {
 		req.Ttl = durationpb.New(c.State.TTL)

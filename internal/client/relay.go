@@ -42,8 +42,7 @@ func (c *Client) Relay(ctx context.Context, target *state.Target) (io.ReadWriteC
 
 	if err = stream.Send(&nokkuv1.RelayRequest{
 		Msg: &nokkuv1.RelayRequest_Start{Start: &nokkuv1.RelayStart{
-			WorkspaceId: new(target.WorkspaceID),
-			DaemonId:    new(target.DaemonID),
+			DaemonId: new(target.DaemonID),
 		}},
 	}); err != nil {
 		return nil, fmt.Errorf("relay start: %w", err)

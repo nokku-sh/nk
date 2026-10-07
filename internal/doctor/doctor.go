@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 
@@ -121,7 +122,7 @@ func checkAccount(ctx context.Context, r *Report, s *state.State) {
 	default:
 		r.add(sec, "signed in", StatusWarn, "not signed in, run nk login")
 	}
-	r.add(sec, "servers", StatusInfo, fmt.Sprintf("%d in %d workspaces", len(s.Targets), len(s.Workspaces)))
+	r.add(sec, "servers", StatusInfo, strconv.Itoa(len(s.Targets)))
 
 	if reachable(ctx, s) {
 		r.add(sec, "Nokku", StatusOK, s.APIURL)

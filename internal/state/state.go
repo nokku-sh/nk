@@ -12,11 +12,6 @@ import (
 	"github.com/nokku-sh/nk/internal/paths"
 )
 
-type Workspace struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
-}
-
 type User struct {
 	ID    string `json:"id"`
 	Name  string `json:"name"`
@@ -24,17 +19,15 @@ type User struct {
 }
 
 type ServiceAccount struct {
-	ID          string `json:"id"`
-	WorkspaceID string `json:"workspace_id"`
-	Name        string `json:"name"`
+	ID   string `json:"id"`
+	Name string `json:"name"`
 }
 
 type CA struct {
-	ID          string `json:"id"`
-	WorkspaceID string `json:"workspace_id"`
-	Name        string `json:"name"`
-	PublicKey   string `json:"public_key"`
-	Default     bool   `json:"default,omitzero"`
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	PublicKey string `json:"public_key"`
+	Default   bool   `json:"default,omitzero"`
 	// RotatedAt is when the current key was issued.
 	RotatedAt time.Time `json:"rotated_at,omitzero"`
 	// PreviousPublicKey is the key before the last rollover. Its certificates
@@ -54,12 +47,11 @@ func (ca CA) TrustedKeys() []string {
 }
 
 type Target struct {
-	ID          string   `json:"id"`
-	WorkspaceID string   `json:"workspace_id"`
-	CAID        string   `json:"ca_id,omitempty"`
-	DaemonID    string   `json:"daemon_id,omitempty"`
-	Name        string   `json:"name"`
-	Endpoints   []string `json:"endpoints,omitempty"`
+	ID        string   `json:"id"`
+	CAID      string   `json:"ca_id,omitempty"`
+	DaemonID  string   `json:"daemon_id,omitempty"`
+	Name      string   `json:"name"`
+	Endpoints []string `json:"endpoints,omitempty"`
 	// Usernames are the accounts this subject may log in as on the target.
 	Usernames []string `json:"usernames,omitempty"`
 	// HostPublicKey pins the host key of a manual target.
@@ -97,7 +89,6 @@ type Cache struct {
 	FailedAt       time.Time       `json:"failed_at,omitzero"`
 	User           *User           `json:"user,omitempty"`
 	ServiceAccount *ServiceAccount `json:"service_account,omitempty"`
-	Workspaces     []Workspace     `json:"workspaces,omitempty"`
 	CAs            []CA            `json:"cas,omitempty"`
 	Targets        []Target        `json:"targets,omitempty"`
 }
@@ -192,13 +183,4 @@ func (s *State) CAByID(id string) *CA {
 		}
 	}
 	return nil
-}
-
-func (s *State) WorkspaceName(id string) string {
-	for _, w := range s.Workspaces {
-		if w.ID == id {
-			return w.Name
-		}
-	}
-	return ""
 }

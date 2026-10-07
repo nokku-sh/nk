@@ -77,7 +77,7 @@ The command generates an ECDSA P-256 key pair (`--key-type ed25519` for ed25519)
 | Command                      | Purpose                                                          |
 | ---------------------------- | ---------------------------------------------------------------- |
 | `nk login` (alias `refresh`) | Authenticate and synchronize local state                         |
-| `nk ls` / `nk list`          | List available machines across all workspaces                    |
+| `nk ls` / `nk list`          | List the machines you can reach                                  |
 | `nk doctor`                  | Check API reachability, TPM availability, and local SSH setup    |
 | `nk pki list`                | List active X.509 certificate authorities                        |
 | `nk pki issue <cn>`          | Issue an X.509 certificate                                       |
@@ -93,8 +93,8 @@ The command generates an ECDSA P-256 key pair (`--key-type ed25519` for ed25519)
 | `nk doctor`        | `--fix` to repair permissions and regenerate files, `--json` for output                 |
 | `nk pki list`      | `--json` for machine-readable output                                                    |
 | `nk pki issue`     | `--san dns:name`, `--usage client\|server\|both`, `--ca`, `--key-type`, `--output`/`-o` |
-| `nk sync`          | `--name`, `--workspace`, `--ca`, `--port`, `--dry-run`, `--accept-host-key`, `--json`   |
-| `nk target delete` | `--workspace`, `--port`, `--keep-host` to leave the server untouched                    |
+| `nk sync`          | `--name`, `--ca`, `--port`, `--dry-run`, `--accept-host-key`, `--json`                  |
+| `nk target delete` | `--port`, `--keep-host` to leave the server untouched                                   |
 
 ## Configuration
 

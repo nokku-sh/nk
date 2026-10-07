@@ -17,44 +17,35 @@ func FromAccess(res *nokkuv1.GetMyAccessResponse) Cache {
 		c.User = &User{ID: u.GetId(), Name: u.GetName(), Email: u.GetEmail()}
 	case *nokkuv1.GetMyAccessResponse_ServiceAccount:
 		sa := subject.ServiceAccount
-		c.ServiceAccount = &ServiceAccount{ID: sa.GetId(), WorkspaceID: sa.GetWorkspaceId(), Name: sa.GetName()}
+		c.ServiceAccount = &ServiceAccount{ID: sa.GetId(), Name: sa.GetName()}
 	}
 
-	for _, wa := range res.GetWorkspaces() {
-		if !validIDs(wa.GetWorkspaceId()) {
+	for _, ca := range res.GetCertificateAuthorities() {
+		// X.509 CAs are fetched separately and must never reach known_hosts.
+		if ca.GetAuthorityType() == nokkuv1.AuthorityType_AUTHORITY_TYPE_X509 || !validIDs(ca.GetId()) {
 			continue
 		}
-		c.Workspaces = append(c.Workspaces, Workspace{ID: wa.GetWorkspaceId(), Name: wa.GetWorkspaceName()})
-		for _, ca := range wa.GetCertificateAuthorities() {
-			// X.509 CAs are fetched separately and must never reach known_hosts.
-			if ca.GetAuthorityType() == nokkuv1.AuthorityType_AUTHORITY_TYPE_X509 || !validIDs(ca.GetId()) {
-				continue
-			}
-			entry := CA{
-				ID:          ca.GetId(),
-				WorkspaceID: wa.GetWorkspaceId(),
-				Name:        ca.GetName(),
-				PublicKey:   ca.GetPublicKey(),
-				Default:     ca.GetIsDefault(),
-			}
-			// AsTime turns an unset timestamp into 1970, not the zero time.
-			if ca.GetNotBefore() != nil {
-				entry.RotatedAt = ca.GetNotBefore().AsTime()
-			}
-			if ca.GetPreviousTrustedUntil() != nil {
-				entry.PreviousPublicKey = ca.GetPreviousPublicKey()
-				entry.PreviousTrustedUntil = ca.GetPreviousTrustedUntil().AsTime()
-			}
-			c.CAs = append(c.CAs, entry)
+		entry := CA{
+			ID:        ca.GetId(),
+			Name:      ca.GetName(),
+			PublicKey: ca.GetPublicKey(),
+			Default:   ca.GetIsDefault(),
 		}
-		for _, t := range wa.GetTargets() {
-			if !validIDs(t.GetId(), t.GetCaId()) || t.GetDaemonId() != "" && !validIDs(t.GetDaemonId()) {
-				continue
-			}
-			tgt := MapTarget(t)
-			tgt.WorkspaceID = wa.GetWorkspaceId()
-			c.Targets = append(c.Targets, tgt)
+		// AsTime turns an unset timestamp into 1970, not the zero time.
+		if ca.GetNotBefore() != nil {
+			entry.RotatedAt = ca.GetNotBefore().AsTime()
 		}
+		if ca.GetPreviousTrustedUntil() != nil {
+			entry.PreviousPublicKey = ca.GetPreviousPublicKey()
+			entry.PreviousTrustedUntil = ca.GetPreviousTrustedUntil().AsTime()
+		}
+		c.CAs = append(c.CAs, entry)
+	}
+	for _, t := range res.GetTargets() {
+		if !validIDs(t.GetId(), t.GetCaId()) || t.GetDaemonId() != "" && !validIDs(t.GetDaemonId()) {
+			continue
+		}
+		c.Targets = append(c.Targets, MapTarget(t))
 	}
 	return c
 }
@@ -62,7 +53,6 @@ func FromAccess(res *nokkuv1.GetMyAccessResponse) Cache {
 func MapTarget(t *nokkuv1.Target) Target {
 	return Target{
 		ID:            t.GetId(),
-		WorkspaceID:   t.GetWorkspaceId(),
 		CAID:          t.GetCaId(),
 		DaemonID:      t.GetDaemonId(),
 		Name:          t.GetName(),
