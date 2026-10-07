@@ -1,30 +1,4 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "extends": [
-    "config:recommended",
-    ":semanticCommits",
-    ":disableDependencyDashboard",
-    "helpers:pinGitHubActionDigests",
-    "customManagers:githubActionsVersions"
-  ],
-  "minimumReleaseAge": "7 days",
-  "postUpdateOptions": ["gomodTidy", "gomodUpdateImportPaths"],
-  "timezone": "Europe/Vienna",
-  "packageRules": [
-    {
-      "matchPackagePatterns": ["*"],
-      "matchUpdateTypes": ["minor", "patch", "digest", "pinDigest", "bump"],
-      "groupName": "non-major dependencies",
-      "automerge": true
-    },
-    {
-      "matchPackagePatterns": ["*"],
-      "matchUpdateTypes": ["major"],
-      "automerge": false
-    }
-  ],
-  "platformAutomerge": true,
-  "separateMinorPatch": true,
-  "vulnerabilityAlerts": { "enabled": true },
-  "osvVulnerabilityAlerts": true
+  "extends": ["local>nokku-sh/.github"]
 }

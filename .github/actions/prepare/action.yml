@@ -1,0 +1,15 @@
+name: Prepare
+description: Runs before the shared CI and release steps.
+
+runs:
+  using: composite
+  steps:
+    # The TPM simulator in the tests is cgo and needs OpenSSL headers, which
+    # macOS only has through Homebrew.
+    - name: Point cgo at Homebrew OpenSSL
+      if: runner.os == 'macOS'
+      shell: bash
+      run: |
+        prefix="$(brew --prefix openssl@3)"
+        echo "CGO_CFLAGS=-I$prefix/include" >> "$GITHUB_ENV"
+        echo "CGO_LDFLAGS=-L$prefix/lib" >> "$GITHUB_ENV"
