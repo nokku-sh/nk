@@ -54,12 +54,14 @@ install_binary() {
 	curl -fsSL -O "$url/$binary" -O "$url/$sums" || die "no release at $url"
 
 	# The release signs the checksum file. Without cosign only the download
-	# is checked, not where it came from.
+	# is checked, not where it came from. Every Nokku release is signed by the
+	# same shared workflow, so the repository is pinned as well.
 	if have cosign; then
 		curl -fsSL -O "$url/$sums.sigstore.json"
 		cosign verify-blob --bundle "$sums.sigstore.json" \
-			--certificate-identity-regexp '^https://github.com/nokku-sh/nk/\.github/workflows/release\.yaml@refs/(heads/main|tags/v.+)$' \
+			--certificate-identity https://github.com/nokku-sh/.github/.github/workflows/go-release.yaml@refs/heads/main \
 			--certificate-oidc-issuer https://token.actions.githubusercontent.com \
+			--certificate-github-workflow-repository nokku-sh/nk \
 			"$sums" || die "the signature on $sums is not valid"
 	else
 		echo "note: cosign is not installed, the release signature is not checked" >&2
