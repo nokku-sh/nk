@@ -11,17 +11,16 @@ import (
 	"connectrpc.com/connect"
 	"github.com/mizuchilabs/kata/buildinfo"
 	"github.com/mizuchilabs/kata/fsutil"
-	"github.com/nokku-sh/mon/dpopclient"
-	"github.com/nokku-sh/mon/tpm"
 	"google.golang.org/protobuf/types/known/durationpb"
 
-	nokkuv1 "github.com/nokku-sh/protos/gen/nokku/v1"
-	"github.com/nokku-sh/protos/gen/nokku/v1/nokkuv1connect"
-
+	"github.com/nokku-sh/mon/dpopclient"
+	"github.com/nokku-sh/mon/tpm"
 	"github.com/nokku-sh/nk/internal/enclave"
 	"github.com/nokku-sh/nk/internal/paths"
 	"github.com/nokku-sh/nk/internal/ssh"
 	"github.com/nokku-sh/nk/internal/state"
+	nokkuv1 "github.com/nokku-sh/protos/gen/nokku/v1"
+	"github.com/nokku-sh/protos/gen/nokku/v1/nokkuv1connect"
 )
 
 const (

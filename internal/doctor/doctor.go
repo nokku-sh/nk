@@ -14,9 +14,9 @@ import (
 	"time"
 
 	"github.com/mizuchilabs/kata/buildinfo"
+
 	"github.com/nokku-sh/mon/dpopclient"
 	"github.com/nokku-sh/mon/tpm"
-
 	"github.com/nokku-sh/nk/internal/enclave"
 	"github.com/nokku-sh/nk/internal/paths"
 	"github.com/nokku-sh/nk/internal/ssh"

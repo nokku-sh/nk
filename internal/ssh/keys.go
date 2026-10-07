@@ -9,8 +9,8 @@ import (
 	cryptossh "golang.org/x/crypto/ssh"
 
 	"github.com/mizuchilabs/kata/fsutil"
-	"github.com/nokku-sh/mon/tpm"
 
+	"github.com/nokku-sh/mon/tpm"
 	"github.com/nokku-sh/nk/internal/enclave"
 	"github.com/nokku-sh/nk/internal/paths"
 )
