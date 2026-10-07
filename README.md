@@ -8,50 +8,70 @@
   <a href="https://github.com/nokku-sh/nk/actions"><img src="https://img.shields.io/github/actions/workflow/status/nokku-sh/nk/ci.yaml?label=Build" alt="Build"></a>
 </p>
 
-# nk: The Nokku CLI
+# nk
 
-`nk` is your access portal. It signs you in, keeps your short-lived SSH certificates fresh, and seamlessly wires up your local configuration.
+`nk` is the Nokku CLI for your own machine. It signs you in, keeps your short-lived SSH certificates fresh and sets up your SSH config.
 
-Our goal is top-tier Developer Experience (DX). You don't have to learn new custom SSH commands. Once authenticated, you connect to Nokku-managed servers using the plain OpenSSH you already know.
+There are no new SSH commands to learn. Once you are signed in, you connect with the plain `ssh` you already know.
 
-## Quick Start
+`nk` is one of three parts. [`nokku`](https://github.com/nokku-sh/nokku) is the core that decides who may log in where. [`nokkud`](https://github.com/nokku-sh/nokkud) is the daemon on your servers.
 
-Install the CLI:
+## Quick start
+
+Install it:
 
 ```bash
 curl -fsSL https://get.nokku.sh/nk | sh
 ```
 
-On Linux the installer adds the Cloudsmith repository and installs your
-distro's package (deb, rpm, apk). macOS, other distros and pinned versions
-(`--version <x.y.z>` or `NK_VERSION=<x.y.z>`) get the release binary from
-GitHub, in `~/.local/bin` or with `--system` in `/usr/local/bin`.
-
-Prefer manual packages? See the [package repository](https://broadcasts.cloudsmith.com/nokku/nk) for apt/dnf/apk install instructions.
-
-Authenticate via your browser and connect:
+Sign in and connect:
 
 ```bash
-nk login          # Authenticate and sync your SSH config
-nk ls             # List the targets you can access
-ssh user@target   # Connect using standard OpenSSH!
+nk login          # opens your browser, then syncs your SSH config
+nk ls             # lists the servers you can reach
+ssh user@target   # plain OpenSSH
 ```
 
+On a self-hosted core, point `nk` at it once. It remembers the address:
+
+```bash
+nk --api https://nokku.example.com login
+```
+
+Run `nk doctor` when something does not work. It checks the connection to the core, your key and your SSH setup. `nk doctor --fix` repairs what it can.
+
+## Install options
+
+The installer picks the right way for your system:
+
+- **Linux:** it adds the Cloudsmith repository and installs your distro's package (deb, rpm or apk).
+- **macOS and other distros:** it downloads the release binary from GitHub to `~/.local/bin`. Pass `--system` to use `/usr/local/bin`.
+- **A pinned version:** pass `--version <x.y.z>` or set `NK_VERSION=<x.y.z>`.
+
+Prefer to add the package repository yourself? The [package repository](https://broadcasts.cloudsmith.com/nokku/nk) has the apt, dnf and apk instructions.
+
+## How access stays current
+
+- Every `nk ls` refreshes what you can reach.
+- An SSH connection refreshes it too, when the last sync is more than a minute old.
+- A revoke applies at once, because the server enforces it.
+- When the core is unreachable, `nk` fails fast and works from cached data and the certificates you still hold.
+- Direct addresses and the Nokku relay are tried in parallel, so an unreachable private address never slows a connection down.
+
+## Where your key lives
+
+On Linux and Windows, `nk` keeps your SSH key in a TPM 2.0 when the machine has one. The key never leaves the chip. Without a TPM it falls back to a software key that only works on this machine. Pass `--require-tpm` to refuse that fallback.
+
+`nk doctor` shows whether a TPM is in use.
+
 > [!NOTE]
-> Access is synced just in time: every `nk ls` refreshes what you can reach, and an SSH connection refreshes it when the last sync is more than a minute old. Revocations apply immediately, since the daemon enforces them on the server. When the backend is unreachable, `nk` fails fast and works from cached data and existing valid certificates. Direct addresses and the Nokku relay are tried in parallel, so an unreachable private address never slows a connection down.
+> On most Linux distributions `/dev/tpmrm0` belongs to `root:tss`, so a regular user cannot use the TPM by default. Run `sudo usermod -aG tss $USER` and log in again. A udev rule that grants your user access works too.
 
-## Hardware Security (TPM 2.0)
+The details are in [SECURITY.md](./SECURITY.md#how-nk-protects-your-key).
 
-On Linux and Windows, `nk` automatically uses a TPM 2.0 when one is available. Your SSH private key becomes a deterministic primary key that never leaves the TPM; signing happens in a small background agent that `nk` starts on the first ssh connection and stops after 30 idle minutes. Without a TPM, `nk` falls back to a software ECDSA P-256 key wrapped with a key derived from the machine fingerprint: the state file is useless on another machine, and ssh reads the key only through the agent socket, never directly. Pass `--require-tpm` to refuse that fallback.
+## CI and headless machines
 
-_(Check `nk doctor` to see if a TPM is available and in use.)_
-
-> [!NOTE]
-> On most Linux distributions `/dev/tpmrm0` is owned by `root:tss`, so regular users cannot use the TPM by default. Fix: `sudo usermod -aG tss $USER` and log in again (a udev rule granting your user access works too).
-
-### Headless / CI
-
-Use a service-account API key in CI or other headless environments:
+Use a service account key where no browser is around:
 
 ```bash
 export NK_TOKEN=nokku_sa_<SECRET>
@@ -59,31 +79,61 @@ nk login
 ssh user@target
 ```
 
-The `nokku_sa_` prefix is required, `nk` refuses any other token.
+The key has to start with `nokku_sa_`. `nk` refuses any other token.
+
+## Servers without the daemon
+
+`nk sync` sets up a server you manage yourself, without installing `nokkud`:
+
+```bash
+nk sync 10.0.0.5            # or root@10.0.0.5, or an alias from ~/.ssh/config
+nk sync web --dry-run       # show what would change on a known target
+```
+
+What it does:
+
+- It connects as root with your own `ssh`, so your keys and SSH config apply and a password is asked at most once.
+- It writes the Nokku CA, an sshd drop-in and one principals file per account.
+- It checks the result with `sshd -t` and rolls every file back if sshd rejects it.
+- Nokku only hears about the sync once the server is written.
+
+Run it again whenever access changes.
+
+Every user pins the host key that the last sync saw. When it changed, the sync stops and writes nothing. If you reinstalled the server, run it again with `--accept-host-key` to pin the new one.
+
+For scripts, `--json` prints one object with the target, the files written and the stale principals files removed. Progress goes to stderr. With `--dry-run` it is the same object and nothing is written.
+
+`nk target delete` undoes it:
+
+```bash
+nk target delete web        # or the address, like nk sync
+```
+
+It removes the drop-in, the CA and the principals files over the same root `ssh`, reloads sshd, and only then deletes the target in Nokku. If sshd rejects its config without the drop-in, everything is put back and the target stays. Pass `--keep-host` when the server is already gone.
 
 ## X.509 certificates (experimental)
 
-`nk` can also issue certificates for API clients, servers, and other workloads:
+`nk` can also issue certificates for API clients, servers and other workloads:
 
 ```bash
 nk pki list
 nk pki issue api-client --usage client --san dns:api.example.com
 ```
 
-The command generates an ECDSA P-256 key pair (`--key-type ed25519` for ed25519), requests a signed certificate, and saves the certificate, private key, and CA certificate to the output directory. It never overwrites an existing key.
+It generates an ECDSA P-256 key pair, or ed25519 with `--key-type ed25519`. Then it requests a signed certificate and saves the certificate, the private key and the CA certificate to the output directory. It never overwrites an existing key.
 
 ## Commands
 
 | Command                      | Purpose                                                          |
 | ---------------------------- | ---------------------------------------------------------------- |
-| `nk login` (alias `refresh`) | Authenticate and synchronize local state                         |
-| `nk ls` / `nk list`          | List the machines you can reach                                  |
-| `nk doctor`                  | Check API reachability, TPM availability, and local SSH setup    |
-| `nk pki list`                | List active X.509 certificate authorities                        |
+| `nk login` (alias `refresh`) | Sign in and sync local state                                     |
+| `nk ls` / `nk list`          | List the servers you can reach                                   |
+| `nk doctor`                  | Check the core, the TPM and your local SSH setup                 |
+| `nk pki list`                | List the active X.509 certificate authorities                    |
 | `nk pki issue <cn>`          | Issue an X.509 certificate                                       |
 | `nk sync <host>`             | Add a server without the daemon, or refresh one you added        |
 | `nk target delete <host>`    | Clean up a server you added with `nk sync` and delete its target |
-| `nk logout`                  | Sign out, stop the agent, and remove local credentials and state |
+| `nk logout`                  | Sign out, stop the agent and remove local credentials and state  |
 
 ### Command flags
 
@@ -98,66 +148,35 @@ The command generates an ECDSA P-256 key pair (`--key-type ed25519` for ed25519)
 
 ## Configuration
 
-| Flag            | Environment         | Purpose                                                                   |
-| --------------- | ------------------- | ------------------------------------------------------------------------- |
-| `--api`         | `NK_API_URL`        | Backend URL                                                               |
-|                 | `NK_TOKEN`          | Service-account key (`nokku_sa_...`) for CI/CD. Env only, never a flag    |
-| `--ttl`         | `NK_TTL`            | Requested SSH certificate lifetime                                        |
-| `--require-tpm` | `NK_REQUIRE_TPM`    | Require a TPM 2.0 or the Secure Enclave, refuse the software key fallback |
-|                 | `NK_SECURE_ENCLAVE` | Set to `1` on macOS to keep new keys in the Secure Enclave. Experimental  |
-| `--insecure`    | `NK_INSECURE`       | Disable TLS verification; testing only                                    |
-| `--debug`       | `NK_DEBUG`          | Enable debug logging                                                      |
+| Flag            | Environment         | Purpose                                                                     |
+| --------------- | ------------------- | --------------------------------------------------------------------------- |
+| `--api`         | `NK_API_URL`        | Address of the core                                                         |
+|                 | `NK_TOKEN`          | Service account key (`nokku_sa_...`) for CI. Environment only, never a flag |
+| `--ttl`         | `NK_TTL`            | Requested SSH certificate lifetime                                          |
+| `--require-tpm` | `NK_REQUIRE_TPM`    | Require a TPM 2.0 or the Secure Enclave, refuse the software key fallback   |
+|                 | `NK_SECURE_ENCLAVE` | Set to `1` on macOS to keep new keys in the Secure Enclave. Experimental    |
+| `--insecure`    | `NK_INSECURE`       | Turn off TLS verification. For testing only                                 |
+| `--debug`       | `NK_DEBUG`          | Debug logging                                                               |
 
-`--api` is remembered after the first use, so a self-hosted instance only needs
-it once. Switching to another server drops the old session. The other flags
-apply to one run only.
+`--api` is remembered after the first use. Switching to another core drops the old session. The other flags apply to one run only.
 
-Local state lives under `~/.config/nk/` on every OS. Your private key and
-tokens are credentials. Keep service-account tokens out of source control.
-
-## Servers without the daemon
-
-`nk sync` sets up a server you manage yourself, without installing `nokkud`:
-
-```bash
-nk sync 10.0.0.5            # or root@10.0.0.5, or an alias from ~/.ssh/config
-nk sync web --dry-run       # show what would change on a known target
-```
-
-It connects as root with your own ssh, so your keys and ssh config apply and a
-password is asked at most once. It writes the Nokku CA, an sshd drop-in, and one
-principals file per account, checks the result with `sshd -t`, and rolls every
-file back if sshd rejects it. Nokku only hears about the sync once the server is
-written. Run it again whenever access changes.
-
-Every user pins the host key that the last sync saw. When it changed, the
-sync stops and writes nothing. If you reinstalled the server, run it again
-with `--accept-host-key` to pin the new one.
-
-For scripts, `--json` prints one object with the target, the files written,
-and the stale principals files removed. Progress goes to stderr. With
-`--dry-run` it is the same object and nothing is written.
-
-`nk target delete` undoes it:
-
-```bash
-nk target delete web        # or the address, like nk sync
-```
-
-It removes the drop-in, the CA, and the principals files over the same root
-ssh, reloads sshd, and only then deletes the target in Nokku. If sshd rejects
-its config without the drop-in, everything is put back and the target stays.
-Pass `--keep-host` when the server is already gone.
+Local state lives under `~/.config/nk/` on every OS.
 
 ## Uninstall
 
 ```bash
-nk logout # Removes credentials and config
-
-# Manual uninstall
+nk logout                  # removes credentials and config
 rm -f ~/.local/bin/nk      # or /usr/local/bin/nk after a --system install
 rm -rf ~/.config/nk
 ```
+
+If you installed a package, remove the package instead of the binary.
+
+## More
+
+- [Documentation](https://nokku.sh/docs)
+- [SECURITY.md](./SECURITY.md), for how `nk` protects your key and for reporting a vulnerability
+- [CONTRIBUTING.md](./CONTRIBUTING.md), for building from source
 
 ## Hosting
 
