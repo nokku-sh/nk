@@ -12,6 +12,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -259,4 +260,93 @@ func TestDeviceFlowRejectsNonWebLink(t *testing.T) {
 
 	_, err := c.beginDeviceAuth(t.Context())
 	require.Error(t, err, "a file link was accepted")
+}
+
+// Waiting cannot fix any of these answers, so the poll loop ends on them.
+func TestPollDeviceTokenStopsOnFinalAnswers(t *testing.T) {
+	t.Parallel()
+	for name, tc := range map[string]struct {
+		status int
+		body   string
+		want   string
+	}{
+		"denied":             {http.StatusBadRequest, `{"error":"access_denied"}`, "sign-in was denied in the browser"},
+		"expired":            {http.StatusBadRequest, `{"error":"expired_token"}`, "sign-in code expired, run nk login again"},
+		"unknown code":       {http.StatusBadRequest, `{"error":"server_error"}`, "device authorization failed: server_error"},
+		"oauth error on 200": {http.StatusOK, `{"error":"access_denied"}`, "sign-in was denied in the browser"},
+		"http error":         {http.StatusBadGateway, "bad gateway", "device authorization: HTTP 502: bad gateway"},
+		"empty answer":       {http.StatusOK, `{}`, "device authorization: unexpected response"},
+		"not json":           {http.StatusOK, "<html>", "device authorization: unexpected response"},
+		"proof rejected": {
+			http.StatusBadRequest, `{"error":"invalid_dpop_proof"}`,
+			"sign-in failed, Nokku rejected this machine's proof. Check that the clock is right and run nk login again",
+		},
+		"nonce rejected twice": {
+			http.StatusBadRequest, `{"error":"use_dpop_nonce"}`,
+			"sign-in failed, Nokku rejected the retry with a fresh nonce, run nk login again",
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(tc.status)
+				_, _ = w.Write([]byte(tc.body))
+			}))
+			t.Cleanup(srv.Close)
+			c := &Client{State: &state.State{APIURL: srv.URL}, httpc: srv.Client()}
+
+			_, _, err := c.pollDeviceToken(t.Context(), "dev", 1)
+			require.EqualError(t, err, tc.want)
+		})
+	}
+}
+
+// A stale nonce is retried at once, the fresh one came with the rejection.
+func TestPollDeviceTokenRetriesNonceWithoutWaiting(t *testing.T) {
+	t.Parallel()
+	var polls atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		if polls.Add(1) == 1 {
+			w.WriteHeader(http.StatusBadRequest)
+			writeOAuthErr(w, "use_dpop_nonce")
+			return
+		}
+		writeJSON(w, map[string]any{"access_token": "tok", "expires_in": 60})
+	}))
+	t.Cleanup(srv.Close)
+	c := &Client{State: &state.State{APIURL: srv.URL}, httpc: srv.Client()}
+
+	start := time.Now()
+	token, expiresIn, err := c.pollDeviceToken(t.Context(), "dev", 30)
+	require.NoError(t, err)
+	assert.Equal(t, "tok", token)
+	assert.Equal(t, 60, expiresIn)
+	assert.EqualValues(t, 2, polls.Load())
+	assert.Less(t, time.Since(start), 5*time.Second, "the retry waited for the poll interval")
+}
+
+// Learning the canonical URL fixes a proof bound to the wrong one. A proof that
+// is still refused after that, like one from a wrong clock, ends the login.
+func TestPollDeviceTokenGivesUpOnARejectedProof(t *testing.T) {
+	t.Parallel()
+	var polls atomic.Int32
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /auth/device/nonce", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("DPoP-Nonce", "n")
+		w.WriteHeader(http.StatusNoContent)
+	})
+	mux.HandleFunc("POST /auth/device/token", func(w http.ResponseWriter, _ *http.Request) {
+		polls.Add(1)
+		w.WriteHeader(http.StatusBadRequest)
+		writeOAuthErr(w, "invalid_dpop_proof")
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+	c := &Client{State: &state.State{APIURL: srv.URL}, httpc: srv.Client()}
+	c.dpop = dpopclient.New(newTestProofer(t), srv.Client(), func() string { return "" },
+		dpopclient.Options{BaseURL: srv.URL})
+
+	_, _, err := c.pollDeviceToken(t.Context(), "dev", 30)
+	require.ErrorContains(t, err, "Check that the clock is right")
+	assert.EqualValues(t, 2, polls.Load(), "one retry after learning the canonical URL, then stop")
 }

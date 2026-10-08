@@ -125,66 +125,68 @@ func (c *Client) pollDeviceToken(
 	bootstrapped, nonceRetried := false, false
 
 	for {
-		form := url.Values{"device_code": {deviceCode}}
-		body, doErr := c.postForm(ctx, "/auth/device/token", form)
+		body, doErr := c.postForm(ctx, "/auth/device/token", url.Values{"device_code": {deviceCode}})
 
 		var out struct {
 			AccessToken string `json:"access_token"`
 			ExpiresIn   int    `json:"expires_in"`
+			Error       string `json:"error"`
 		}
-		tokenErr := json.Unmarshal(body, &out)
+		decodeErr := json.Unmarshal(body, &out)
 
-		var authErr struct {
-			Error string `json:"error"`
-		}
-		decodeErr := json.Unmarshal(body, &authErr)
-
-		switch {
-		case doErr == nil && tokenErr == nil && out.AccessToken != "":
+		if doErr == nil && decodeErr == nil && out.AccessToken != "" {
 			return out.AccessToken, out.ExpiresIn, nil
-		case decodeErr == nil && authErr.Error != "":
-			slog.Debug("device flow poll", "api", c.State.APIURL, "response", authErr.Error)
-			switch authErr.Error {
-			case "authorization_pending":
-				// keep polling
-			case "use_dpop_nonce":
-				// postForm learned the fresh nonce, retry once without
-				// waiting, never in a tight loop.
-				if !nonceRetried {
-					nonceRetried = true
-					continue
-				}
-			case "invalid_dpop_proof":
-				// The configured API URL can differ from the canonical URL
-				// proofs bind to. The first rejection is not fatal, learn
-				// the real one and retry.
-				if !bootstrapped && c.dpop != nil {
-					bootstrapped = true
-					if nonce, serverURL, nerr := dpopclient.FetchNonce(ctx, c.httpc, c.State.APIURL); nerr == nil {
-						c.dpop.Learn(nonce, serverURL)
-						continue
-					}
-				}
-			case "slow_down":
-				// RFC 8628 section 3.5. The server counts violations per
-				// grant and its required interval keeps growing, so this
-				// must be honored.
-				wait += 5 * time.Second
-				ticker.Reset(wait)
-			case "access_denied":
-				return "", 0, errors.New("sign-in was denied in the browser")
-			case "expired_token":
-				return "", 0, errors.New("sign-in code expired, run nk login again")
-			default:
-				return "", 0, errors.New("device authorization failed: " + authErr.Error)
+		}
+		if decodeErr != nil || out.Error == "" {
+			// A transport error or an HTTP error without an RFC 8628 code won't fix itself on retry.
+			if doErr != nil {
+				return "", 0, doErr
 			}
-		case doErr != nil:
-			// A transport error or an HTTP error without an RFC 8628 code
-			// won't fix itself on retry.
-			return "", 0, doErr
-		default:
 			// Never echo the body, a malformed response can still carry a token.
 			return "", 0, errors.New("device authorization: unexpected response")
+		}
+
+		slog.Debug("device flow poll", "api", c.State.APIURL, "response", out.Error)
+		switch out.Error {
+		case "authorization_pending":
+			// keep polling
+		case "use_dpop_nonce":
+			// postForm learned the fresh nonce, so retry at once. A second rejection in a row is final.
+			if nonceRetried {
+				return "", 0, errors.New(
+					"sign-in failed, Nokku rejected the retry with a fresh nonce, run nk login again",
+				)
+			}
+			nonceRetried = true
+			continue
+		case "invalid_dpop_proof":
+			// The configured API URL can differ from the canonical URL proofs bind to, so
+			// learn the real one and retry once. After that it is the proof itself, and
+			// the server refuses one whose timestamp is more than a minute off.
+			if bootstrapped || c.dpop == nil {
+				return "", 0, errors.New(
+					"sign-in failed, Nokku rejected this machine's proof. " +
+						"Check that the clock is right and run nk login again",
+				)
+			}
+			bootstrapped = true
+			nonce, serverURL, nerr := dpopclient.FetchNonce(ctx, c.httpc, c.State.APIURL)
+			if nerr != nil {
+				return "", 0, nerr
+			}
+			c.dpop.Learn(nonce, serverURL)
+			continue
+		case "slow_down":
+			// RFC 8628 section 3.5. The server counts violations per grant and its required
+			// interval keeps growing, so this must be honored.
+			wait += 5 * time.Second
+			ticker.Reset(wait)
+		case "access_denied":
+			return "", 0, errors.New("sign-in was denied in the browser")
+		case "expired_token":
+			return "", 0, errors.New("sign-in code expired, run nk login again")
+		default:
+			return "", 0, errors.New("device authorization failed: " + out.Error)
 		}
 
 		select {
