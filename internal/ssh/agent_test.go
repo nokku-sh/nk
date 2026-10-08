@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -384,4 +385,14 @@ func TestAgentSocketHasOneOwner(t *testing.T) {
 	again, err := listenAgent(t.Context())
 	must.NoError(err, "the socket stayed locked after its owner left")
 	_ = again.Close()
+}
+
+// The agent lives for half an hour past its last use, also after a CI step.
+func TestAgentEnvLeavesOutTheToken(t *testing.T) {
+	t.Setenv("NK_TOKEN", "nokku_sa_secret")
+	t.Setenv("NK_REQUIRE_TPM", "1")
+
+	env := agentEnv()
+	assert.NotContains(t, strings.Join(env, "\n"), "nokku_sa_secret")
+	assert.Contains(t, env, "NK_REQUIRE_TPM=1", "everything else is passed on")
 }

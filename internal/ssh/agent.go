@@ -8,6 +8,8 @@ import (
 	"log/slog"
 	"os"
 	"os/exec"
+	"slices"
+	"strings"
 	"time"
 
 	cryptossh "golang.org/x/crypto/ssh"
@@ -44,6 +46,7 @@ func EnsureAgent(ctx context.Context, requireTPM bool) error {
 	}
 	//nolint:noctx // the agent must outlive this ssh session
 	cmd := exec.Command(exe, args...)
+	cmd.Env = agentEnv()
 	detach(cmd)
 	if err = cmd.Start(); err != nil {
 		return fmt.Errorf("start nk agent: %w", err)
@@ -61,6 +64,15 @@ func EnsureAgent(ctx context.Context, requireTPM bool) error {
 		}
 	}
 	return errors.New("the nk agent did not start, run nk doctor")
+}
+
+// agentEnv is the environment without the service account token. The agent
+// never talks to the backend and outlives the command that started it.
+func agentEnv() []string {
+	return slices.DeleteFunc(os.Environ(), func(kv string) bool {
+		key, _, _ := strings.Cut(kv, "=")
+		return strings.EqualFold(key, "NK_TOKEN")
+	})
 }
 
 // RunAgent serves the SSH identity until ctx ends or the agent sits idle. It
