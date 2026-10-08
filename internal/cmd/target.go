@@ -337,22 +337,45 @@ func newTarget(ctx context.Context, s *state.State, cmd *cli.Command, dest remot
 	}, nil
 }
 
-// resolveCA picks the named CA, else the default, else the only one.
+// resolveCA picks the named CA, else the default, else the only one. An id
+// wins, then an exact name, then a name that matches without its case. Names
+// are not unique on the backend, so a name that fits several CAs is refused.
 func resolveCA(s *state.State, ref string) (state.CA, error) {
-	if i := slices.IndexFunc(s.CAs, func(ca state.CA) bool {
-		return ref != "" && (ca.ID == ref || ca.Name == ref) || ref == "" && ca.Default
-	}); i >= 0 {
-		return s.CAs[i], nil
+	if ref == "" {
+		if i := slices.IndexFunc(s.CAs, func(ca state.CA) bool { return ca.Default }); i >= 0 {
+			return s.CAs[i], nil
+		}
+		switch len(s.CAs) {
+		case 0:
+			return state.CA{}, errors.New("there is no certificate authority yet, create one in the Nokku UI")
+		case 1:
+			return s.CAs[0], nil
+		}
+		return state.CA{}, errors.New("there are several certificate authorities, pass --ca")
 	}
-	switch {
-	case ref != "":
+
+	var exact, folded []state.CA
+	for _, ca := range s.CAs {
+		switch {
+		case ca.ID == ref:
+			return ca, nil
+		case ca.Name == ref:
+			exact = append(exact, ca)
+		case strings.EqualFold(ca.Name, ref):
+			folded = append(folded, ca)
+		}
+	}
+	found := exact
+	if len(found) == 0 {
+		found = folded
+	}
+	switch len(found) {
+	case 0:
 		return state.CA{}, fmt.Errorf("certificate authority %q not found", ref)
-	case len(s.CAs) == 1:
-		return s.CAs[0], nil
-	case len(s.CAs) == 0:
-		return state.CA{}, errors.New("there is no certificate authority yet, create one in the Nokku UI")
+	case 1:
+		return found[0], nil
 	}
-	return state.CA{}, errors.New("there are several certificate authorities, pass --ca")
+	return state.CA{}, fmt.Errorf("several certificate authorities are named %q, pass the id", ref)
 }
 
 func endpointHost(ep string) string {

@@ -23,6 +23,15 @@ func TestMatchCA(t *testing.T) {
 		testCA("ca-2", "Staging CA"),
 	}
 
+	// Names are not unique on the backend.
+	twins := []*nokkuv1.CertificateAuthority{
+		testCA("ca-1", "Prod"),
+		testCA("ca-2", "prod"),
+		testCA("ca-3", "prod"),
+		testCA("ca-4", "Stage"),
+		testCA("ca-5", "STAGE"),
+	}
+
 	tests := []struct {
 		name     string
 		cas      []*nokkuv1.CertificateAuthority
@@ -76,6 +85,30 @@ func TestMatchCA(t *testing.T) {
 			cas:      cas,
 			nameOrID: "ca-1",
 			want:     cas[0],
+		},
+		{
+			name:     "an exact name wins over one that differs by case",
+			cas:      twins,
+			nameOrID: "Prod",
+			want:     twins[0],
+		},
+		{
+			name:     "two CAs with the same name",
+			cas:      twins,
+			nameOrID: "prod",
+			wantErr:  "pass the ID",
+		},
+		{
+			name:     "two names that differ only by case",
+			cas:      twins,
+			nameOrID: "stage",
+			wantErr:  "pass the ID",
+		},
+		{
+			name:     "the ID settles a shared name",
+			cas:      twins,
+			nameOrID: "ca-3",
+			want:     twins[2],
 		},
 	}
 

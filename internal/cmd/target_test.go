@@ -66,6 +66,24 @@ func TestResolveCA(t *testing.T) {
 	_, err = resolveCA(s, "nope")
 	require.Error(t, err)
 
+	ca, err = resolveCA(s, "LEGACY")
+	require.NoError(t, err)
+	assert.Equal(t, "ca-2", ca.ID, "a name matches without its case")
+
+	s.CAs = append(s.CAs, state.CA{ID: "ca-3", Name: "Legacy"})
+	ca, err = resolveCA(s, "Legacy")
+	require.NoError(t, err)
+	assert.Equal(t, "ca-3", ca.ID, "the exact name wins")
+	_, err = resolveCA(s, "LEGACY")
+	require.ErrorContains(t, err, "pass the id", "two names that differ only by case")
+
+	s.CAs = append(s.CAs, state.CA{ID: "ca-4", Name: "Legacy"})
+	_, err = resolveCA(s, "Legacy")
+	require.ErrorContains(t, err, "pass the id", "two CAs with the same name")
+	ca, err = resolveCA(s, "ca-4")
+	require.NoError(t, err)
+	assert.Equal(t, "ca-4", ca.ID, "the id settles it")
+
 	s.CAs[0].Default = false
 	_, err = resolveCA(s, "")
 	require.ErrorContains(t, err, "--ca")
