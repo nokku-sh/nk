@@ -200,6 +200,24 @@ func TestSyncOrCacheFallsBackToCache(t *testing.T) {
 		"the outage must be on disk, the next ssh is another process")
 }
 
+// nk --api b with server a's snapshot on disk and b out of reach.
+func TestSyncOrCacheNeverFallsBackToAnotherServer(t *testing.T) {
+	setTestDirs(t)
+	require.NoError(t, (&state.State{
+		APIURL: "https://a.example", SessionToken: "sess-a",
+		Server:  "https://a.example",
+		User:    &state.User{ID: "user-1"},
+		Targets: []state.Target{{ID: "t-1", Name: "a-prod"}},
+	}).Save())
+
+	st := &state.State{APIURL: "http://127.0.0.1:1"}
+	c := &Client{State: st}
+	c.targets = nokkuv1connect.NewTargetServiceClient(&http.Client{}, st.APIURL)
+	err := c.SyncOrCache(t.Context(), false)
+	require.ErrorContains(t, err, "nothing is cached yet")
+	assert.Empty(t, st.Targets)
+}
+
 func TestSyncOrCacheWithoutCacheFails(t *testing.T) {
 	setTestDirs(t)
 

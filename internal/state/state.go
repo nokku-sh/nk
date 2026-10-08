@@ -84,6 +84,9 @@ type Config struct {
 
 // Cache is the last access snapshot, persisted in cache.json for offline use.
 type Cache struct {
+	// Server is the API this snapshot came from. One written before this
+	// field existed has none.
+	Server   string    `json:"server,omitempty"`
 	SyncedAt time.Time `json:"synced_at,omitzero"`
 	// FailedAt is when the backend was last out of reach. A sync clears it.
 	FailedAt       time.Time       `json:"failed_at,omitzero"`
@@ -119,10 +122,17 @@ func Load() *State {
 	return s
 }
 
-// LoadCache replaces the in-memory snapshot with the one on disk.
+// LoadCache replaces the in-memory snapshot with the one on disk. A snapshot
+// of another server is never used.
 func (s *State) LoadCache() error {
 	s.Cache = Cache{}
-	return fsutil.LoadJSON(paths.CacheFile(), &s.Cache)
+	if err := fsutil.LoadJSON(paths.CacheFile(), &s.Cache); err != nil {
+		return err
+	}
+	if s.Server != "" && s.Server != s.APIURL {
+		s.Cache = Cache{}
+	}
+	return nil
 }
 
 func (s *State) Save() error {

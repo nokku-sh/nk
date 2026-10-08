@@ -52,3 +52,25 @@ func TestSessionValid(t *testing.T) {
 	assert.True(t, (&State{SessionToken: "tok", SessionExpiresAt: time.Now().Add(time.Hour)}).SessionValid())
 	assert.False(t, (&State{SessionToken: "tok", SessionExpiresAt: time.Now().Add(-time.Minute)}).SessionValid())
 }
+
+// The fallback after a failed sync reads the disk again, and by then the
+// state may point at another server.
+func TestLoadCacheLeavesOutAnotherServer(t *testing.T) {
+	setHome(t)
+	snapshot := Cache{Server: "https://a.example", Targets: []Target{{ID: "t", Name: "web"}}, User: &User{ID: "u"}}
+	require.NoError(t, (&State{APIURL: "https://a.example", Cache: snapshot}).Save())
+
+	same := &State{APIURL: "https://a.example"}
+	require.NoError(t, same.LoadCache())
+	assert.True(t, same.HasCachedData())
+
+	other := &State{APIURL: "https://b.example"}
+	require.NoError(t, other.LoadCache())
+	assert.Empty(t, other.Targets, "server a's targets showed up under server b")
+
+	snapshot.Server = ""
+	require.NoError(t, (&State{APIURL: "https://a.example", Cache: snapshot}).Save())
+	old := &State{APIURL: "https://a.example"}
+	require.NoError(t, old.LoadCache())
+	assert.True(t, old.HasCachedData(), "a snapshot from before the field existed keeps ssh working offline")
+}

@@ -123,6 +123,7 @@ func (c *Client) sync(ctx context.Context, interactive bool) error {
 	}
 
 	cache := state.FromAccess(res)
+	cache.Server = c.State.APIURL
 	cache.SyncedAt = time.Now()
 	if err = ssh.CleanupCerts(cache.Targets); err != nil {
 		return err
