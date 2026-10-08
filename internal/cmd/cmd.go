@@ -47,7 +47,7 @@ func Root() *cli.Command {
 			logoutCMD(),
 			listCMD(),
 			syncCMD(),
-			targetCMD(),
+			rmCMD(),
 			pkiCMD(),
 			doctorCMD(),
 			proxyCMD(),

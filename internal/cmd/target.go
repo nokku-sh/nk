@@ -214,22 +214,18 @@ func applyPlan(
 	return nil
 }
 
-func targetCMD() *cli.Command {
+func rmCMD() *cli.Command {
 	return &cli.Command{
-		Name:  "target",
-		Usage: "Manage the servers you added with nk sync",
-		Commands: []*cli.Command{{
-			Name:  "delete",
-			Usage: "Remove a server without the daemon from Nokku",
-			Description: "Connects as root with your own ssh, removes the Nokku CA, the sshd drop-in, " +
-				"and the principals files, then deletes the target in Nokku.",
-			ArgsUsage: "<host | root@host | target-name>",
-			Flags: []cli.Flag{
-				portFlag,
-				&cli.BoolFlag{Name: "keep-host", Usage: "Delete the target only and leave the server as it is"},
-			},
-			Action: targetDelete,
-		}},
+		Name:  "rm",
+		Usage: "Remove a server you added with nk sync",
+		Description: "Connects as root with your own ssh, removes the Nokku CA, the sshd drop-in, " +
+			"and the principals files, then deletes the target in Nokku.",
+		ArgsUsage: "<host | root@host | target-name>",
+		Flags: []cli.Flag{
+			portFlag,
+			&cli.BoolFlag{Name: "keep-host", Usage: "Delete the target only and leave the server as it is"},
+		},
+		Action: targetDelete,
 	}
 }
 

@@ -103,10 +103,10 @@ Every user pins the host key that the last sync saw. When it changed, the sync s
 
 For scripts, `--json` prints one object with the target, the files written and the stale principals files removed. Progress goes to stderr. With `--dry-run` it is the same object and nothing is written.
 
-`nk target delete` undoes it:
+`nk rm` undoes it:
 
 ```bash
-nk target delete web        # or the address, like nk sync
+nk rm web        # or the address, like nk sync
 ```
 
 It removes the drop-in, the CA and the principals files over the same root `ssh`, reloads sshd, and only then deletes the target in Nokku. If sshd rejects its config without the drop-in, everything is put back and the target stays. Pass `--keep-host` when the server is already gone.
@@ -132,7 +132,7 @@ It generates an ECDSA P-256 key pair, or ed25519 with `--key-type ed25519`. Then
 | `nk pki list`                | List the active X.509 certificate authorities                    |
 | `nk pki issue <cn>`          | Issue an X.509 certificate                                       |
 | `nk sync <host>`             | Add a server without the daemon, or refresh one you added        |
-| `nk target delete <host>`    | Clean up a server you added with `nk sync` and delete its target |
+| `nk rm <host>`               | Clean up a server you added with `nk sync` and delete its target |
 | `nk logout`                  | Sign out, stop the agent and remove local credentials and state  |
 
 ### Command flags
@@ -144,7 +144,7 @@ It generates an ECDSA P-256 key pair, or ed25519 with `--key-type ed25519`. Then
 | `nk pki list`      | `--json` for machine-readable output                                                    |
 | `nk pki issue`     | `--san dns:name`, `--usage client\|server\|both`, `--ca`, `--key-type`, `--output`/`-o` |
 | `nk sync`          | `--name`, `--ca`, `--port`, `--dry-run`, `--accept-host-key`, `--json`                  |
-| `nk target delete` | `--port`, `--keep-host` to leave the server untouched                                   |
+| `nk rm`            | `--port`, `--keep-host` to leave the server untouched                                   |
 
 ## Configuration
 
