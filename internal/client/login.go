@@ -14,7 +14,6 @@ import (
 	"time"
 
 	"github.com/mizuchilabs/kata/buildinfo"
-	"github.com/pkg/browser"
 
 	"github.com/nokku-sh/mon/dpopclient"
 )
@@ -66,9 +65,7 @@ func (c *Client) deviceLogin(ctx context.Context) error {
 	// The link already carries the code, the code is shown to compare.
 	fmt.Printf("\nSign in to Nokku in your browser. If it does not open, visit:\n  %s\n", d.VerificationURI)
 	fmt.Printf("Confirm the code %s there. Waiting...\n", d.UserCode)
-	//nolint:reassign // nil is /dev/null, a writer like io.Discard would wait on the browser
-	browser.Stdout, browser.Stderr = nil, nil
-	_ = browser.OpenURL(d.VerificationURI)
+	_ = openBrowser(ctx, d.VerificationURI)
 
 	token, expiresIn, err := c.pollDeviceToken(ctx, d.DeviceCode, d.Interval)
 	if err != nil {

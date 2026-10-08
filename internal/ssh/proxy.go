@@ -2,15 +2,15 @@
 package ssh
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
 	"io"
 	"net"
 	"os"
+	"sync"
 	"time"
-
-	"golang.org/x/sync/errgroup"
 
 	"github.com/nokku-sh/nk/internal/state"
 )
@@ -114,18 +114,16 @@ func pipe(ctx context.Context, conn io.ReadWriteCloser) error {
 	stop := context.AfterFunc(ctx, func() { _ = conn.Close() })
 	defer stop()
 
-	var eg errgroup.Group
-	eg.Go(func() error {
-		_, err := io.Copy(os.Stdout, conn)
-		return err
-	})
-	eg.Go(func() error {
-		_, err := io.Copy(conn, os.Stdin)
+	var wg sync.WaitGroup
+	var outErr, inErr error
+	wg.Go(func() { _, outErr = io.Copy(os.Stdout, conn) })
+	wg.Go(func() {
+		_, inErr = io.Copy(conn, os.Stdin)
 		// Half-close so sshd sees EOF but can keep sending.
 		if hc, ok := conn.(interface{ CloseWrite() error }); ok {
 			_ = hc.CloseWrite()
 		}
-		return err
 	})
-	return eg.Wait()
+	wg.Wait()
+	return cmp.Or(outErr, inErr)
 }

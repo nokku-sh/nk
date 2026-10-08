@@ -138,6 +138,18 @@ func TestProxyDirectAndForcedRelay(t *testing.T) {
 	assert.Empty(t, accepted, "forced relay must not dial endpoints")
 }
 
+// brokenConn fails on read, like a relay stream that died.
+type brokenConn struct{}
+
+func (brokenConn) Read([]byte) (int, error)    { return 0, io.ErrUnexpectedEOF }
+func (brokenConn) Write(p []byte) (int, error) { return len(p), nil }
+func (brokenConn) Close() error                { return nil }
+
+func TestPipeReportsConnectionError(t *testing.T) {
+	stdinEOF(t)
+	require.ErrorIs(t, pipe(t.Context(), brokenConn{}), io.ErrUnexpectedEOF)
+}
+
 func TestEndpointAddr(t *testing.T) {
 	t.Parallel()
 	assert.Equal(t, "10.0.0.1:22", endpointAddr("10.0.0.1", "22"))
