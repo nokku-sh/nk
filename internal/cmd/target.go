@@ -69,11 +69,11 @@ func targetSync(ctx context.Context, cmd *cli.Command) error {
 		progress = os.Stderr
 	}
 
-	target, err := findTarget(s, host)
+	dest := remote{host: host, port: cmd.String("port")}
+	target, err := findRemoteTarget(ctx, s, dest)
 	if err != nil {
 		return err
 	}
-	dest := remote{host: host, port: cmd.String("port")}
 	var ca *state.CA
 	if target == nil {
 		if target, ca, err = newTarget(ctx, c, cmd, dest); err != nil {
@@ -245,7 +245,8 @@ func targetDelete(ctx context.Context, cmd *cli.Command) error {
 	if err != nil {
 		return err
 	}
-	target, err := findTarget(c.State, host)
+	dest := remote{host: host, port: cmd.String("port")}
+	target, err := findRemoteTarget(ctx, c.State, dest)
 	if err != nil {
 		return err
 	}
@@ -254,7 +255,6 @@ func targetDelete(ctx context.Context, cmd *cli.Command) error {
 	}
 
 	if !cmd.Bool("keep-host") {
-		dest := remote{host: host, port: cmd.String("port")}
 		if target.Name == host && len(target.Endpoints) > 0 {
 			dest = endpointRemote(target.Endpoints[0], dest.port)
 		}
@@ -296,6 +296,17 @@ func rootHost(cmd *cli.Command) (string, error) {
 		host = arg
 	}
 	return host, nil
+}
+
+// findRemoteTarget also looks behind an alias from the operator's ssh config.
+// A target stores the real address, so the alias alone would never match and
+// every sync would add the server again.
+func findRemoteTarget(ctx context.Context, s *state.State, dest remote) (*state.Target, error) {
+	target, err := findTarget(s, dest.host)
+	if target != nil || err != nil {
+		return target, err
+	}
+	return findTarget(s, dest.resolve(ctx).host)
 }
 
 // findTarget looks for an existing manual target by name or endpoint.
