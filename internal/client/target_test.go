@@ -104,12 +104,6 @@ func (listCAService) ListCertificateAuthorities(
 				IsDefault: new(true),
 			},
 			{Id: new("0199a0a0-0000-7000-8000-000000000002"), Name: new("retired")},
-			{
-				Id:            new("0199a0a0-0000-7000-8000-000000000003"),
-				Name:          new("tls"),
-				IsActive:      new(true),
-				AuthorityType: nokkuv1.AuthorityType_AUTHORITY_TYPE_X509.Enum(),
-			},
 		},
 	}, nil
 }
@@ -128,7 +122,7 @@ func TestListSSHCAs(t *testing.T) {
 
 	cas, err := c.ListSSHCAs(t.Context())
 	require.NoError(t, err)
-	require.Len(t, cas, 1, "inactive and X.509 CAs are left out")
+	require.Len(t, cas, 1, "inactive CAs are left out")
 	assert.Equal(t, "default", cas[0].Name)
 	assert.True(t, cas[0].Default)
 	assert.Equal(t, "ssh-ed25519 AAAA", cas[0].PublicKey)

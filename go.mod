@@ -8,7 +8,7 @@ require (
 	github.com/google/go-tpm v0.9.8
 	github.com/mizuchilabs/kata v0.1.15
 	github.com/nokku-sh/mon v0.1.7
-	github.com/nokku-sh/protos v0.2.7
+	github.com/nokku-sh/protos v0.2.8
 	github.com/stretchr/testify v1.12.1
 	github.com/urfave/cli/v3 v3.14.0
 	golang.org/x/crypto v0.57.0

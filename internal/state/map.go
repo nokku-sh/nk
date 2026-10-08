@@ -33,12 +33,11 @@ func FromAccess(res *nokkuv1.GetMyAccessResponse) Cache {
 	return c
 }
 
-// SSHCAs maps the SSH CAs of a backend answer. X.509 CAs are fetched
-// separately and must never reach known_hosts.
+// SSHCAs maps the CAs of a backend answer.
 func SSHCAs(cas []*nokkuv1.CertificateAuthority) []CA {
 	var out []CA
 	for _, ca := range cas {
-		if ca.GetAuthorityType() == nokkuv1.AuthorityType_AUTHORITY_TYPE_X509 || !validIDs(ca.GetId()) {
+		if !validIDs(ca.GetId()) {
 			continue
 		}
 		entry := CA{

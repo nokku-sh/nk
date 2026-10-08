@@ -250,36 +250,3 @@ func (c *Client) ListSSHCAs(ctx context.Context) ([]state.CA, error) {
 	})
 	return state.SSHCAs(active), nil
 }
-
-// ListX509CAs returns the active X.509 CAs. They are not linked to targets,
-// so they are fetched separately from the access sync.
-func (c *Client) ListX509CAs(ctx context.Context) ([]*nokkuv1.CertificateAuthority, error) {
-	res, err := c.certs.ListCertificateAuthorities(ctx, &nokkuv1.ListCertificateAuthoritiesRequest{})
-	if err != nil {
-		return nil, err
-	}
-	var out []*nokkuv1.CertificateAuthority
-	for _, ca := range res.GetCertificateAuthorities() {
-		if ca.GetAuthorityType() == nokkuv1.AuthorityType_AUTHORITY_TYPE_X509 && ca.GetIsActive() {
-			out = append(out, ca)
-		}
-	}
-	return out, nil
-}
-
-func (c *Client) SignX509Certificate(
-	ctx context.Context,
-	ca *nokkuv1.CertificateAuthority,
-	csrPEM string,
-	usage nokkuv1.SignX509CertificateRequest_X509Usage,
-) (*nokkuv1.SignX509CertificateResponse, error) {
-	req := &nokkuv1.SignX509CertificateRequest{
-		CaId:  new(ca.GetId()),
-		Csr:   new(csrPEM),
-		Usage: usage.Enum(),
-	}
-	if c.State.TTL > 0 {
-		req.Ttl = durationpb.New(c.State.TTL)
-	}
-	return c.certs.SignX509Certificate(ctx, req)
-}

@@ -111,17 +111,6 @@ nk rm web        # or the address, like nk sync
 
 It removes the drop-in, the CA and the principals files over the same root `ssh`, reloads sshd, and only then deletes the target in Nokku. If sshd rejects its config without the drop-in, everything is put back and the target stays. Pass `--keep-host` when the server is already gone.
 
-## X.509 certificates (experimental)
-
-`nk` can also issue certificates for API clients, servers and other workloads:
-
-```bash
-nk pki list
-nk pki issue api-client --usage client --san dns:api.example.com
-```
-
-It generates an ECDSA P-256 key pair, or ed25519 with `--key-type ed25519`. Then it requests a signed certificate and saves the certificate, the private key and the CA certificate to the output directory. It never overwrites an existing key.
-
 ## Commands
 
 | Command                      | Purpose                                                          |
@@ -129,8 +118,6 @@ It generates an ECDSA P-256 key pair, or ed25519 with `--key-type ed25519`. Then
 | `nk login` (alias `refresh`) | Sign in and sync local state                                     |
 | `nk ls` / `nk list`          | List the servers you can reach                                   |
 | `nk doctor`                  | Check the core, the TPM and your local SSH setup                 |
-| `nk pki list`                | List the active X.509 certificate authorities                    |
-| `nk pki issue <cn>`          | Issue an X.509 certificate                                       |
 | `nk sync <host>`             | Add a server without the daemon, or refresh one you added        |
 | `nk rm <host>`               | Clean up a server you added with `nk sync` and delete its target |
 | `nk logout`                  | Sign out, stop the agent and remove local credentials and state  |
@@ -141,8 +128,6 @@ It generates an ECDSA P-256 key pair, or ed25519 with `--key-type ed25519`. Then
 | ------------------ | --------------------------------------------------------------------------------------- |
 | `nk ls`            | `--json` for machine-readable output                                                    |
 | `nk doctor`        | `--fix` to repair permissions and regenerate files, `--json` for output                 |
-| `nk pki list`      | `--json` for machine-readable output                                                    |
-| `nk pki issue`     | `--san dns:name`, `--usage client\|server\|both`, `--ca`, `--key-type`, `--output`/`-o` |
 | `nk sync`          | `--name`, `--ca`, `--port`, `--dry-run`, `--accept-host-key`, `--json`                  |
 | `nk rm`            | `--port`, `--keep-host` to leave the server untouched                                   |
 
