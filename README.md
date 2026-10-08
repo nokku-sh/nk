@@ -155,7 +155,7 @@ It generates an ECDSA P-256 key pair, or ed25519 with `--key-type ed25519`. Then
 | `--ttl`         | `NK_TTL`            | Requested SSH certificate lifetime                                          |
 | `--require-tpm` | `NK_REQUIRE_TPM`    | Require a TPM 2.0 or the Secure Enclave, refuse the software key fallback   |
 |                 | `NK_SECURE_ENCLAVE` | Set to `1` on macOS to keep new keys in the Secure Enclave. Experimental    |
-| `--insecure`    | `NK_INSECURE`       | Turn off TLS verification. For testing only                                 |
+| `--insecure`    | `NK_INSECURE`       | Turn off TLS verification and allow a plain `http://` API. For testing only |
 | `--debug`       | `NK_DEBUG`          | Debug logging                                                               |
 
 `--api` is remembered after the first use. Switching to another core drops the old session. The other flags apply to one run only.

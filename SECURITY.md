@@ -70,7 +70,9 @@ Only the latest release gets security fixes. Older releases are not patched, so 
 
 ### TLS
 
-`--insecure` turns off TLS verification. It is for testing only.
+`--insecure` turns off TLS verification. It is for testing only, and `nk` prints a warning whenever it is on.
+
+An `http://` API URL is refused without it, unless it points at this machine.
 
 ### Releases
 

@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
+	"net/url"
 	"os"
 	"strings"
 
@@ -71,7 +73,7 @@ func Root() *cli.Command {
 			},
 			&cli.BoolFlag{
 				Name:    "insecure",
-				Usage:   "Disable TLS verification",
+				Usage:   "Disable TLS verification and allow a plain http API URL",
 				Sources: cli.EnvVars("NK_INSECURE"),
 			},
 			&cli.BoolFlag{
@@ -99,7 +101,24 @@ func loadState(cmd *cli.Command) (*state.State, error) {
 		s.Config = state.Config{APIURL: api}
 		s.Cache = state.Cache{}
 	}
+	switch {
+	case s.Insecure:
+		warnf("TLS verification is off, --insecure is for testing only")
+	case plainHTTP(s.APIURL):
+		return nil, fmt.Errorf("%s is not encrypted, use https or pass --insecure", s.APIURL)
+	}
 	return s, nil
+}
+
+// plainHTTP reports whether api would carry the session or a service account
+// token over the network in the clear. This machine itself is fine.
+func plainHTTP(api string) bool {
+	u, err := url.Parse(api)
+	if err != nil || u.Scheme != "http" {
+		return false
+	}
+	ip := net.ParseIP(u.Hostname())
+	return u.Hostname() != "localhost" && (ip == nil || !ip.IsLoopback())
 }
 
 // connect syncs access just in time, signing in through the browser when

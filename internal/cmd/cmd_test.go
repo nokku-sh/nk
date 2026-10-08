@@ -69,6 +69,27 @@ func TestLoadStateNewAPIDropsSession(t *testing.T) {
 	assert.Empty(t, s.Targets)
 }
 
+// Plain http would carry the session or a service account token in the clear.
+func TestLoadStateRefusesPlainHTTP(t *testing.T) {
+	setHome(t)
+	_, err := runFlags(t, "--api", "http://nokku.corp")
+	require.ErrorContains(t, err, "--insecure")
+
+	for _, args := range [][]string{
+		{"--api", "http://localhost:8080"},
+		{"--api", "http://127.0.0.1:8080"},
+		{"--api", "http://[::1]:8080"},
+		{"--api", "http://nokku.corp", "--insecure"},
+	} {
+		_, err = runFlags(t, args...)
+		require.NoError(t, err, "%v", args)
+	}
+
+	require.NoError(t, (&state.State{APIURL: "http://nokku.corp", SessionToken: "sess"}).Save())
+	_, err = runFlags(t)
+	require.ErrorContains(t, err, "not encrypted", "a stored server is held to the same rule")
+}
+
 func TestLoadStateRejectsNonServiceToken(t *testing.T) {
 	setHome(t)
 	t.Setenv("NK_TOKEN", "sess-abc")
