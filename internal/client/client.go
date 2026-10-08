@@ -97,17 +97,17 @@ func (c *Client) Sync(ctx context.Context, interactive bool) error {
 }
 
 // SyncOrCache is Sync with a fallback to the cached snapshot, so ssh keeps
-// working while the backend is down.
+// working while the backend is down or the session has run out.
 func (c *Client) SyncOrCache(ctx context.Context, interactive bool) error {
 	err := c.Sync(ctx, interactive)
 	if err == nil {
 		return nil
 	}
 	if loadErr := c.State.LoadCache(); loadErr != nil || !c.State.HasCachedData() {
-		return fmt.Errorf("cannot reach Nokku and nothing is cached yet: %w", err)
+		return fmt.Errorf("sync with Nokku failed and nothing is cached yet: %w", err)
 	}
-	slog.Warn("cannot reach Nokku, using cached access", "err", err)
-	c.State.MarkBackendDown()
+	slog.Warn("sync with Nokku failed, using cached access", "err", err)
+	c.State.MarkSyncFailed()
 	return nil
 }
 

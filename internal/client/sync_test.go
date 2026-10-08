@@ -152,7 +152,7 @@ func TestSyncCommitsAccessSnapshot(t *testing.T) {
 
 	c.State.FailedAt = time.Now()
 	require.NoError(t, c.Sync(t.Context(), false))
-	assert.False(t, c.State.BackendDown(time.Minute), "a sync that worked ends the outage")
+	assert.False(t, c.State.SyncFailedWithin(time.Minute), "a sync that worked ends the outage")
 
 	assert.Equal(t, "user-1", c.State.User.ID)
 	require.Len(t, c.State.Targets, 1)
@@ -196,7 +196,7 @@ func TestSyncOrCacheFallsBackToCache(t *testing.T) {
 	err := c.SyncOrCache(t.Context(), false)
 	require.NoError(t, err, "unreachable backend must fall back to cached data")
 	assert.True(t, st.HasCachedData())
-	assert.True(t, state.Load().BackendDown(time.Minute),
+	assert.True(t, state.Load().SyncFailedWithin(time.Minute),
 		"the outage must be on disk, the next ssh is another process")
 }
 
