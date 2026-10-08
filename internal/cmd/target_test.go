@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -148,4 +149,14 @@ func TestCheckHostKey(t *testing.T) {
 	assert.Contains(t, err.Error(), "--accept-host-key")
 
 	assert.NoError(t, checkHostKey("ssh-ed25519 old", "ssh-ed25519 new", "web", true))
+}
+
+func TestPlainWriterDropsEscapeSequences(t *testing.T) {
+	t.Parallel()
+	var out strings.Builder
+	in := []byte("sh: denied\x1b[2J\r\n\x1b]0;title\x07\u009b1A")
+	n, err := plainWriter{&out}.Write(in)
+	require.NoError(t, err)
+	assert.Equal(t, len(in), n, "the whole input counts as written, or the copy stops")
+	assert.Equal(t, "sh: denied[2J\n]0;title1A", out.String())
 }

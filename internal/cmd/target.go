@@ -185,7 +185,7 @@ func applyPlan(
 	progress io.Writer,
 ) error {
 	out, err := dest.run(ctx, "sh -s", plan.Script())
-	fmt.Fprint(progress, ui.Dim(manual.Output(out)))
+	fmt.Fprint(progress, ui.Dim(ui.Plain(manual.Output(out))))
 	if err != nil {
 		return fmt.Errorf("writing to %s failed, nothing was reported to Nokku: %w", dest.host, err)
 	}
@@ -256,7 +256,7 @@ func targetDelete(ctx context.Context, cmd *cli.Command) error {
 		}
 		fmt.Printf("Connecting with: %s\n", dest)
 		out, runErr := dest.run(ctx, "sh -s", manual.RemoveScript)
-		fmt.Print(ui.Dim(manual.Output(out)))
+		fmt.Print(ui.Dim(ui.Plain(manual.Output(out))))
 		if runErr != nil {
 			return fmt.Errorf(
 				"cleaning up %s failed, the target was not deleted. Pass --keep-host to delete it anyway: %w",
@@ -474,7 +474,7 @@ func (r remote) run(ctx context.Context, command, stdin string) (string, error) 
 
 	cmd := exec.CommandContext(ctx, "ssh", args...)
 	cmd.Stdin = strings.NewReader(stdin)
-	cmd.Stderr = os.Stderr
+	cmd.Stderr = plainWriter{os.Stderr}
 	var out strings.Builder
 	cmd.Stdout = &out
 	err := cmd.Run()
@@ -482,4 +482,14 @@ func (r remote) run(ctx context.Context, command, stdin string) (string, error) 
 		return out.String(), fmt.Errorf("could not connect as root, check that this works: %s", r)
 	}
 	return out.String(), err
+}
+
+// plainWriter keeps escape sequences from the remote host off the terminal.
+type plainWriter struct{ w io.Writer }
+
+func (p plainWriter) Write(b []byte) (int, error) {
+	if _, err := io.WriteString(p.w, ui.Plain(string(b))); err != nil {
+		return 0, err
+	}
+	return len(b), nil
 }
