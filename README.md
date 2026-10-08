@@ -74,12 +74,12 @@ The details are in [SECURITY.md](./SECURITY.md#how-nk-protects-your-key).
 Use a service account key where no browser is around:
 
 ```bash
-export NK_TOKEN=nokku_sa_<SECRET>
+export NK_TOKEN=nk_sa_<SECRET>
 nk login
 ssh user@target
 ```
 
-The key has to start with `nokku_sa_`. `nk` refuses any other token.
+The key has to start with `nk_sa_`. `nk` refuses any other token.
 
 ## Servers without the daemon
 
@@ -136,7 +136,7 @@ It removes the drop-in, the CA and the principals files over the same root `ssh`
 | Flag            | Environment         | Purpose                                                                     |
 | --------------- | ------------------- | --------------------------------------------------------------------------- |
 | `--api`         | `NK_API_URL`        | Address of the core                                                         |
-|                 | `NK_TOKEN`          | Service account key (`nokku_sa_...`) for CI. Environment only, never a flag |
+|                 | `NK_TOKEN`          | Service account key (`nk_sa_...`) for CI. Environment only, never a flag |
 | `--ttl`         | `NK_TTL`            | Requested SSH certificate lifetime                                          |
 | `--require-tpm` | `NK_REQUIRE_TPM`    | Require a TPM 2.0 or the Secure Enclave, refuse the software key fallback   |
 |                 | `NK_SECURE_ENCLAVE` | Set to `1` on macOS to keep new keys in the Secure Enclave. Experimental    |

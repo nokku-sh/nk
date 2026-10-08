@@ -25,7 +25,7 @@ func TestSaveLoadRoundTrip(t *testing.T) {
 	s := &State{
 		APIURL: "https://a.example", SessionToken: "sess", SessionExpiresAt: expires,
 		Targets: []Target{{ID: "t", Name: "web"}}, User: &User{ID: "u"},
-		Token: "nokku_sa_secret",
+		Token: "nk_sa_secret",
 		TTL:   time.Hour,
 	}
 	require.NoError(t, s.Save())
@@ -39,7 +39,7 @@ func TestSaveLoadRoundTrip(t *testing.T) {
 
 	raw, err := os.ReadFile(paths.ConfigFile())
 	require.NoError(t, err)
-	assert.NotContains(t, string(raw), "nokku_sa_secret")
+	assert.NotContains(t, string(raw), "nk_sa_secret")
 	fi, err := os.Stat(paths.ConfigFile())
 	require.NoError(t, err)
 	assert.Equal(t, os.FileMode(0o600), fi.Mode().Perm())

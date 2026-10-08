@@ -23,7 +23,7 @@ import (
 
 // saPrefix marks service-account tokens. Unlike device sessions they
 // authenticate with a plain Bearer header, without DPoP binding.
-const saPrefix = "nokku_sa_"
+const saPrefix = "nk_sa_"
 
 var jsonFlag = &cli.BoolFlag{Name: "json", Usage: "Output machine-readable JSON"}
 

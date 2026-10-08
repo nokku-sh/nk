@@ -94,9 +94,9 @@ func TestLoadStateRejectsNonServiceToken(t *testing.T) {
 	setHome(t)
 	t.Setenv("NK_TOKEN", "sess-abc")
 	_, err := runFlags(t)
-	require.ErrorContains(t, err, "nokku_sa_")
+	require.ErrorContains(t, err, "nk_sa_")
 
-	t.Setenv("NK_TOKEN", "nokku_sa_abc")
+	t.Setenv("NK_TOKEN", "nk_sa_abc")
 	s, err := runFlags(t)
 	require.NoError(t, err)
 	assert.True(t, s.IsServiceAccount())
