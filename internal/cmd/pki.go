@@ -14,6 +14,7 @@ import (
 	nokkuv1 "github.com/nokku-sh/protos/gen/nokku/v1"
 
 	"github.com/nokku-sh/nk/internal/pki"
+	"github.com/nokku-sh/nk/internal/ui"
 )
 
 func pkiCMD() *cli.Command {
@@ -51,8 +52,8 @@ func pkiListCMD() *cli.Command {
 			for _, ca := range cas {
 				fmt.Printf(
 					"-  %-24s  %s  (expires %s)\n",
-					ca.GetName(),
-					ca.GetId(),
+					ui.Plain(ca.GetName()),
+					ui.Plain(ca.GetId()),
 					ca.GetNotAfter().AsTime().Format(time.DateOnly),
 				)
 			}

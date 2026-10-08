@@ -7,12 +7,13 @@ import (
 	"github.com/mizuchilabs/kata/sigx"
 
 	"github.com/nokku-sh/nk/internal/cmd"
+	"github.com/nokku-sh/nk/internal/ui"
 )
 
 func main() {
 	root := cmd.Root()
 	if err := root.Run(sigx.NotifyContext(), os.Args); err != nil {
-		fmt.Fprintf(os.Stderr, "%s: %v\n", root.Name, err)
+		fmt.Fprintf(os.Stderr, "%s: %s\n", root.Name, ui.Plain(err.Error()))
 		os.Exit(1)
 	}
 }

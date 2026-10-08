@@ -3,7 +3,9 @@ package ui
 import (
 	"fmt"
 	"os"
+	"strings"
 	"time"
+	"unicode"
 
 	"golang.org/x/term"
 )
@@ -30,6 +32,17 @@ func Dim(s string) string    { return color("2", s) }
 func Red(s string) string    { return color("31", s) }
 func Green(s string) string  { return color("32", s) }
 func Yellow(s string) string { return color("33", s) }
+
+// Plain drops control characters except newlines from text nk did not write,
+// like a server's error message, so it cannot send escape sequences.
+func Plain(s string) string {
+	return strings.Map(func(r rune) rune {
+		if unicode.IsControl(r) && r != '\n' {
+			return -1
+		}
+		return r
+	}, s)
+}
 
 // HumanizeDuration formats a non-negative duration like "3h12m", "45s", or "900ms".
 func HumanizeDuration(d time.Duration) string {

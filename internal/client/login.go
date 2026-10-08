@@ -12,11 +12,16 @@ import (
 	"net/url"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/mizuchilabs/kata/buildinfo"
 
 	"github.com/nokku-sh/mon/dpopclient"
 )
+
+// maxDeviceResponse caps what nk reads from a device flow endpoint. A real
+// answer is a few hundred bytes.
+const maxDeviceResponse = 64 << 10
 
 // deviceAuth is the RFC 8628 device authorization response.
 type deviceAuth struct {
@@ -96,6 +101,10 @@ func (c *Client) beginDeviceAuth(ctx context.Context) (deviceAuth, error) {
 	d.VerificationURI = cmp.Or(d.VerificationURIComplete, d.VerificationURI)
 	if d.DeviceCode == "" || d.UserCode == "" || d.VerificationURI == "" {
 		return d, errors.New("device authorization: incomplete response")
+	}
+	// Both are printed, and a control character there starts an escape sequence.
+	if strings.ContainsFunc(d.UserCode+d.VerificationURI, unicode.IsControl) {
+		return d, errors.New("device authorization: the response has control characters")
 	}
 	// The link goes to the OS opener, which also launches files and custom
 	// schemes.
@@ -238,7 +247,7 @@ func (c *Client) postForm(
 		c.dpop.LearnHeaders(resp.Header)
 	}
 
-	data, err := io.ReadAll(resp.Body)
+	data, err := io.ReadAll(io.LimitReader(resp.Body, maxDeviceResponse))
 	if err != nil {
 		return nil, err
 	}

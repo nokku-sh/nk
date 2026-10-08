@@ -350,3 +350,38 @@ func TestPollDeviceTokenGivesUpOnARejectedProof(t *testing.T) {
 	require.ErrorContains(t, err, "Check that the clock is right")
 	assert.EqualValues(t, 2, polls.Load(), "one retry after learning the canonical URL, then stop")
 }
+
+// The code and the link are printed, and the answer is read into memory.
+func TestDeviceAuthRejectsHostileAnswers(t *testing.T) {
+	t.Parallel()
+	const valid = `{"device_code":"d","user_code":"AB-CD","verification_uri":"https://a.example/device"}`
+	for name, tc := range map[string]struct {
+		body string
+		ok   bool
+	}{
+		"a plain answer": {valid, true},
+		"escape sequence in the code": {
+			`{"device_code":"d","user_code":"AB\u001b[2JCD","verification_uri":"https://a.example/device"}`, false,
+		},
+		"escape sequence in the link": {
+			`{"device_code":"d","user_code":"AB-CD","verification_uri":"https://a.example/\u009b2J"}`, false,
+		},
+		"answer past the size cap": {strings.Repeat(" ", maxDeviceResponse) + valid, false},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				_, _ = w.Write([]byte(tc.body))
+			}))
+			t.Cleanup(srv.Close)
+			c := &Client{State: &state.State{APIURL: srv.URL}, httpc: srv.Client()}
+
+			_, err := c.beginDeviceAuth(t.Context())
+			if tc.ok {
+				require.NoError(t, err)
+				return
+			}
+			require.Error(t, err)
+		})
+	}
+}

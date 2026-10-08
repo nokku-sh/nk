@@ -31,3 +31,9 @@ func TestHumanizeDuration(t *testing.T) {
 		})
 	}
 }
+
+func TestPlainDropsEscapeSequences(t *testing.T) {
+	t.Parallel()
+	assert.Equal(t, "permission denied[2J\nrun nk login", Plain("permission denied\x1b[2J\r\nrun nk login\u009b\x07"))
+	assert.Equal(t, "wéb ✔", Plain("wéb ✔"))
+}

@@ -2,6 +2,8 @@ package state
 
 import (
 	"log/slog"
+	"strings"
+	"unicode"
 	"uuid"
 
 	nokkuv1 "github.com/nokku-sh/protos/gen/nokku/v1"
@@ -9,15 +11,16 @@ import (
 
 // FromAccess maps the backend access snapshot. IDs end up in file paths and
 // generated ssh files, so anything that is not a UUID is dropped here, once.
+// Names end up on the terminal, so they lose their control characters here.
 func FromAccess(res *nokkuv1.GetMyAccessResponse) Cache {
 	var c Cache
 	switch subject := res.GetSubject().(type) {
 	case *nokkuv1.GetMyAccessResponse_User:
 		u := subject.User
-		c.User = &User{ID: u.GetId(), Name: u.GetName(), Email: u.GetEmail()}
+		c.User = &User{ID: u.GetId(), Name: plain(u.GetName()), Email: plain(u.GetEmail())}
 	case *nokkuv1.GetMyAccessResponse_ServiceAccount:
 		sa := subject.ServiceAccount
-		c.ServiceAccount = &ServiceAccount{ID: sa.GetId(), Name: sa.GetName()}
+		c.ServiceAccount = &ServiceAccount{ID: sa.GetId(), Name: plain(sa.GetName())}
 	}
 
 	for _, ca := range res.GetCertificateAuthorities() {
@@ -27,7 +30,7 @@ func FromAccess(res *nokkuv1.GetMyAccessResponse) Cache {
 		}
 		entry := CA{
 			ID:        ca.GetId(),
-			Name:      ca.GetName(),
+			Name:      plain(ca.GetName()),
 			PublicKey: ca.GetPublicKey(),
 			Default:   ca.GetIsDefault(),
 		}
@@ -55,12 +58,30 @@ func MapTarget(t *nokkuv1.Target) Target {
 		ID:            t.GetId(),
 		CAID:          t.GetCaId(),
 		DaemonID:      t.GetDaemonId(),
-		Name:          t.GetName(),
-		Endpoints:     t.GetEndpoints(),
-		Usernames:     t.GetUsernames(),
+		Name:          plain(t.GetName()),
+		Endpoints:     plainAll(t.GetEndpoints()),
+		Usernames:     plainAll(t.GetUsernames()),
 		HostPublicKey: t.GetHostPublicKey(),
 		Metadata:      t.GetMetadata(),
 	}
+}
+
+// plain drops control characters, which would start an escape sequence once
+// the value is printed.
+func plain(s string) string {
+	return strings.Map(func(r rune) rune {
+		if unicode.IsControl(r) {
+			return -1
+		}
+		return r
+	}, s)
+}
+
+func plainAll(values []string) []string {
+	for i, v := range values {
+		values[i] = plain(v)
+	}
+	return values
 }
 
 func validIDs(ids ...string) bool {
