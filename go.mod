@@ -1,10 +1,10 @@
 module github.com/nokku-sh/nk
 
-go 1.27.0
+go 1.27.2
 
 require (
 	connectrpc.com/connect v1.21.0
-	github.com/Microsoft/go-winio v0.6.2
+	github.com/Microsoft/go-winio v0.6.3
 	github.com/google/go-tpm v0.9.8
 	github.com/mizuchilabs/kata v0.1.15
 	github.com/nokku-sh/mon v0.1.7
