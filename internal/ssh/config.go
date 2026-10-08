@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/mizuchilabs/kata/fsutil"
@@ -18,10 +19,13 @@ import (
 
 const header = "# Managed by Nokku. nk regenerates this file, do not edit it.\n\n"
 
-// unsafeChars may not appear in a target or user name emitted into ssh_config.
-// Wildcards and lists would widen a Host pattern to hosts the target does not
-// own, / separates the nokku prefix, the rest are shell metacharacters.
-const unsafeChars = " ,/#\"'`$&|;<>(){}[]*?!~\\%="
+// Names and accounts in ssh_config are held to what the backend itself allows.
+// Anything wider would let a server claim a real host like github.com, widen a
+// Host pattern, or reach the shell.
+var (
+	targetName  = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_-]*$`)
+	accountName = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9._-]*$`)
+)
 
 // WriteConfigs regenerates ssh_config and known_hosts from the snapshot and
 // makes sure ~/.ssh/config includes them.
@@ -169,11 +173,7 @@ func sameFile(a, b string) bool {
 }
 
 func usable(t state.Target) bool {
-	return len(t.Usernames) > 0 && safeToken(t.Name) && safeToken(t.Usernames[0])
-}
-
-func safeToken(s string) bool {
-	return s != "" && !strings.ContainsAny(s, unsafeChars) && safeLine(s)
+	return len(t.Usernames) > 0 && targetName.MatchString(t.Name) && accountName.MatchString(t.Usernames[0])
 }
 
 // safeLine rejects control characters, the only thing that can break out of

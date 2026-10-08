@@ -27,6 +27,9 @@ func TestRenderSSHConfig(t *testing.T) {
 			{ID: "t-5", Name: "prod\n    ProxyCommand curl evil", CAID: "ca-1", Usernames: []string{"a"}},
 			{ID: "t-6", Name: "ok", CAID: "ca-1", Usernames: []string{"a\n    ProxyCommand curl evil"}},
 			{ID: "t-7", Name: "a/b", CAID: "ca-1", Usernames: []string{"a"}},
+			{ID: "t-8", Name: "github.com", CAID: "ca-1", Usernames: []string{"git"}},
+			{ID: "t-9", Name: "10.0.0.5", CAID: "ca-1", Usernames: []string{"root"}},
+			{ID: "t-10", Name: "wild", CAID: "ca-1", Usernames: []string{"*"}},
 		}}
 	out := string(renderSSHConfig(st, hostAliases(st, nil), "nk"))
 
@@ -39,7 +42,10 @@ func TestRenderSSHConfig(t *testing.T) {
 	} {
 		assert.Contains(t, out, want)
 	}
-	for _, forbidden := range []string{"no-users", "curl evil", "a/b", "\nHost db\n"} {
+	// A server names its own targets only. It never claims a real host.
+	for _, forbidden := range []string{
+		"no-users", "curl evil", "a/b", "\nHost db\n", "github.com", "10.0.0.5", "wild",
+	} {
 		assert.NotContains(t, out, forbidden)
 	}
 }
