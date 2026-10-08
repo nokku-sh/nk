@@ -74,15 +74,18 @@ func targetSync(ctx context.Context, cmd *cli.Command) error {
 		return err
 	}
 	dest := remote{host: host, port: cmd.String("port")}
+	var ca *state.CA
 	if target == nil {
-		if target, err = newTarget(ctx, s, cmd, dest); err != nil {
+		if target, ca, err = newTarget(ctx, c, cmd, dest); err != nil {
 			return err
 		}
-	} else if target.Name == host && len(target.Endpoints) > 0 {
-		// Reached by name, so connect to where the target lives.
-		dest = endpointRemote(target.Endpoints[0], dest.port)
+	} else {
+		if target.Name == host && len(target.Endpoints) > 0 {
+			// Reached by name, so connect to where the target lives.
+			dest = endpointRemote(target.Endpoints[0], dest.port)
+		}
+		ca = s.CAByID(target.CAID)
 	}
-	ca := s.CAByID(target.CAID)
 	if ca == nil || strings.TrimSpace(ca.PublicKey) == "" {
 		return fmt.Errorf("the certificate authority of %s is missing, run nk login and try again", target.Name)
 	}
@@ -317,11 +320,21 @@ func findTarget(s *state.State, host string) (*state.Target, error) {
 }
 
 // newTarget prepares a target for a server Nokku does not know yet. It is
-// created on the backend only once the host key is read.
-func newTarget(ctx context.Context, s *state.State, cmd *cli.Command, dest remote) (*state.Target, error) {
-	ca, err := resolveCA(s, cmd.String("ca"))
+// created on the backend only once the host key is read. Its CA comes from
+// the backend, the local state only knows the CAs of existing targets.
+func newTarget(
+	ctx context.Context,
+	c *client.Client,
+	cmd *cli.Command,
+	dest remote,
+) (*state.Target, *state.CA, error) {
+	cas, err := c.ListSSHCAs(ctx)
 	if err != nil {
-		return nil, err
+		return nil, nil, fmt.Errorf("listing certificate authorities: %w", err)
+	}
+	ca, err := resolveCA(cas, cmd.String("ca"))
+	if err != nil {
+		return nil, nil, err
 	}
 	// Users dial the endpoint directly, so store the real address behind an
 	// alias from the operator's ssh config.
@@ -334,28 +347,28 @@ func newTarget(ctx context.Context, s *state.State, cmd *cli.Command, dest remot
 		CAID:      ca.ID,
 		Name:      strings.TrimSpace(cmd.String("name")),
 		Endpoints: []string{endpoint},
-	}, nil
+	}, &ca, nil
 }
 
 // resolveCA picks the named CA, else the default, else the only one. An id
 // wins, then an exact name, then a name that matches without its case. Names
 // are not unique on the backend, so a name that fits several CAs is refused.
-func resolveCA(s *state.State, ref string) (state.CA, error) {
+func resolveCA(cas []state.CA, ref string) (state.CA, error) {
 	if ref == "" {
-		if i := slices.IndexFunc(s.CAs, func(ca state.CA) bool { return ca.Default }); i >= 0 {
-			return s.CAs[i], nil
+		if i := slices.IndexFunc(cas, func(ca state.CA) bool { return ca.Default }); i >= 0 {
+			return cas[i], nil
 		}
-		switch len(s.CAs) {
+		switch len(cas) {
 		case 0:
 			return state.CA{}, errors.New("there is no certificate authority yet, create one in the Nokku UI")
 		case 1:
-			return s.CAs[0], nil
+			return cas[0], nil
 		}
 		return state.CA{}, errors.New("there are several certificate authorities, pass --ca")
 	}
 
 	var exact, folded []state.CA
-	for _, ca := range s.CAs {
+	for _, ca := range cas {
 		switch {
 		case ca.ID == ref:
 			return ca, nil

@@ -53,43 +53,43 @@ func TestFindTarget(t *testing.T) {
 
 func TestResolveCA(t *testing.T) {
 	t.Parallel()
-	s := testState()
+	cas := testState().CAs
 
-	ca, err := resolveCA(s, "")
+	ca, err := resolveCA(cas, "")
 	require.NoError(t, err)
 	assert.Equal(t, "ca-1", ca.ID, "the default wins")
 
-	ca, err = resolveCA(s, "legacy")
+	ca, err = resolveCA(cas, "legacy")
 	require.NoError(t, err)
 	assert.Equal(t, "ca-2", ca.ID)
 
-	_, err = resolveCA(s, "nope")
+	_, err = resolveCA(cas, "nope")
 	require.Error(t, err)
 
-	ca, err = resolveCA(s, "LEGACY")
+	ca, err = resolveCA(cas, "LEGACY")
 	require.NoError(t, err)
 	assert.Equal(t, "ca-2", ca.ID, "a name matches without its case")
 
-	s.CAs = append(s.CAs, state.CA{ID: "ca-3", Name: "Legacy"})
-	ca, err = resolveCA(s, "Legacy")
+	cas = append(cas, state.CA{ID: "ca-3", Name: "Legacy"})
+	ca, err = resolveCA(cas, "Legacy")
 	require.NoError(t, err)
 	assert.Equal(t, "ca-3", ca.ID, "the exact name wins")
-	_, err = resolveCA(s, "LEGACY")
+	_, err = resolveCA(cas, "LEGACY")
 	require.ErrorContains(t, err, "pass the id", "two names that differ only by case")
 
-	s.CAs = append(s.CAs, state.CA{ID: "ca-4", Name: "Legacy"})
-	_, err = resolveCA(s, "Legacy")
+	cas = append(cas, state.CA{ID: "ca-4", Name: "Legacy"})
+	_, err = resolveCA(cas, "Legacy")
 	require.ErrorContains(t, err, "pass the id", "two CAs with the same name")
-	ca, err = resolveCA(s, "ca-4")
+	ca, err = resolveCA(cas, "ca-4")
 	require.NoError(t, err)
 	assert.Equal(t, "ca-4", ca.ID, "the id settles it")
 
-	s.CAs[0].Default = false
-	_, err = resolveCA(s, "")
+	cas[0].Default = false
+	_, err = resolveCA(cas, "")
 	require.ErrorContains(t, err, "--ca")
 
-	s.CAs = s.CAs[:1]
-	ca, err = resolveCA(s, "")
+	cas = cas[:1]
+	ca, err = resolveCA(cas, "")
 	require.NoError(t, err)
 	assert.Equal(t, "ca-1", ca.ID, "the only CA needs no flag")
 }

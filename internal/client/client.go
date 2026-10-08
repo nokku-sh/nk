@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"slices"
 	"time"
 
 	"connectrpc.com/connect"
@@ -235,6 +236,19 @@ func (c *Client) DeleteTarget(ctx context.Context, t *state.Target) error {
 		Id: new(t.ID),
 	})
 	return err
+}
+
+// ListSSHCAs returns the active SSH CAs. The access sync only carries the CAs
+// of targets the subject can reach, so a new target has to look here.
+func (c *Client) ListSSHCAs(ctx context.Context) ([]state.CA, error) {
+	res, err := c.certs.ListCertificateAuthorities(ctx, &nokkuv1.ListCertificateAuthoritiesRequest{})
+	if err != nil {
+		return nil, err
+	}
+	active := slices.DeleteFunc(res.GetCertificateAuthorities(), func(ca *nokkuv1.CertificateAuthority) bool {
+		return !ca.GetIsActive()
+	})
+	return state.SSHCAs(active), nil
 }
 
 // ListX509CAs returns the active X.509 CAs. They are not linked to targets,

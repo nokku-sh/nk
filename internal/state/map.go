@@ -23,8 +23,21 @@ func FromAccess(res *nokkuv1.GetMyAccessResponse) Cache {
 		c.ServiceAccount = &ServiceAccount{ID: sa.GetId(), Name: plain(sa.GetName())}
 	}
 
-	for _, ca := range res.GetCertificateAuthorities() {
-		// X.509 CAs are fetched separately and must never reach known_hosts.
+	c.CAs = SSHCAs(res.GetCertificateAuthorities())
+	for _, t := range res.GetTargets() {
+		if !validIDs(t.GetId(), t.GetCaId()) || t.GetDaemonId() != "" && !validIDs(t.GetDaemonId()) {
+			continue
+		}
+		c.Targets = append(c.Targets, MapTarget(t))
+	}
+	return c
+}
+
+// SSHCAs maps the SSH CAs of a backend answer. X.509 CAs are fetched
+// separately and must never reach known_hosts.
+func SSHCAs(cas []*nokkuv1.CertificateAuthority) []CA {
+	var out []CA
+	for _, ca := range cas {
 		if ca.GetAuthorityType() == nokkuv1.AuthorityType_AUTHORITY_TYPE_X509 || !validIDs(ca.GetId()) {
 			continue
 		}
@@ -42,15 +55,9 @@ func FromAccess(res *nokkuv1.GetMyAccessResponse) Cache {
 			entry.PreviousPublicKey = ca.GetPreviousPublicKey()
 			entry.PreviousTrustedUntil = ca.GetPreviousTrustedUntil().AsTime()
 		}
-		c.CAs = append(c.CAs, entry)
+		out = append(out, entry)
 	}
-	for _, t := range res.GetTargets() {
-		if !validIDs(t.GetId(), t.GetCaId()) || t.GetDaemonId() != "" && !validIDs(t.GetDaemonId()) {
-			continue
-		}
-		c.Targets = append(c.Targets, MapTarget(t))
-	}
-	return c
+	return out
 }
 
 func MapTarget(t *nokkuv1.Target) Target {

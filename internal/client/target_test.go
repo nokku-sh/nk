@@ -85,3 +85,51 @@ func TestDeleteTarget(t *testing.T) {
 	require.NotNil(t, svc.deleted)
 	assert.Equal(t, "target-1", svc.deleted.GetId())
 }
+
+type listCAService struct {
+	nokkuv1connect.UnimplementedCertificateServiceHandler
+}
+
+func (listCAService) ListCertificateAuthorities(
+	context.Context,
+	*nokkuv1.ListCertificateAuthoritiesRequest,
+) (*nokkuv1.ListCertificateAuthoritiesResponse, error) {
+	return &nokkuv1.ListCertificateAuthoritiesResponse{
+		CertificateAuthorities: []*nokkuv1.CertificateAuthority{
+			{
+				Id:        new("0199a0a0-0000-7000-8000-000000000001"),
+				Name:      new("default"),
+				PublicKey: new("ssh-ed25519 AAAA"),
+				IsActive:  new(true),
+				IsDefault: new(true),
+			},
+			{Id: new("0199a0a0-0000-7000-8000-000000000002"), Name: new("retired")},
+			{
+				Id:            new("0199a0a0-0000-7000-8000-000000000003"),
+				Name:          new("tls"),
+				IsActive:      new(true),
+				AuthorityType: nokkuv1.AuthorityType_AUTHORITY_TYPE_X509.Enum(),
+			},
+		},
+	}, nil
+}
+
+// A CA without targets is missing from the access sync, nk sync still needs it.
+func TestListSSHCAs(t *testing.T) {
+	t.Parallel()
+
+	mux := http.NewServeMux()
+	mux.Handle(nokkuv1connect.NewCertificateServiceHandler(listCAService{}))
+	server := httptest.NewServer(mux)
+	t.Cleanup(server.Close)
+
+	c := &Client{State: &state.State{APIURL: server.URL, SessionToken: "sess-token"}}
+	c.certs = nokkuv1connect.NewCertificateServiceClient(http.DefaultClient, server.URL)
+
+	cas, err := c.ListSSHCAs(t.Context())
+	require.NoError(t, err)
+	require.Len(t, cas, 1, "inactive and X.509 CAs are left out")
+	assert.Equal(t, "default", cas[0].Name)
+	assert.True(t, cas[0].Default)
+	assert.Equal(t, "ssh-ed25519 AAAA", cas[0].PublicKey)
+}
