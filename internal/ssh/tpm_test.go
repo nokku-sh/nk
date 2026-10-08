@@ -34,7 +34,7 @@ func TestSetupTPMKey(t *testing.T) {
 
 	// Login: only the public key may touch disk.
 	require.NoError(t, SetupKey(true), "SetupKey(true)")
-	assert.Equal(t, tpm.MethodTPM, IdentityMethod(),
+	assert.Equal(t, tpm.MethodTPM, tpm.IdentityMethod(paths.SSHSignerFile()),
 		"expected a TPM identity: public key without a private key file")
 	pub, err := os.ReadFile(paths.PubKeyFile())
 	require.NoError(t, err)

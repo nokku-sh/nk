@@ -23,9 +23,9 @@ func TestBearerAuthSetsHeader(t *testing.T) {
 		return connect.NewResponse(&nokkuv1.User{}), nil
 	}
 
-	_, err := newBearerAuth("nokku_sa_secret").
-		WrapUnary(next)(t.Context(), connect.NewRequest(&nokkuv1.User{}))
+	auth := &bearerAuth{token: "nokku_sa_secret", ua: "nk/test"}
+	_, err := auth.WrapUnary(next)(t.Context(), connect.NewRequest(&nokkuv1.User{}))
 	must.NoError(err)
 	is.Equal("Bearer nokku_sa_secret", authz)
-	is.NotEmpty(ua, "service-account requests must still identify the client")
+	is.Equal("nk/test", ua, "service-account requests must still identify the client")
 }

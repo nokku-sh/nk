@@ -162,7 +162,7 @@ func checkSSH(r *Report, s *state.State) {
 		r.add(sec, "~/.ssh/config", StatusFail, "missing the Nokku include, run nk doctor --fix")
 	}
 
-	switch method := ssh.IdentityMethod(); {
+	switch method := tpm.IdentityMethod(paths.SSHSignerFile()); {
 	case method == tpm.MethodTPM:
 		r.add(sec, "identity", StatusOK, "TPM key, never leaves the chip")
 	case method == tpm.MethodEnclave:

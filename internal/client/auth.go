@@ -5,17 +5,12 @@ import (
 	"net/http"
 
 	"connectrpc.com/connect"
-	"github.com/mizuchilabs/kata/buildinfo"
 )
 
 // bearerAuth attaches the service-account API key and the client User-Agent.
 type bearerAuth struct {
 	token string
 	ua    string
-}
-
-func newBearerAuth(token string) *bearerAuth {
-	return &bearerAuth{token: token, ua: buildinfo.UserAgent("nk")}
 }
 
 func (a *bearerAuth) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {

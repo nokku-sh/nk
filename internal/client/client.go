@@ -54,7 +54,7 @@ func New(s *state.State) (*Client, error) {
 
 	var auth connect.Interceptor
 	if s.IsServiceAccount() {
-		auth = newBearerAuth(s.Token)
+		auth = &bearerAuth{token: s.Token, ua: buildinfo.UserAgent("nk")}
 	} else {
 		proofer, perr := dpopclient.NewProofer(tpm.SignerOptions{
 			Salt:       []byte(signerSalt),

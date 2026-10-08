@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"os"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -20,26 +21,24 @@ func setHome(t *testing.T) {
 	require.NoError(t, paths.EnsureDirs())
 }
 
-// runFlags parses args with the root flags and returns the resulting state.
+// runFlags parses args with the real root flags and returns the resulting state.
 func runFlags(t *testing.T, args ...string) (*state.State, error) {
 	t.Helper()
+	// The flags read these, and a developer's shell must not leak in.
+	for _, env := range []string{"NK_API_URL", "NK_TTL", "NK_REQUIRE_TPM", "NK_INSECURE", "NK_DEBUG"} {
+		t.Setenv(env, "")
+		require.NoError(t, os.Unsetenv(env))
+	}
 	var (
 		s   *state.State
 		err error
 	)
-	cmd := &cli.Command{
-		Flags: []cli.Flag{
-			&cli.StringFlag{Name: "api", Value: "https://app.nokku.sh"},
-			&cli.DurationFlag{Name: "ttl"},
-			&cli.BoolFlag{Name: "require-tpm"},
-			&cli.BoolFlag{Name: "insecure"},
-		},
-		Action: func(_ context.Context, cmd *cli.Command) error {
-			s, err = loadState(cmd)
-			return nil
-		},
+	root := Root()
+	root.Action = func(_ context.Context, cmd *cli.Command) error {
+		s, err = loadState(cmd)
+		return nil
 	}
-	require.NoError(t, cmd.Run(t.Context(), append([]string{"nk"}, args...)))
+	require.NoError(t, root.Run(t.Context(), append([]string{"nk"}, args...)))
 	return s, err
 }
 

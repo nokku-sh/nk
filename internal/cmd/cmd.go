@@ -9,9 +9,12 @@ import (
 	"os"
 	"strings"
 
+	"github.com/mizuchilabs/kata/buildinfo"
+	"github.com/mizuchilabs/kata/logx"
 	"github.com/urfave/cli/v3"
 
 	"github.com/nokku-sh/nk/internal/client"
+	"github.com/nokku-sh/nk/internal/paths"
 	"github.com/nokku-sh/nk/internal/state"
 	"github.com/nokku-sh/nk/internal/ui"
 )
@@ -22,18 +25,62 @@ const saPrefix = "nokku_sa_"
 
 var jsonFlag = &cli.BoolFlag{Name: "json", Usage: "Output machine-readable JSON"}
 
-// Commands is the full command tree wired into the root command.
-var Commands = []*cli.Command{
-	loginCMD(),
-	logoutCMD(),
-	listCMD(),
-	syncCMD(),
-	targetCMD(),
-	pkiCMD(),
-	doctorCMD(),
-	proxyCMD(),
-	prepareCMD(),
-	agentCMD(),
+// Root is the nk command with its global flags and every subcommand.
+func Root() *cli.Command {
+	return &cli.Command{
+		EnableShellCompletion: true,
+		Suggest:               true,
+		Name:                  "nk",
+		Usage:                 "secure access, simplified",
+		Version:               buildinfo.String(),
+		Before: func(ctx context.Context, cmd *cli.Command) (context.Context, error) {
+			logx.Init(cmd.Bool("debug"))
+			if err := paths.EnsureDirs(); err != nil {
+				return nil, err
+			}
+			return ctx, nil
+		},
+		Commands: []*cli.Command{
+			loginCMD(),
+			logoutCMD(),
+			listCMD(),
+			syncCMD(),
+			targetCMD(),
+			pkiCMD(),
+			doctorCMD(),
+			proxyCMD(),
+			prepareCMD(),
+			agentCMD(),
+		},
+		Flags: []cli.Flag{
+			&cli.StringFlag{
+				Name:    "api",
+				Usage:   "Nokku API URL",
+				Value:   "https://app.nokku.sh",
+				Sources: cli.EnvVars("NK_API_URL"),
+			},
+			&cli.DurationFlag{
+				Name:    "ttl",
+				Usage:   "Certificate TTL",
+				Sources: cli.EnvVars("NK_TTL"),
+			},
+			&cli.BoolFlag{
+				Name:    "require-tpm",
+				Usage:   "Require a TPM 2.0 or the Secure Enclave and refuse the software key fallback",
+				Sources: cli.EnvVars("NK_REQUIRE_TPM"),
+			},
+			&cli.BoolFlag{
+				Name:    "insecure",
+				Usage:   "Disable TLS verification",
+				Sources: cli.EnvVars("NK_INSECURE"),
+			},
+			&cli.BoolFlag{
+				Name:    "debug",
+				Usage:   "Enable debug logging",
+				Sources: cli.EnvVars("NK_DEBUG"),
+			},
+		},
+	}
 }
 
 // loadState loads the persisted state and applies the global flags.

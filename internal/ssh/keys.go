@@ -77,6 +77,3 @@ func PubKey() (string, error) {
 	}
 	return string(bytes.TrimSpace(data)), nil
 }
-
-// IdentityMethod reports the active SSH identity method, "" when none exists.
-func IdentityMethod() string { return tpm.IdentityMethod(paths.SSHSignerFile()) }
