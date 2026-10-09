@@ -77,7 +77,13 @@ func (t Target) LastManualSync() time.Time {
 // Config is persisted in config.json. A session belongs to the API that issued
 // it, so both live together.
 type Config struct {
-	APIURL           string    `json:"api_url,omitempty"`
+	APIURL string `json:"api_url,omitempty"`
+	// APICA is the PEM of the private CA the API is trusted through, empty
+	// when the system roots know its certificate.
+	APICA string `json:"api_ca,omitempty"`
+	// APICAInstalled is set once nk put that CA into the system trust store,
+	// so the sign-out knows there is something to take out again.
+	APICAInstalled   bool      `json:"api_ca_installed,omitzero"`
 	SessionToken     string    `json:"session_token,omitempty"`
 	SessionExpiresAt time.Time `json:"session_expires_at,omitzero"`
 }
@@ -107,7 +113,8 @@ type State struct {
 	Token      string
 	TTL        time.Duration
 	RequireTPM bool
-	Insecure   bool
+	// Pin names the private CA of the API, see mon/trust.
+	Pin string
 }
 
 // Load reads config and cache. A missing or corrupt file starts empty.

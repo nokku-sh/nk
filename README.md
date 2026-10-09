@@ -120,7 +120,7 @@ It removes the drop-in, the CA and the principals files over the same root `ssh`
 | `nk doctor`                  | Check the core, the TPM and your local SSH setup                 |
 | `nk sync <host>`             | Add a server without the daemon, or refresh one you added        |
 | `nk rm <host>`               | Clean up a server you added with `nk sync` and delete its target |
-| `nk logout`                  | Sign out, stop the agent and remove local credentials and state  |
+| `nk logout`                  | Sign out, stop the agent and remove local credentials and state. Asks about a CA it installed |
 
 ### Command flags
 
@@ -140,7 +140,8 @@ It removes the drop-in, the CA and the principals files over the same root `ssh`
 | `--ttl`         | `NK_TTL`            | Requested SSH certificate lifetime                                          |
 | `--require-tpm` | `NK_REQUIRE_TPM`    | Require a TPM 2.0 or the Secure Enclave, refuse the software key fallback   |
 |                 | `NK_SECURE_ENCLAVE` | Set to `1` on macOS to keep new keys in the Secure Enclave. Experimental    |
-| `--insecure`    | `NK_INSECURE`       | Turn off TLS verification and allow a plain `http://` API. For testing only |
+| `--pin`         | `NK_API_PIN`        | Fingerprint of the core's private CA, `sha256:...`. The web app shows it under **Profile, Security**. Without it `nk` asks |
+| `--ca-file`     | `NK_CA_FILE`        | PEM file with the core's private CA, instead of a pin                       |
 | `--debug`       | `NK_DEBUG`          | Debug logging                                                               |
 
 `--api` is remembered after the first use. Switching to another core drops the old session. The other flags apply to one run only.

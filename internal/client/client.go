@@ -14,8 +14,10 @@ import (
 	"github.com/mizuchilabs/kata/fsutil"
 	"google.golang.org/protobuf/types/known/durationpb"
 
+	"github.com/nokku-sh/mon/dpop"
 	"github.com/nokku-sh/mon/dpopclient"
 	"github.com/nokku-sh/mon/tpm"
+	"github.com/nokku-sh/mon/trust"
 	"github.com/nokku-sh/nk/internal/enclave"
 	"github.com/nokku-sh/nk/internal/paths"
 	"github.com/nokku-sh/nk/internal/ssh"
@@ -33,9 +35,10 @@ const (
 const signerSalt = "nokku-cli"
 
 type Client struct {
-	State *state.State
-	httpc *http.Client
-	dpop  *dpopclient.Client
+	State   *state.State
+	httpc   *http.Client
+	proofer *dpop.Proofer
+	dpop    *dpopclient.Client
 
 	auth    nokkuv1connect.AuthServiceClient
 	certs   nokkuv1connect.CertificateServiceClient
@@ -47,45 +50,66 @@ func New(s *state.State) (*Client, error) {
 	if err := ssh.SetupKey(s.RequireTPM); err != nil {
 		return nil, err
 	}
-	httpc, err := dpopclient.NewHTTPClient(s.Insecure, dialTimeout)
-	if err != nil {
-		return nil, err
-	}
-	c := &Client{State: s, httpc: httpc}
-
-	var auth connect.Interceptor
-	if s.IsServiceAccount() {
-		auth = &bearerAuth{token: s.Token, ua: buildinfo.UserAgent("nk")}
-	} else {
-		proofer, perr := dpopclient.NewProofer(tpm.SignerOptions{
+	c := &Client{State: s}
+	if !s.IsServiceAccount() {
+		proofer, err := dpopclient.NewProofer(tpm.SignerOptions{
 			Salt:       []byte(signerSalt),
 			StatePath:  paths.SignerStateFile(),
 			RequireTPM: s.RequireTPM,
 			Recreate:   true,
 			Enclave:    enclave.New(),
 		})
-		if perr != nil {
-			return nil, perr
+		if err != nil {
+			return nil, err
 		}
-		c.dpop = dpopclient.New(proofer, httpc, func() string { return s.SessionToken }, dpopclient.Options{
+		c.proofer = proofer
+	}
+	return c, c.dial()
+}
+
+// dial builds the HTTP client and the service clients on it. It runs again
+// when the CA the API is trusted through changed.
+func (c *Client) dial() error {
+	s := c.State
+	roots, err := trust.Pool([]byte(s.APICA))
+	if err != nil {
+		return err
+	}
+	c.httpc, err = dpopclient.NewHTTPClient(roots, dialTimeout)
+	if err != nil {
+		return err
+	}
+
+	var auth connect.Interceptor = &bearerAuth{token: s.Token, ua: buildinfo.UserAgent("nk")}
+	if c.proofer != nil {
+		c.dpop = dpopclient.New(c.proofer, c.httpc, func() string { return s.SessionToken }, dpopclient.Options{
 			BaseURL:   s.APIURL,
 			UserAgent: buildinfo.UserAgent("nk"),
 		})
 		auth = c.dpop
 	}
 	opts := connect.WithInterceptors(auth)
-	c.auth = nokkuv1connect.NewAuthServiceClient(httpc, s.APIURL, opts)
-	c.certs = nokkuv1connect.NewCertificateServiceClient(httpc, s.APIURL, opts)
-	c.targets = nokkuv1connect.NewTargetServiceClient(httpc, s.APIURL, opts)
-	c.daemons = nokkuv1connect.NewDaemonServiceClient(httpc, s.APIURL, opts)
-	return c, nil
+	c.auth = nokkuv1connect.NewAuthServiceClient(c.httpc, s.APIURL, opts)
+	c.certs = nokkuv1connect.NewCertificateServiceClient(c.httpc, s.APIURL, opts)
+	c.targets = nokkuv1connect.NewTargetServiceClient(c.httpc, s.APIURL, opts)
+	c.daemons = nokkuv1connect.NewDaemonServiceClient(c.httpc, s.APIURL, opts)
+	return nil
 }
 
 // Sync refreshes the access snapshot and regenerates the ssh files. When
 // interactive is false, a missing or rejected session is an error instead of
 // a browser login.
 func (c *Client) Sync(ctx context.Context, interactive bool) error {
+	if err := c.pinServer(ctx); err != nil {
+		return err
+	}
 	err := c.sync(ctx, interactive)
+	if trust.Untrusted(err) {
+		if err = c.confirmServer(ctx, interactive, err); err != nil {
+			return err
+		}
+		err = c.sync(ctx, interactive)
+	}
 	if err == nil || !interactive || connect.CodeOf(err) != connect.CodeUnauthenticated {
 		return err
 	}

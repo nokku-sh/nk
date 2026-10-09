@@ -18,6 +18,7 @@ import (
 
 	"github.com/nokku-sh/mon/dpopclient"
 	"github.com/nokku-sh/mon/tpm"
+	"github.com/nokku-sh/mon/trust"
 	"github.com/nokku-sh/nk/internal/enclave"
 	"github.com/nokku-sh/nk/internal/paths"
 	"github.com/nokku-sh/nk/internal/ssh"
@@ -134,7 +135,11 @@ func checkAccount(ctx context.Context, r *Report, s *state.State) {
 // reachable reports whether the backend answers a plain HTTP request within a
 // short timeout. It is a diagnostic signal only.
 func reachable(ctx context.Context, s *state.State) bool {
-	httpc, err := dpopclient.NewHTTPClient(s.Insecure, 3*time.Second)
+	roots, err := trust.Pool([]byte(s.APICA))
+	if err != nil {
+		return false
+	}
+	httpc, err := dpopclient.NewHTTPClient(roots, 3*time.Second)
 	if err != nil {
 		return false
 	}

@@ -46,7 +46,8 @@ func logoutCMD() *cli.Command {
 		Name:  "logout",
 		Usage: "Sign out and remove local credentials, certificates, and cached state",
 		Action: func(ctx context.Context, cmd *cli.Command) error {
-			if s, err := loadState(cmd); err == nil {
+			s, loadErr := loadState(cmd)
+			if loadErr == nil {
 				if c, cerr := client.New(s); cerr == nil {
 					c.Logout(ctx)
 				}
@@ -59,6 +60,9 @@ func logoutCMD() *cli.Command {
 				return err
 			}
 			fmt.Println("Signed out. Removed credentials, certificates, and cached state")
+			if loadErr == nil {
+				client.OfferRemoval(s)
+			}
 			return nil
 		},
 	}

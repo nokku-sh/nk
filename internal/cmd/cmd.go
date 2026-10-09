@@ -15,6 +15,7 @@ import (
 	"github.com/mizuchilabs/kata/logx"
 	"github.com/urfave/cli/v3"
 
+	"github.com/nokku-sh/mon/trust"
 	"github.com/nokku-sh/nk/internal/client"
 	"github.com/nokku-sh/nk/internal/paths"
 	"github.com/nokku-sh/nk/internal/state"
@@ -70,10 +71,15 @@ func Root() *cli.Command {
 				Usage:   "Require a TPM 2.0 or the Secure Enclave and refuse the software key fallback",
 				Sources: cli.EnvVars("NK_REQUIRE_TPM"),
 			},
-			&cli.BoolFlag{
-				Name:    "insecure",
-				Usage:   "Disable TLS verification and allow a plain http API URL",
-				Sources: cli.EnvVars("NK_INSECURE"),
+			&cli.StringFlag{
+				Name:    "pin",
+				Usage:   "Fingerprint of the server's private CA (sha256:...) from the web app. Without it nk asks",
+				Sources: cli.EnvVars("NK_API_PIN"),
+			},
+			&cli.StringFlag{
+				Name:    "ca-file",
+				Usage:   "PEM file with the private CA of the Nokku API",
+				Sources: cli.EnvVars("NK_CA_FILE"),
 			},
 			&cli.BoolFlag{
 				Name:    "debug",
@@ -90,7 +96,7 @@ func loadState(cmd *cli.Command) (*state.State, error) {
 	s.Token = os.Getenv("NK_TOKEN")
 	s.TTL = cmd.Duration("ttl")
 	s.RequireTPM = cmd.Bool("require-tpm")
-	s.Insecure = cmd.Bool("insecure")
+	s.Pin = cmd.String("pin")
 
 	if s.Token != "" && !strings.HasPrefix(s.Token, saPrefix) {
 		return nil, errors.New("NK_TOKEN must be a service account token starting with " + saPrefix)
@@ -100,11 +106,18 @@ func loadState(cmd *cli.Command) (*state.State, error) {
 		s.Config = state.Config{APIURL: api}
 		s.Cache = state.Cache{}
 	}
-	switch {
-	case s.Insecure:
-		warnf("TLS verification is off, --insecure is for testing only")
-	case plainHTTP(s.APIURL):
-		return nil, fmt.Errorf("%s is not encrypted, use https or pass --insecure", s.APIURL)
+	if plainHTTP(s.APIURL) {
+		return nil, fmt.Errorf("%s is not encrypted, Nokku is only reached over https", s.APIURL)
+	}
+	if path := cmd.String("ca-file"); path != "" {
+		ca, err := os.ReadFile(path) // #nosec G304 -- the user names the file
+		if err != nil {
+			return nil, fmt.Errorf("CA file: %w", err)
+		}
+		if _, err = trust.ParseBundle(ca); err != nil {
+			return nil, fmt.Errorf("CA file %s: %w", path, err)
+		}
+		s.APICA = string(ca)
 	}
 	return s, nil
 }

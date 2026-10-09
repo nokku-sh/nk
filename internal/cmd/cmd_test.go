@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -25,7 +26,7 @@ func setHome(t *testing.T) {
 func runFlags(t *testing.T, args ...string) (*state.State, error) {
 	t.Helper()
 	// The flags read these, and a developer's shell must not leak in.
-	for _, env := range []string{"NK_API_URL", "NK_TTL", "NK_REQUIRE_TPM", "NK_INSECURE", "NK_DEBUG"} {
+	for _, env := range []string{"NK_API_URL", "NK_TTL", "NK_REQUIRE_TPM", "NK_API_PIN", "NK_CA_FILE", "NK_DEBUG"} {
 		t.Setenv(env, "")
 		require.NoError(t, os.Unsetenv(env))
 	}
@@ -73,13 +74,12 @@ func TestLoadStateNewAPIDropsSession(t *testing.T) {
 func TestLoadStateRefusesPlainHTTP(t *testing.T) {
 	setHome(t)
 	_, err := runFlags(t, "--api", "http://nokku.corp")
-	require.ErrorContains(t, err, "--insecure")
+	require.ErrorContains(t, err, "not encrypted")
 
 	for _, args := range [][]string{
 		{"--api", "http://localhost:8080"},
 		{"--api", "http://127.0.0.1:8080"},
 		{"--api", "http://[::1]:8080"},
-		{"--api", "http://nokku.corp", "--insecure"},
 	} {
 		_, err = runFlags(t, args...)
 		require.NoError(t, err, "%v", args)
@@ -88,6 +88,31 @@ func TestLoadStateRefusesPlainHTTP(t *testing.T) {
 	require.NoError(t, (&state.State{APIURL: "http://nokku.corp", SessionToken: "sess"}).Save())
 	_, err = runFlags(t)
 	require.ErrorContains(t, err, "not encrypted", "a stored server is held to the same rule")
+}
+
+func TestLoadStateCAFile(t *testing.T) {
+	setHome(t)
+	path := filepath.Join(t.TempDir(), "ca.pem")
+	require.NoError(t, os.WriteFile(path, []byte("not a certificate"), 0o600))
+	_, err := runFlags(t, "--api", "https://nokku.corp", "--ca-file", path)
+	require.ErrorContains(t, err, "no certificate")
+
+	_, err = runFlags(t, "--api", "https://nokku.corp", "--ca-file", filepath.Join(t.TempDir(), "missing.pem"))
+	require.ErrorContains(t, err, "CA file")
+}
+
+// The CA of one server never vouches for another.
+func TestLoadStateDropsCAOnServerChange(t *testing.T) {
+	setHome(t)
+	require.NoError(t, (&state.State{APIURL: "https://a.example", APICA: "pem"}).Save())
+
+	s, err := runFlags(t)
+	require.NoError(t, err)
+	assert.Equal(t, "pem", s.APICA)
+
+	s, err = runFlags(t, "--api", "https://b.example")
+	require.NoError(t, err)
+	assert.Empty(t, s.APICA)
 }
 
 func TestLoadStateRejectsNonServiceToken(t *testing.T) {

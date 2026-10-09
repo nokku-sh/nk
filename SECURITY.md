@@ -70,9 +70,15 @@ Only the latest release gets security fixes. Older releases are not patched, so 
 
 ### TLS
 
-`--insecure` turns off TLS verification. It is for testing only, and `nk` prints a warning whenever it is on.
+TLS verification cannot be turned off. An `http://` API URL is refused, unless it points at this machine.
 
-An `http://` API URL is refused without it, unless it points at this machine.
+A core whose certificate comes from a private CA is trusted through that CA, and only for that core:
+
+- `nk login --pin sha256:...` fetches the CA the core advertises at `/ca.crt` and keeps it only when its public key matches the pin. It then connects again with that CA as the only root, so a server that merely copied the CA is refused. The pin comes from the web app or from your admin.
+- Without a pin, `nk login` on a terminal shows the pin of the advertised CA and asks, the way `ssh` asks about a host key. Without a terminal it fails.
+- `--ca-file` takes the CA from a file instead.
+
+The CA is stored in `~/.config/nk/config.json` and dropped when `--api` changes. After that every request is verified the normal way, against the system roots plus that CA. `nk` offers once to install the CA into the system trust store, so the browser sign-in works too. That step is optional and asks first. `nk logout` asks whether a CA that `nk` installed goes out again. Without a terminal it stays.
 
 ### Releases
 
