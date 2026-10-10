@@ -40,10 +40,13 @@ type Client struct {
 	proofer *dpop.Proofer
 	dpop    *dpopclient.Client
 
-	auth    nokkuv1connect.AuthServiceClient
-	certs   nokkuv1connect.CertificateServiceClient
-	targets nokkuv1connect.TargetServiceClient
-	daemons nokkuv1connect.DaemonServiceClient
+	auth            nokkuv1connect.AuthServiceClient
+	certs           nokkuv1connect.CertificateServiceClient
+	targets         nokkuv1connect.TargetServiceClient
+	daemons         nokkuv1connect.DaemonServiceClient
+	users           nokkuv1connect.WorkspaceServiceClient
+	teams           nokkuv1connect.TeamServiceClient
+	serviceAccounts nokkuv1connect.ServiceAccountServiceClient
 }
 
 func New(s *state.State) (*Client, error) {
@@ -93,6 +96,9 @@ func (c *Client) dial() error {
 	c.certs = nokkuv1connect.NewCertificateServiceClient(c.httpc, s.APIURL, opts)
 	c.targets = nokkuv1connect.NewTargetServiceClient(c.httpc, s.APIURL, opts)
 	c.daemons = nokkuv1connect.NewDaemonServiceClient(c.httpc, s.APIURL, opts)
+	c.users = nokkuv1connect.NewWorkspaceServiceClient(c.httpc, s.APIURL, opts)
+	c.teams = nokkuv1connect.NewTeamServiceClient(c.httpc, s.APIURL, opts)
+	c.serviceAccounts = nokkuv1connect.NewServiceAccountServiceClient(c.httpc, s.APIURL, opts)
 	return nil
 }
 
@@ -239,14 +245,29 @@ func (c *Client) ReportTarget(ctx context.Context, t *state.Target, accounts []s
 }
 
 // CreateTarget registers a manual target. An empty name asks the server to
-// generate one.
-func (c *Client) CreateTarget(ctx context.Context, t *state.Target) (*state.Target, error) {
-	res, err := c.targets.CreateTarget(ctx, &nokkuv1.CreateTargetRequest{
+// generate one. The grants are seeded with it, once.
+func (c *Client) CreateTarget(
+	ctx context.Context,
+	t *state.Target,
+	tags []string,
+	grants []Grant,
+) (*state.Target, error) {
+	req := &nokkuv1.CreateTargetRequest{
 		CaId:          new(t.CAID),
 		Name:          new(t.Name),
 		HostPublicKey: new(t.HostPublicKey),
 		Endpoints:     t.Endpoints,
-	})
+		Tags:          tags,
+	}
+	for _, g := range grants {
+		req.Grants = append(req.Grants, &nokkuv1.JoinTokenGrant{
+			Username:          new(g.Account),
+			UserIds:           g.Users,
+			TeamIds:           g.Teams,
+			ServiceAccountIds: g.ServiceAccounts,
+		})
+	}
+	res, err := c.targets.CreateTarget(ctx, req)
 	if err != nil {
 		return nil, err
 	}

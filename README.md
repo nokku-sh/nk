@@ -99,9 +99,19 @@ What it does:
 
 Run it again whenever access changes.
 
+A new server can start with access in place, so nobody has to open the web app after the first sync:
+
+```bash
+nk sync 10.0.0.5 --grant root=me --grant deploy=team:ops,alice@example.com --tag prod
+```
+
+- A `--grant` is `account=subject,subject`. A subject is `me`, an email, `team:<name>` or `sa:<name>`. An id works in place of an email or a name.
+- The account has to exist on the server. If it does not, the sync stops and writes nothing.
+- Grants and tags are set once, with the new target. On a server Nokku already knows, both are ignored with a warning, so the web app stays the place to change access.
+
 Every user pins the host key that the last sync saw. When it changed, the sync stops and writes nothing. If you reinstalled the server, run it again with `--accept-host-key` to pin the new one.
 
-For scripts, `--json` prints one object with the target, the files written and the stale principals files removed. Progress goes to stderr. With `--dry-run` it is the same object and nothing is written.
+For scripts, `--json` prints one object with the target, the files written and the stale principals files removed. Progress goes to stderr. With `--dry-run` it is the same object and nothing is written. A dry run of a new server cannot know its principals yet, so their files are empty and `grants` lists the subjects per account as you typed them.
 
 `nk rm` undoes it:
 
@@ -113,36 +123,36 @@ It removes the drop-in, the CA and the principals files over the same root `ssh`
 
 ## Commands
 
-| Command                      | Purpose                                                          |
-| ---------------------------- | ---------------------------------------------------------------- |
-| `nk login` (alias `refresh`) | Sign in and sync local state                                     |
-| `nk ls` / `nk list`          | List the servers you can reach                                   |
-| `nk doctor`                  | Check the core, the TPM and your local SSH setup                 |
-| `nk sync <host>`             | Add a server without the daemon, or refresh one you added        |
-| `nk rm <host>`               | Clean up a server you added with `nk sync` and delete its target |
+| Command                      | Purpose                                                                                       |
+| ---------------------------- | --------------------------------------------------------------------------------------------- |
+| `nk login` (alias `refresh`) | Sign in and sync local state                                                                  |
+| `nk ls` / `nk list`          | List the servers you can reach                                                                |
+| `nk doctor`                  | Check the core, the TPM and your local SSH setup                                              |
+| `nk sync <host>`             | Add a server without the daemon, or refresh one you added                                     |
+| `nk rm <host>`               | Clean up a server you added with `nk sync` and delete its target                              |
 | `nk logout`                  | Sign out, stop the agent and remove local credentials and state. Asks about a CA it installed |
 
 ### Command flags
 
-| Command            | Flags                                                                                   |
-| ------------------ | --------------------------------------------------------------------------------------- |
-| `nk ls`            | `--json` for machine-readable output                                                    |
-| `nk doctor`        | `--fix` to repair permissions and regenerate files, `--json` for output                 |
-| `nk sync`          | `--name`, `--ca`, `--port`, `--dry-run`, `--accept-host-key`, `--json`                  |
-| `nk rm`            | `--port`, `--keep-host` to leave the server untouched                                   |
+| Command     | Flags                                                                                      |
+| ----------- | ------------------------------------------------------------------------------------------ |
+| `nk ls`     | `--json` for machine-readable output                                                       |
+| `nk doctor` | `--fix` to repair permissions and regenerate files, `--json` for output                    |
+| `nk sync`   | `--name`, `--ca`, `--grant`, `--tag`, `--port`, `--dry-run`, `--accept-host-key`, `--json` |
+| `nk rm`     | `--port`, `--keep-host` to leave the server untouched                                      |
 
 ## Configuration
 
-| Flag            | Environment         | Purpose                                                                     |
-| --------------- | ------------------- | --------------------------------------------------------------------------- |
-| `--api`         | `NK_API_URL`        | Address of the core                                                         |
-|                 | `NK_TOKEN`          | Service account key (`nk_sa_...`) for CI. Environment only, never a flag |
-| `--ttl`         | `NK_TTL`            | Requested SSH certificate lifetime                                          |
-| `--require-tpm` | `NK_REQUIRE_TPM`    | Require a TPM 2.0 or the Secure Enclave, refuse the software key fallback   |
-|                 | `NK_SECURE_ENCLAVE` | Set to `1` on macOS to keep new keys in the Secure Enclave. Experimental    |
+| Flag            | Environment         | Purpose                                                                                                                    |
+| --------------- | ------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `--api`         | `NK_API_URL`        | Address of the core                                                                                                        |
+|                 | `NK_TOKEN`          | Service account key (`nk_sa_...`) for CI. Environment only, never a flag                                                   |
+| `--ttl`         | `NK_TTL`            | Requested SSH certificate lifetime                                                                                         |
+| `--require-tpm` | `NK_REQUIRE_TPM`    | Require a TPM 2.0 or the Secure Enclave, refuse the software key fallback                                                  |
+|                 | `NK_SECURE_ENCLAVE` | Set to `1` on macOS to keep new keys in the Secure Enclave. Experimental                                                   |
 | `--pin`         | `NK_API_PIN`        | Fingerprint of the core's private CA, `sha256:...`. The web app shows it under **Profile, Security**. Without it `nk` asks |
-| `--ca-file`     | `NK_CA_FILE`        | PEM file with the core's private CA, instead of a pin                       |
-| `--debug`       | `NK_DEBUG`          | Debug logging                                                               |
+| `--ca-file`     | `NK_CA_FILE`        | PEM file with the core's private CA, instead of a pin                                                                      |
+| `--debug`       | `NK_DEBUG`          | Debug logging                                                                                                              |
 
 `--api` is remembered after the first use. Switching to another core drops the old session. The other flags apply to one run only.
 

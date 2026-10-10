@@ -1,13 +1,16 @@
 package cmd
 
 import (
+	"context"
 	"encoding/json"
 	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/urfave/cli/v3"
 
+	"github.com/nokku-sh/nk/internal/client"
 	"github.com/nokku-sh/nk/internal/manual"
 	"github.com/nokku-sh/nk/internal/state"
 )
@@ -114,7 +117,7 @@ func TestSyncResultJSON(t *testing.T) {
 	)
 
 	for _, dryRun := range []bool{true, false} {
-		b, err := json.Marshal(newSyncResult(target, plan, dryRun))
+		b, err := json.Marshal(newSyncResult(target, plan, nil, dryRun))
 		require.NoError(t, err)
 		var got struct {
 			Target string `json:"target"`
@@ -135,9 +138,29 @@ func TestSyncResultJSON(t *testing.T) {
 		assert.Equal(t, []string{"/etc/ssh/nokku_principals/gone"}, got.Removed)
 	}
 
-	b, err := json.Marshal(newSyncResult(target, manual.Plan{}, false))
+	b, err := json.Marshal(newSyncResult(target, manual.Plan{}, nil, false))
 	require.NoError(t, err)
 	assert.Contains(t, string(b), `"removed":[]`, "scripts get a list, never null")
+	assert.NotContains(t, string(b), "grants", "only a new target that starts with grants names them")
+
+	seeds := []client.Grant{{Account: "root", Subjects: []string{"me", "team:ops"}, Users: []string{"user-1"}}}
+	b, err = json.Marshal(newSyncResult(target, manual.Plan{}, seeds, true))
+	require.NoError(t, err)
+	assert.Contains(t, string(b), `"grants":{"root":["me","team:ops"]}`, "as typed, ids stay out")
+}
+
+// urfave splits a slice flag at commas unless told otherwise, which would
+// tear the subjects of one account apart.
+func TestSyncKeepsTheSubjectsOfAGrantTogether(t *testing.T) {
+	t.Parallel()
+	var got []string
+	sync := syncCMD()
+	sync.Action = func(_ context.Context, cmd *cli.Command) error {
+		got = cmd.StringSlice("grant")
+		return nil
+	}
+	require.NoError(t, sync.Run(t.Context(), []string{"sync", "--grant", "root=me,team:ops", "10.0.0.5"}))
+	assert.Equal(t, []string{"root=me,team:ops"}, got)
 }
 
 func TestCheckHostKey(t *testing.T) {

@@ -9,6 +9,7 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
 	"runtime"
 	"slices"
@@ -32,12 +33,20 @@ func syncCMD() *cli.Command {
 		Description: "Connects as root with your own ssh, then writes the Nokku CA, an sshd drop-in, " +
 			"and one principals file per account. Run it again whenever access changes.",
 		ArgsUsage: "<host | root@host | target-name>",
+		// A --grant lists its subjects with commas.
+		DisableSliceFlagSeparator: true,
 		Flags: []cli.Flag{
 			&cli.StringFlag{Name: "name", Usage: "Name for a new target, generated when empty"},
 			&cli.StringFlag{
 				Name:  "ca",
 				Usage: "Certificate authority id or name for a new target, defaults to the default one",
 			},
+			&cli.StringSliceFlag{
+				Name: "grant",
+				Usage: "Who may log in to a new target, as account=subject,subject. " +
+					"A subject is me, an email, team:<name>, or sa:<name>",
+			},
+			&cli.StringSliceFlag{Name: "tag", Usage: "Tag for a new target"},
 			portFlag,
 			&cli.BoolFlag{Name: "dry-run", Usage: "Show what would be written and change nothing"},
 			&cli.BoolFlag{
@@ -75,11 +84,19 @@ func targetSync(ctx context.Context, cmd *cli.Command) error {
 		return err
 	}
 	var ca *state.CA
+	var seeds []client.Grant
 	if target == nil {
 		if target, ca, err = newTarget(ctx, c, cmd, dest); err != nil {
 			return err
 		}
+		if seeds, err = c.ResolveGrants(ctx, cmd.StringSlice("grant")); err != nil {
+			return err
+		}
 	} else {
+		if cmd.IsSet("grant") || cmd.IsSet("tag") {
+			// The web app owns access from the first sync on, so a rerun never undoes a change made there.
+			warnf("%s is already a target, --grant and --tag only apply to a new one", target.Name)
+		}
 		if target.Name == host && len(target.Endpoints) > 0 {
 			// Reached by name, so connect to where the target lives.
 			dest = endpointRemote(target.Endpoints[0], dest.port)
@@ -91,22 +108,15 @@ func targetSync(ctx context.Context, cmd *cli.Command) error {
 	}
 
 	fmt.Fprintf(progress, "Connecting with: %s\n", dest)
-	out, err := dest.run(ctx, manual.ProbeCommand, "")
+	h, err := probe(ctx, dest, target.HostPublicKey, seeds, cmd.Bool("accept-host-key"))
 	if err != nil {
-		return err
-	}
-	h, err := manual.ParseProbe(out)
-	if err != nil {
-		return fmt.Errorf("%s: %w", dest.host, err)
-	}
-	if err = checkHostKey(target.HostPublicKey, h.HostKey, dest.host, cmd.Bool("accept-host-key")); err != nil {
 		return err
 	}
 
 	grants := map[string][]string{}
 	if target.ID == "" && !dryRun {
 		target.HostPublicKey = h.HostKey
-		if target, err = c.CreateTarget(ctx, target); err != nil {
+		if target, err = c.CreateTarget(ctx, target, cmd.StringSlice("tag"), seeds); err != nil {
 			return err
 		}
 		fmt.Fprintf(progress, "Added target %s\n", ui.Bold(target.Name))
@@ -124,12 +134,43 @@ func targetSync(ctx context.Context, cmd *cli.Command) error {
 		}
 	}
 	if asJSON {
-		return printJSON(newSyncResult(target, plan, dryRun))
+		return printJSON(newSyncResult(target, plan, seeds, dryRun))
 	}
 	if dryRun {
-		printPlan(plan)
+		printPlan(plan, seeds)
 	}
 	return nil
+}
+
+// probe reads the host. It stops when the host key changed, or when a grant
+// names an account the host does not have.
+func probe(
+	ctx context.Context,
+	dest remote,
+	pinnedKey string,
+	seeds []client.Grant,
+	acceptKey bool,
+) (manual.Host, error) {
+	out, err := dest.run(ctx, manual.ProbeCommand, "")
+	if err != nil {
+		return manual.Host{}, err
+	}
+	h, err := manual.ParseProbe(out)
+	if err != nil {
+		return h, fmt.Errorf("%s: %w", dest.host, err)
+	}
+	if err = checkHostKey(pinnedKey, h.HostKey, dest.host, acceptKey); err != nil {
+		return h, err
+	}
+	for _, g := range seeds {
+		if !slices.Contains(h.Accounts, g.Account) {
+			return h, fmt.Errorf(
+				"%s has no login account %s, nothing was written. It has: %s",
+				dest.host, g.Account, strings.Join(h.Accounts, ", "),
+			)
+		}
+	}
+	return h, nil
 }
 
 // checkHostKey stops a sync that would hand a changed host key to every user.
@@ -148,10 +189,18 @@ func checkHostKey(pinned, seen, host string, accept bool) error {
 	return nil
 }
 
-func printPlan(plan manual.Plan) {
+// printPlan shows a dry run. A new target has no principals before it exists,
+// so a file that a grant will fill names its subjects as they were typed.
+func printPlan(plan manual.Plan, seeds []client.Grant) {
 	fmt.Println("Dry run, nothing was written. This sync would write:")
 	for _, f := range plan.Files {
-		fmt.Printf("\n%s\n%s", ui.Bold(f.Path), cmp.Or(f.Content, ui.Dim("(empty, nobody may log in)\n")))
+		empty := ui.Dim("(empty, nobody may log in)\n")
+		for _, g := range seeds {
+			if g.Account == path.Base(f.Path) {
+				empty = ui.Dim("(the principals of " + strings.Join(g.Subjects, ", ") + ")\n")
+			}
+		}
+		fmt.Printf("\n%s\n%s", ui.Bold(f.Path), cmp.Or(f.Content, empty))
 	}
 	for _, path := range plan.Stale {
 		fmt.Printf("\n%s %s\n", ui.Bold("remove"), path)
@@ -163,15 +212,24 @@ type syncResult struct {
 	DryRun  bool          `json:"dry_run"`
 	Files   []manual.File `json:"files"`
 	Removed []string      `json:"removed"`
+	// Grants are the subjects a new target starts with, as they were typed.
+	Grants map[string][]string `json:"grants,omitempty"`
 }
 
-func newSyncResult(target *state.Target, plan manual.Plan, dryRun bool) syncResult {
-	return syncResult{
+func newSyncResult(target *state.Target, plan manual.Plan, seeds []client.Grant, dryRun bool) syncResult {
+	res := syncResult{
 		Target:  target.Name,
 		DryRun:  dryRun,
 		Files:   plan.Files,
 		Removed: append([]string{}, plan.Stale...),
 	}
+	for _, g := range seeds {
+		if res.Grants == nil {
+			res.Grants = map[string][]string{}
+		}
+		res.Grants[g.Account] = g.Subjects
+	}
+	return res
 }
 
 // applyPlan writes the host first and reports to Nokku only once that worked.

@@ -57,7 +57,7 @@ func TestCreateTarget(t *testing.T) {
 
 	created, err := c.CreateTarget(t.Context(), &state.Target{
 		CAID: "ca-1", HostPublicKey: "ssh-ed25519 AAAA", Endpoints: []string{"10.0.0.5"},
-	})
+	}, []string{"prod"}, []Grant{{Account: "deploy", Users: []string{"user-1"}, Teams: []string{"team-1"}}})
 	require.NoError(t, err)
 
 	assert.Equal(t, "fair-juniper", created.Name, "the server-generated name comes back")
@@ -67,6 +67,11 @@ func TestCreateTarget(t *testing.T) {
 	assert.Equal(t, "ca-1", svc.got.GetCaId())
 	assert.Equal(t, []string{"10.0.0.5"}, svc.got.GetEndpoints())
 	assert.Equal(t, "ssh-ed25519 AAAA", svc.got.GetHostPublicKey())
+	assert.Equal(t, []string{"prod"}, svc.got.GetTags())
+	require.Len(t, svc.got.GetGrants(), 1)
+	assert.Equal(t, "deploy", svc.got.GetGrants()[0].GetUsername())
+	assert.Equal(t, []string{"user-1"}, svc.got.GetGrants()[0].GetUserIds())
+	assert.Equal(t, []string{"team-1"}, svc.got.GetGrants()[0].GetTeamIds())
 }
 
 func TestDeleteTarget(t *testing.T) {
