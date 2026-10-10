@@ -23,8 +23,8 @@ github.com/mizuchilabs/kata v0.1.15 h1:elUyxJghTH+Ig25IEbHwSNMm3F4bHJPQOau+2vgs9
 github.com/mizuchilabs/kata v0.1.15/go.mod h1:s24K0qob5pRZAE57lWKnInhl2qGScuWmAOrLh9Zd4Oo=
 github.com/nokku-sh/mon v0.1.8-0.20261009190952-573de22b5b6b h1:4pk+97VO6VCda5NQWcWtkQ+dVRt4a0zGm2HEDwFOaWM=
 github.com/nokku-sh/mon v0.1.8-0.20261009190952-573de22b5b6b/go.mod h1:Rj0t2TS+dDM8utRjaZL7G6h4WiyhFoNmpCq4enZps/I=
-github.com/nokku-sh/protos v0.2.9 h1:+aidyaa1cLvX+xSudFK2h1j9S61MUlET6TQKEySGLQo=
-github.com/nokku-sh/protos v0.2.9/go.mod h1:0pzfYf3EwKMFzSDxiOVQUbw/fufb7FgWdE578rJF1SY=
+github.com/nokku-sh/protos v0.2.10 h1:8q6ilIeBucNRI8nYc1FIet7TtBUzewOySMFNlyP1s30=
+github.com/nokku-sh/protos v0.2.10/go.mod h1:0pzfYf3EwKMFzSDxiOVQUbw/fufb7FgWdE578rJF1SY=
 github.com/pborman/uuid v1.2.0 h1:J7Q5mO4ysT1dv8hyrUGHb9+ooztCXu1D8MY8DZYsu3g=
 github.com/pborman/uuid v1.2.0/go.mod h1:X/NO0urCmaxf9VXbdlT7C2Yzkj2IKimNn4k+gtPdI/k=
 github.com/pkg/errors v0.9.1 h1:FEBLx1zS214owpjy7qsBeixbURkuhQAwrK5UwLGTwt4=
